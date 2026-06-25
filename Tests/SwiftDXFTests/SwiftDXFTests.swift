@@ -167,9 +167,81 @@ struct SwiftDXFTests {
         20
         3.0
         """))
-        guard case let .polyline(pts, closed, _, _) = dwg.entities.first else { Issue.record("not a polyline"); return }
-        #expect(pts.count == 3 && closed)
-        #expect(pts[1] == DXF.Point(4, 0) && pts[2] == DXF.Point(4, 3))
+        guard case let .polyline(verts, closed, _, _) = dwg.entities.first else { Issue.record("not a polyline"); return }
+        #expect(verts.count == 3 && closed)
+        #expect(verts[1].point == DXF.Point(4, 0) && verts[2].point == DXF.Point(4, 3))
+    }
+
+    @Test("LWPOLYLINE binds bulge to the right vertex")
+    func lwpolylineBulge() throws {
+        let dwg = try DXF.read(text: Self.doc("""
+        0
+        LWPOLYLINE
+        90
+        3
+        70
+        0
+        10
+        0.0
+        20
+        0.0
+        42
+        0.5
+        10
+        4.0
+        20
+        0.0
+        10
+        4.0
+        20
+        3.0
+        """))
+        guard case let .polyline(verts, _, _, _) = dwg.entities.first else { Issue.record("not a polyline"); return }
+        #expect(verts.count == 3)
+        #expect(verts[0].bulge == 0.5 && verts[1].bulge == 0 && verts[2].bulge == 0)   // bulge stays on vertex 0
+    }
+
+    @Test("header $INSUNITS and $EXTMIN/$EXTMAX are read")
+    func headerVars() throws {
+        let text = """
+        0
+        SECTION
+        2
+        HEADER
+        9
+        $INSUNITS
+        70
+        4
+        9
+        $EXTMIN
+        10
+        -5.0
+        20
+        -7.0
+        30
+        0.0
+        9
+        $EXTMAX
+        10
+        100.0
+        20
+        50.0
+        30
+        0.0
+        0
+        ENDSEC
+        0
+        SECTION
+        2
+        ENTITIES
+        0
+        ENDSEC
+        0
+        EOF
+        """
+        let dwg = try DXF.read(text: text)
+        #expect(dwg.insUnits == 4)   // millimetres
+        #expect(dwg.extMin == DXF.Point(-5, -7) && dwg.extMax == DXF.Point(100, 50))
     }
 
     @Test("old-style POLYLINE consumes VERTEX run and SEQEND")
@@ -208,8 +280,8 @@ struct SwiftDXFTests {
         """))
         // The VERTEX/SEQEND run must not be mistaken for extra entities.
         #expect(dwg.counts.polyline == 1 && dwg.counts.line == 1 && dwg.counts.total == 2)
-        guard case let .polyline(pts, _, _, _) = dwg.entities[0] else { Issue.record("not a polyline"); return }
-        #expect(pts == [DXF.Point(0, 0), DXF.Point(5, 5)])
+        guard case let .polyline(verts, _, _, _) = dwg.entities[0] else { Issue.record("not a polyline"); return }
+        #expect(verts.map(\.point) == [DXF.Point(0, 0), DXF.Point(5, 5)])
     }
 
     @Test("unmodelled entities are skipped, not fatal")

@@ -48,6 +48,23 @@ extension DXF {
         private func point(_ f: [(code: Int, value: String)]) -> Point {
             Point(dbl(10, f), dbl(20, f), dbl(30, f))
         }
+        /// LWPOLYLINE vertices in field order: each `10` opens a vertex, `20` is its y, `42` its bulge.
+        private func lwVertices(_ f: [(code: Int, value: String)]) -> [PolyVertex] {
+            var verts: [PolyVertex] = []
+            var x: Double?, y: Double = 0, bulge: Double = 0
+            func flush() { if let x { verts.append(PolyVertex(Point(x, y), bulge: bulge)) }; x = nil; y = 0; bulge = 0 }
+            for (code, value) in f {
+                let v = Double(value.trimmingCharacters(in: .whitespaces))
+                switch code {
+                case 10: if x != nil { flush() }; x = v
+                case 20: y = v ?? 0
+                case 42: bulge = v ?? 0
+                default: break
+                }
+            }
+            flush()
+            return verts
+        }
 
         // MARK: parse
 
@@ -63,6 +80,9 @@ extension DXF {
             }
 
             var dwg = Drawing(version: version)
+            dwg.insUnits = ints(70, headerVar("$INSUNITS"))
+            let mn = headerVar("$EXTMIN"); if mn.contains(where: { $0.code == 10 }) { dwg.extMin = point(mn) }
+            let mx = headerVar("$EXTMAX"); if mx.contains(where: { $0.code == 10 }) { dwg.extMax = point(mx) }
             guard let start = entitiesStart() else { return dwg }   // valid DXF, just no model space
 
             var i = start
@@ -129,22 +149,23 @@ extension DXF {
                     dwg.counts.text += 1
 
                 case "LWPOLYLINE":
-                    let xs = allDbl(10, fields), ys = allDbl(20, fields)
-                    let pts = zip(xs, ys).map { Point($0, $1) }
+                    // Vertices interleave in order: 10 x, 20 y, optional 42 bulge — a new 10 starts the
+                    // next vertex. Walk in field order so each bulge binds to its own vertex.
                     let closed = (ints(70, fields) ?? 0) & 1 == 1
-                    dwg.entities.append(.polyline(points: pts, closed: closed, layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(.polyline(vertices: lwVertices(fields), closed: closed,
+                                                  layer: layer(fields), color: color(fields)))
                     dwg.counts.polyline += 1
 
                 case "POLYLINE":
                     // Old-style: a POLYLINE header followed by VERTEX entities and a terminating SEQEND.
                     let closed = (ints(70, fields) ?? 0) & 1 == 1
                     let lay = layer(fields), col = color(fields)
-                    var pts: [Point] = []
+                    var verts: [PolyVertex] = []
                     while j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "VERTEX" {
                         var m = j + 1
                         var vf: [(code: Int, value: String)] = []
                         while m < pairs.count && pairs[m].code != 0 { vf.append(pairs[m]); m += 1 }
-                        pts.append(point(vf))
+                        verts.append(PolyVertex(point(vf), bulge: dbl(42, vf, 0)))
                         j = m
                     }
                     if j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "SEQEND" {
@@ -152,7 +173,7 @@ extension DXF {
                         while m < pairs.count && pairs[m].code != 0 { m += 1 }
                         j = m
                     }
-                    dwg.entities.append(.polyline(points: pts, closed: closed, layer: lay, color: col))
+                    dwg.entities.append(.polyline(vertices: verts, closed: closed, layer: lay, color: col))
                     dwg.counts.polyline += 1
 
                 default:
@@ -161,6 +182,16 @@ extension DXF {
                 i = j
             }
             return dwg
+        }
+
+        /// The value pairs of a HEADER variable (`9`/`$NAME`), up to the next `9` or section `0`.
+        private func headerVar(_ name: String) -> [(code: Int, value: String)] {
+            guard let start = pairs.firstIndex(where: { $0.code == 9 && trimmed($0.value) == name })
+            else { return [] }
+            var out: [(code: Int, value: String)] = []
+            var k = start + 1
+            while k < pairs.count, pairs[k].code != 9, pairs[k].code != 0 { out.append(pairs[k]); k += 1 }
+            return out
         }
 
         /// Index of the first pair *after* a `2`/`ENTITIES` tag inside a `SECTION`.

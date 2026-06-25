@@ -46,10 +46,17 @@ public enum DXF {
         /// `TEXT` or `MTEXT`. `height` is the text height (group 40); `rotationDeg` the rotation in
         /// degrees (group 50); `string` is decoded to Unicode at read time.
         case text(at: Point, height: Double, rotationDeg: Double, string: String, layer: String, color: Int)
-        /// `LWPOLYLINE` or an old-style `POLYLINE`/`VERTEX` run, flattened to its vertices. `closed`
-        /// reflects the closed flag (group 70 bit 1). Arc bulges (group 42) are not yet expanded —
-        /// segments are treated as straight.
-        case polyline(points: [Point], closed: Bool, layer: String, color: Int)
+        /// `LWPOLYLINE` or an old-style `POLYLINE`/`VERTEX` run. `closed` reflects the closed flag
+        /// (group 70 bit 1). Each vertex carries its **bulge** (group 42) — `tan(θ/4)` of the arc to the
+        /// next vertex, `0` for a straight segment — so curved polylines survive the read.
+        case polyline(vertices: [PolyVertex], closed: Bool, layer: String, color: Int)
+    }
+
+    /// One polyline vertex: a point plus the bulge of the segment leaving it (`0` = straight).
+    public struct PolyVertex: Equatable, Sendable {
+        public var point: Point
+        public var bulge: Double
+        public init(_ point: Point, bulge: Double = 0) { self.point = point; self.bulge = bulge }
     }
 
     public struct Drawing: Sendable {
@@ -58,9 +65,18 @@ public enum DXF {
         public var entities: [Entity]
         /// Per-type entity counts, for verification against reference tools (ezdxf, IxMilia.Dxf).
         public var counts: Counts
+        /// `$INSUNITS` header code (0 = unitless, 1 = inches, 2 = feet, 4 = mm, 5 = cm, 6 = m, …),
+        /// or `nil` when the file declares none.
+        public var insUnits: Int?
+        /// `$EXTMIN` / `$EXTMAX` — the drawing extents declared in the header (may differ from the
+        /// computed ``bounds`` of the entities actually read). `nil` when the header omits them.
+        public var extMin: Point?
+        public var extMax: Point?
 
-        public init(version: String = "", entities: [Entity] = [], counts: Counts = .init()) {
+        public init(version: String = "", entities: [Entity] = [], counts: Counts = .init(),
+                    insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil) {
             self.version = version; self.entities = entities; self.counts = counts
+            self.insUnits = insUnits; self.extMin = extMin; self.extMax = extMax
         }
 
         public struct Counts: Sendable, Equatable {
@@ -90,7 +106,7 @@ public enum DXF {
                 case let .ellipse(c, m, _, _, _, _, _): let r = (m.x * m.x + m.y * m.y).squareRoot(); box(c, r)
                 case let .point(p, _, _): acc(p)
                 case let .text(p, _, _, _, _, _): acc(p)
-                case let .polyline(pts, _, _, _): pts.forEach(acc)
+                case let .polyline(verts, _, _, _): verts.forEach { acc($0.point) }
                 }
             }
             return any ? (lo, hi) : nil

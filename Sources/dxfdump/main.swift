@@ -45,7 +45,7 @@ func summary(for path: String) -> [String: Any] {
             case let .ellipse(c, m, ratio, s, en, _, _): add("ELLIPSE", c.x, c.y, m.x, m.y, ratio, s, en)
             case let .point(p, _, _): add("POINT", p.x, p.y)
             case let .text(p, h, _, _, _, _): add("TEXT", p.x, p.y, h)
-            case let .polyline(pts, _, _, _): for p in pts { add("POLYLINE", p.x, p.y) }
+            case let .polyline(verts, _, _, _): for v in verts { add("POLYLINE", v.point.x, v.point.y) }
             }
         }
         obj["geom"] = ["sum": sum, "scalars": n]

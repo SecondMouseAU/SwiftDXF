@@ -27,9 +27,13 @@ The 2D entity set that dominates real-world drawings, from the `ENTITIES` (model
 | `ELLIPSE` | `.ellipse(center, majorAxis, ratio, startParam, endParam, …)` |
 | `POINT` | `.point(at, …)` |
 | `TEXT`, `MTEXT` | `.text(at, height, rotationDeg, string, …)` |
-| `LWPOLYLINE`, `POLYLINE`/`VERTEX` | `.polyline(points, closed, …)` |
+| `LWPOLYLINE`, `POLYLINE`/`VERTEX` | `.polyline(vertices, closed, …)` — each vertex carries its **bulge** |
 
 Entities it does not model (e.g. `INSERT`, `SPLINE`, `HATCH`, `DIMENSION`) are **skipped, not fatal**.
+
+`Drawing` also exposes header essentials: `version` (`$ACADVER`), `insUnits` (`$INSUNITS`), and the
+declared `extMin` / `extMax` extents (`$EXTMIN` / `$EXTMAX`), plus a computed `bounds` over the
+entities actually read.
 
 ### Behaviours worth knowing
 
