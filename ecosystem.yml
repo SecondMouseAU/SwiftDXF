@@ -1,0 +1,10 @@
+okf_version: 1
+repo: SwiftDXF
+cluster: kernel
+visibility: public
+status: active
+language: Swift
+summary: Native-Swift reader for ASCII DXF (AutoCAD Drawing Interchange) — 2D model-space geometry into a neutral Sendable model, plus a dxfdump CLI; dependency-free.
+products: []
+depends_on: []          # leaf — pure Swift, no intra-org or third-party deps
+maintainer: gsdali
