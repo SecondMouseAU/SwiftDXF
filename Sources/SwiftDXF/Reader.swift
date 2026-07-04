@@ -37,6 +37,16 @@ extension DXF {
             guard let s = first(code, f) else { return nil }
             return Int(s.trimmingCharacters(in: .whitespaces))
         }
+        private func dblOpt(_ code: Int, _ f: [(code: Int, value: String)]) -> Double? {
+            guard let s = first(code, f) else { return nil }
+            return Double(s.trimmingCharacters(in: .whitespaces))
+        }
+        /// A point whose base group code (and `+10`/`+20` for y/z) may be entirely absent — e.g.
+        /// DIMENSION's per-type definition points (13/14/15/16). `nil`, not a zero point, when unset.
+        private func pointOpt(_ base: Int, _ f: [(code: Int, value: String)]) -> Point? {
+            guard first(base, f) != nil else { return nil }
+            return Point(dbl(base, f), dbl(base + 10, f), dbl(base + 20, f))
+        }
         private func allDbl(_ code: Int, _ f: [(code: Int, value: String)]) -> [Double] {
             f.compactMap { $0.code == code ? Double($0.value.trimmingCharacters(in: .whitespaces)) : nil }
         }
@@ -175,6 +185,21 @@ extension DXF {
                     }
                     dwg.entities.append(.polyline(vertices: verts, closed: closed, layer: lay, color: col))
                     dwg.counts.polyline += 1
+
+                case "DIMENSION":
+                    let kind = DimensionType(group70: ints(70, fields) ?? 0)
+                    let textRaw = first(1, fields)
+                    let dim = Dimension(
+                        kind: kind,
+                        measurement: dblOpt(42, fields),
+                        textOverride: (textRaw?.isEmpty == false) ? textRaw : nil,
+                        textPosition: Point(dbl(11, fields), dbl(21, fields), dbl(31, fields)),
+                        defPoint: point(fields),
+                        defPoint2: pointOpt(13, fields), defPoint3: pointOpt(14, fields),
+                        defPoint4: pointOpt(15, fields), defPoint5: pointOpt(16, fields),
+                        layer: layer(fields), color: color(fields))
+                    dwg.entities.append(.dimension(dim))
+                    dwg.counts.dimension += 1
 
                 default:
                     break   // unmodelled entity (INSERT, SPLINE, HATCH, …) — skip

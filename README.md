@@ -28,8 +28,9 @@ The 2D entity set that dominates real-world drawings, from the `ENTITIES` (model
 | `POINT` | `.point(at, …)` |
 | `TEXT`, `MTEXT` | `.text(at, height, rotationDeg, string, …)` |
 | `LWPOLYLINE`, `POLYLINE`/`VERTEX` | `.polyline(vertices, closed, …)` — each vertex carries its **bulge** |
+| `DIMENSION` | `.dimension(Dimension)` — semantic measurement only, not the rendered arrow/text glyphs |
 
-Entities it does not model (e.g. `INSERT`, `SPLINE`, `HATCH`, `DIMENSION`) are **skipped, not fatal**.
+Entities it does not model (e.g. `INSERT`, `SPLINE`, `HATCH`) are **skipped, not fatal**.
 
 `Drawing` also exposes header essentials: `version` (`$ACADVER`), `insUnits` (`$INSUNITS`), and the
 declared `extMin` / `extMax` extents (`$EXTMIN` / `$EXTMAX`), plus a computed `bounds` over the
