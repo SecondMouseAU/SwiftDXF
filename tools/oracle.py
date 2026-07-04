@@ -70,6 +70,16 @@ def summarize(path):
             for v in e.vertices:
                 loc = v.dxf.location
                 add("POLYLINE", loc.x, loc.y)
+        elif t == "DIMENSION":
+            tm, dp = e.dxf.text_midpoint, e.dxf.defpoint
+            vs = [tm.x, tm.y, dp.x, dp.y]
+            if e.dxf.hasattr("actual_measurement"):
+                vs.append(e.dxf.actual_measurement)
+            for name in ("defpoint2", "defpoint3", "defpoint4", "defpoint5"):
+                if e.dxf.hasattr(name):
+                    p = getattr(e.dxf, name)
+                    vs.extend([p.x, p.y])
+            add("DIMENSION", *vs)
     counts = {
         "LINE": raw.get("LINE", 0),
         "CIRCLE": raw.get("CIRCLE", 0),
@@ -78,6 +88,7 @@ def summarize(path):
         "POINT": raw.get("POINT", 0),
         "TEXT": raw.get("TEXT", 0) + raw.get("MTEXT", 0),
         "POLYLINE": raw.get("LWPOLYLINE", 0) + raw.get("POLYLINE", 0),
+        "DIMENSION": raw.get("DIMENSION", 0),
     }
     counts["total"] = sum(counts.values())
     return {

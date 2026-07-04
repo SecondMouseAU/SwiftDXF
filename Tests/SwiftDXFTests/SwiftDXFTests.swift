@@ -284,6 +284,113 @@ struct SwiftDXFTests {
         #expect(verts.map(\.point) == [DXF.Point(0, 0), DXF.Point(5, 5)])
     }
 
+    @Test("DIMENSION: linear and radius entities expose their defining points")
+    func dimensionEntities() throws {
+        let dwg = try DXF.read(text: Self.doc("""
+        0
+        DIMENSION
+        8
+        DIMS
+        10
+        5.0
+        20
+        0.0
+        30
+        0.0
+        11
+        5.0
+        21
+        1.0
+        31
+        0.0
+        70
+        0
+        42
+        10.0
+        1
+
+        13
+        0.0
+        23
+        0.0
+        33
+        0.0
+        14
+        10.0
+        24
+        0.0
+        34
+        0.0
+        50
+        0.0
+        0
+        DIMENSION
+        8
+        DIMS
+        10
+        20.0
+        20
+        20.0
+        30
+        0.0
+        11
+        27.5
+        21
+        20.0
+        31
+        0.0
+        70
+        4
+        42
+        7.5
+        1
+        R7.5
+        15
+        27.5
+        25
+        20.0
+        35
+        0.0
+        40
+        3.0
+        """))
+        #expect(dwg.counts.dimension == 2 && dwg.counts.total == 2)
+
+        guard case let .dimension(linear) = dwg.entities[0] else { Issue.record("not a dimension"); return }
+        #expect(linear.kind == .linear)
+        #expect(linear.measurement == 10 && linear.textOverride == nil)   // blank group 1 → nil
+        #expect(linear.textPosition == DXF.Point(5, 1) && linear.defPoint == DXF.Point(5, 0))
+        #expect(linear.defPoint2 == DXF.Point(0, 0) && linear.defPoint3 == DXF.Point(10, 0))
+        #expect(linear.defPoint4 == nil && linear.defPoint5 == nil)
+        #expect(linear.layer == "DIMS")
+
+        guard case let .dimension(radius) = dwg.entities[1] else { Issue.record("not a dimension"); return }
+        #expect(radius.kind == .radius)
+        #expect(radius.measurement == 7.5 && radius.textOverride == "R7.5")
+        #expect(radius.defPoint == DXF.Point(20, 20) && radius.defPoint4 == DXF.Point(27.5, 20))
+        #expect(radius.defPoint2 == nil && radius.defPoint3 == nil)
+    }
+
+    @Test("DIMENSION: unrecognised group-70 base type decodes to .unknown")
+    func dimensionUnknownType() throws {
+        let dwg = try DXF.read(text: Self.doc("""
+        0
+        DIMENSION
+        10
+        0.0
+        20
+        0.0
+        11
+        0.0
+        21
+        0.0
+        70
+        9
+        """))
+        guard case let .dimension(d) = dwg.entities.first else { Issue.record("not a dimension"); return }
+        #expect(d.kind == .unknown(9) && d.measurement == nil)
+    }
+
     @Test("unmodelled entities are skipped, not fatal")
     func skipsUnknown() throws {
         let dwg = try DXF.read(text: Self.doc("""

@@ -16,7 +16,8 @@ func summary(for path: String) -> [String: Any] {
             "version": dwg.version,
             "counts": [
                 "LINE": c.line, "CIRCLE": c.circle, "ARC": c.arc, "ELLIPSE": c.ellipse,
-                "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline, "total": c.total,
+                "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline,
+                "DIMENSION": c.dimension, "total": c.total,
             ],
         ]
         if let b = dwg.bounds {
@@ -46,6 +47,12 @@ func summary(for path: String) -> [String: Any] {
             case let .point(p, _, _): add("POINT", p.x, p.y)
             case let .text(p, h, _, _, _, _): add("TEXT", p.x, p.y, h)
             case let .polyline(verts, _, _, _): for v in verts { add("POLYLINE", v.point.x, v.point.y) }
+            case let .dimension(d):
+                add("DIMENSION", d.textPosition.x, d.textPosition.y, d.defPoint.x, d.defPoint.y)
+                if let m = d.measurement { add("DIMENSION", m) }
+                for p in [d.defPoint2, d.defPoint3, d.defPoint4, d.defPoint5] {
+                    if let p { add("DIMENSION", p.x, p.y) }
+                }
             }
         }
         obj["geom"] = ["sum": sum, "scalars": n]
