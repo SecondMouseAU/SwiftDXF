@@ -17,7 +17,10 @@ extension DXF {
             var i = 0
             while i + 1 < lines.count {
                 let codeField = lines[i].trimmingCharacters(in: .whitespaces)
-                guard let code = Int(codeField) else { i += 1; continue }   // resync on a stray line
+                guard let code = Int(codeField) else {
+                    i += 1
+                    continue
+                }  // resync on a stray line
                 out.append((code, String(lines[i + 1])))
                 i += 2
             }
@@ -29,7 +32,9 @@ extension DXF {
         private func first(_ code: Int, _ f: [(code: Int, value: String)]) -> String? {
             f.first { $0.code == code }?.value
         }
-        private func dbl(_ code: Int, _ f: [(code: Int, value: String)], _ fallback: Double = 0) -> Double {
+        private func dbl(_ code: Int, _ f: [(code: Int, value: String)], _ fallback: Double = 0)
+            -> Double
+        {
             guard let s = first(code, f) else { return fallback }
             return Double(s.trimmingCharacters(in: .whitespaces)) ?? fallback
         }
@@ -41,14 +46,16 @@ extension DXF {
             guard let s = first(code, f) else { return nil }
             return Double(s.trimmingCharacters(in: .whitespaces))
         }
-        /// A point whose base group code (and `+10`/`+20` for y/z) may be entirely absent — e.g.
+        /// A point whose base group code (and `+10`/`+20` for y/z) may be entirely absent, e.g.
         /// DIMENSION's per-type definition points (13/14/15/16). `nil`, not a zero point, when unset.
         private func pointOpt(_ base: Int, _ f: [(code: Int, value: String)]) -> Point? {
             guard first(base, f) != nil else { return nil }
             return Point(dbl(base, f), dbl(base + 10, f), dbl(base + 20, f))
         }
         private func allDbl(_ code: Int, _ f: [(code: Int, value: String)]) -> [Double] {
-            f.compactMap { $0.code == code ? Double($0.value.trimmingCharacters(in: .whitespaces)) : nil }
+            f.compactMap {
+                $0.code == code ? Double($0.value.trimmingCharacters(in: .whitespaces)) : nil
+            }
         }
         private func layer(_ f: [(code: Int, value: String)]) -> String {
             first(8, f).map { $0.trimmingCharacters(in: .whitespaces) } ?? "0"
@@ -61,12 +68,21 @@ extension DXF {
         /// LWPOLYLINE vertices in field order: each `10` opens a vertex, `20` is its y, `42` its bulge.
         private func lwVertices(_ f: [(code: Int, value: String)]) -> [PolyVertex] {
             var verts: [PolyVertex] = []
-            var x: Double?, y: Double = 0, bulge: Double = 0
-            func flush() { if let x { verts.append(PolyVertex(Point(x, y), bulge: bulge)) }; x = nil; y = 0; bulge = 0 }
+            var x: Double?
+            var y: Double = 0
+            var bulge: Double = 0
+            func flush() {
+                if let x { verts.append(PolyVertex(Point(x, y), bulge: bulge)) }
+                x = nil
+                y = 0
+                bulge = 0
+            }
             for (code, value) in f {
                 let v = Double(value.trimmingCharacters(in: .whitespaces))
                 switch code {
-                case 10: if x != nil { flush() }; x = v
+                case 10:
+                    if x != nil { flush() }
+                    x = v
                 case 20: y = v ?? 0
                 case 42: bulge = v ?? 0
                 default: break
@@ -80,58 +96,75 @@ extension DXF {
 
         mutating func parse() throws -> Drawing {
             guard !pairs.isEmpty else { throw Error.notDXF }
-            guard pairs.contains(where: { $0.code == 0 && trimmed($0.value) == "SECTION" })
-                || pairs.contains(where: { $0.code == 0 && trimmed($0.value) == "EOF" })
+            guard
+                pairs.contains(where: { $0.code == 0 && trimmed($0.value) == "SECTION" })
+                    || pairs.contains(where: { $0.code == 0 && trimmed($0.value) == "EOF" })
             else { throw Error.notDXF }
 
             // $ACADVER from the HEADER section, if present.
-            for k in pairs.indices.dropLast() where pairs[k].code == 9 && trimmed(pairs[k].value) == "$ACADVER" {
-                version = trimmed(pairs[k + 1].value); break
+            for k in pairs.indices.dropLast()
+            where pairs[k].code == 9 && trimmed(pairs[k].value) == "$ACADVER" {
+                version = trimmed(pairs[k + 1].value)
+                break
             }
 
             var dwg = Drawing(version: version)
             dwg.insUnits = ints(70, headerVar("$INSUNITS"))
-            let mn = headerVar("$EXTMIN"); if mn.contains(where: { $0.code == 10 }) { dwg.extMin = point(mn) }
-            let mx = headerVar("$EXTMAX"); if mx.contains(where: { $0.code == 10 }) { dwg.extMax = point(mx) }
-            guard let start = entitiesStart() else { return dwg }   // valid DXF, just no model space
+            let mn = headerVar("$EXTMIN")
+            if mn.contains(where: { $0.code == 10 }) { dwg.extMin = point(mn) }
+            let mx = headerVar("$EXTMAX")
+            if mx.contains(where: { $0.code == 10 }) { dwg.extMax = point(mx) }
+            guard let start = entitiesStart() else { return dwg }  // valid DXF, just no model space
 
             var i = start
             while i < pairs.count {
                 let p = pairs[i]
-                guard p.code == 0 else { i += 1; continue }
+                guard p.code == 0 else {
+                    i += 1
+                    continue
+                }
                 let type = trimmed(p.value)
                 if type == "ENDSEC" || type == "EOF" { break }
 
                 // Collect this entity's fields up to the next 0-tag.
                 var j = i + 1
                 var fields: [(code: Int, value: String)] = []
-                while j < pairs.count && pairs[j].code != 0 { fields.append(pairs[j]); j += 1 }
+                while j < pairs.count && pairs[j].code != 0 {
+                    fields.append(pairs[j])
+                    j += 1
+                }
 
                 switch type {
                 case "LINE":
                     let a = point(fields)
                     let b = Point(dbl(11, fields), dbl(21, fields), dbl(31, fields))
-                    dwg.entities.append(.line(a: a, b: b, layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(
+                        .line(a: a, b: b, layer: layer(fields), color: color(fields)))
                     dwg.counts.line += 1
 
                 case "CIRCLE":
-                    dwg.entities.append(.circle(center: point(fields), radius: dbl(40, fields),
-                                                layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(
+                        .circle(
+                            center: point(fields), radius: dbl(40, fields),
+                            layer: layer(fields), color: color(fields)))
                     dwg.counts.circle += 1
 
                 case "ARC":
-                    dwg.entities.append(.arc(center: point(fields), radius: dbl(40, fields),
-                                             startDeg: dbl(50, fields), endDeg: dbl(51, fields),
-                                             layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(
+                        .arc(
+                            center: point(fields), radius: dbl(40, fields),
+                            startDeg: dbl(50, fields), endDeg: dbl(51, fields),
+                            layer: layer(fields), color: color(fields)))
                     dwg.counts.arc += 1
 
                 case "ELLIPSE":
                     var major = Point(dbl(11, fields), dbl(21, fields), dbl(31, fields))
                     var ratio = dbl(40, fields, 1)
-                    var startP = dbl(41, fields, 0), endP = dbl(42, fields, 2 * .pi)
+                    var startP = dbl(41, fields, 0)
+                    var endP = dbl(42, fields, 2 * .pi)
                     // The DXF spec requires ratio = minor/major ≤ 1. Some writers emit ratio > 1
-                    // (a swapped major axis). Normalise to the canonical form — rotate the major axis
-                    // +90° and scale by ratio, invert the ratio, shift the params by −π/2 — so the curve
+                    // (a swapped major axis). Normalise to the canonical form: rotate the major axis
+                    // +90° and scale by ratio, invert the ratio, shift the params by −π/2, so the curve
                     // is unchanged but downstream consumers (e.g. OCCT's Geom_Ellipse, which demands
                     // majorRadius ≥ minorRadius) get a valid axis. Matches ezdxf's normalisation.
                     if ratio > 1 {
@@ -141,49 +174,65 @@ extension DXF {
                             let m = (a - .pi / 2).truncatingRemainder(dividingBy: 2 * .pi)
                             return m < 0 ? m + 2 * .pi : m
                         }
-                        startP = shift(startP); endP = shift(endP)
+                        startP = shift(startP)
+                        endP = shift(endP)
                     }
-                    dwg.entities.append(.ellipse(center: point(fields), majorAxis: major,
-                                                 ratio: ratio, startParam: startP, endParam: endP,
-                                                 layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(
+                        .ellipse(
+                            center: point(fields), majorAxis: major,
+                            ratio: ratio, startParam: startP, endParam: endP,
+                            layer: layer(fields), color: color(fields)))
                     dwg.counts.ellipse += 1
 
                 case "POINT":
-                    dwg.entities.append(.point(at: point(fields), layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(
+                        .point(at: point(fields), layer: layer(fields), color: color(fields)))
                     dwg.counts.point += 1
 
                 case "TEXT", "MTEXT":
-                    dwg.entities.append(.text(at: point(fields), height: dbl(40, fields, 0),
-                                              rotationDeg: dbl(50, fields, 0), string: textValue(fields),
-                                              layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(
+                        .text(
+                            at: point(fields), height: dbl(40, fields, 0),
+                            rotationDeg: dbl(50, fields, 0), string: textValue(fields),
+                            layer: layer(fields), color: color(fields)))
                     dwg.counts.text += 1
 
                 case "LWPOLYLINE":
-                    // Vertices interleave in order: 10 x, 20 y, optional 42 bulge — a new 10 starts the
+                    // Vertices interleave in order: 10 x, 20 y, optional 42 bulge; a new 10 starts the
                     // next vertex. Walk in field order so each bulge binds to its own vertex.
                     let closed = (ints(70, fields) ?? 0) & 1 == 1
-                    dwg.entities.append(.polyline(vertices: lwVertices(fields), closed: closed,
-                                                  layer: layer(fields), color: color(fields)))
+                    dwg.entities.append(
+                        .polyline(
+                            vertices: lwVertices(fields), closed: closed,
+                            layer: layer(fields), color: color(fields)))
                     dwg.counts.polyline += 1
 
                 case "POLYLINE":
                     // Old-style: a POLYLINE header followed by VERTEX entities and a terminating SEQEND.
                     let closed = (ints(70, fields) ?? 0) & 1 == 1
-                    let lay = layer(fields), col = color(fields)
+                    let lay = layer(fields)
+                    let col = color(fields)
                     var verts: [PolyVertex] = []
-                    while j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "VERTEX" {
+                    while j < pairs.count && pairs[j].code == 0
+                        && trimmed(pairs[j].value) == "VERTEX"
+                    {
                         var m = j + 1
                         var vf: [(code: Int, value: String)] = []
-                        while m < pairs.count && pairs[m].code != 0 { vf.append(pairs[m]); m += 1 }
+                        while m < pairs.count && pairs[m].code != 0 {
+                            vf.append(pairs[m])
+                            m += 1
+                        }
                         verts.append(PolyVertex(point(vf), bulge: dbl(42, vf, 0)))
                         j = m
                     }
-                    if j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "SEQEND" {
+                    if j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "SEQEND"
+                    {
                         var m = j + 1
                         while m < pairs.count && pairs[m].code != 0 { m += 1 }
                         j = m
                     }
-                    dwg.entities.append(.polyline(vertices: verts, closed: closed, layer: lay, color: col))
+                    dwg.entities.append(
+                        .polyline(vertices: verts, closed: closed, layer: lay, color: col))
                     dwg.counts.polyline += 1
 
                 case "DIMENSION":
@@ -202,7 +251,7 @@ extension DXF {
                     dwg.counts.dimension += 1
 
                 default:
-                    break   // unmodelled entity (INSERT, SPLINE, HATCH, …) — skip
+                    break  // unmodelled entity (INSERT, SPLINE, HATCH, …); skip
                 }
                 i = j
             }
@@ -215,7 +264,10 @@ extension DXF {
             else { return [] }
             var out: [(code: Int, value: String)] = []
             var k = start + 1
-            while k < pairs.count, pairs[k].code != 9, pairs[k].code != 0 { out.append(pairs[k]); k += 1 }
+            while k < pairs.count, pairs[k].code != 9, pairs[k].code != 0 {
+                out.append(pairs[k])
+                k += 1
+            }
             return out
         }
 
@@ -224,7 +276,8 @@ extension DXF {
             var k = 0
             while k + 1 < pairs.count {
                 if pairs[k].code == 0, trimmed(pairs[k].value) == "SECTION",
-                   pairs[k + 1].code == 2, trimmed(pairs[k + 1].value) == "ENTITIES" {
+                    pairs[k + 1].code == 2, trimmed(pairs[k + 1].value) == "ENTITIES"
+                {
                     return k + 2
                 }
                 k += 1
@@ -248,18 +301,34 @@ extension DXF {
             var out = ""
             var it = s.makeIterator()
             var pending: Character? = nil
-            func next() -> Character? { if let p = pending { pending = nil; return p }; return it.next() }
+            func next() -> Character? {
+                if let p = pending {
+                    pending = nil
+                    return p
+                }
+                return it.next()
+            }
             while let c = next() {
-                guard c == "\\" else { out.append(c); continue }
-                guard let n = next() else { out.append(c); break }
+                guard c == "\\" else {
+                    out.append(c)
+                    continue
+                }
+                guard let n = next() else {
+                    out.append(c)
+                    break
+                }
                 if n == "U", let plus = next(), plus == "+" {
                     var hex = ""
-                    for _ in 0..<4 { if let h = next(), h.isHexDigit { hex.append(h) } else { break } }
-                    if let v = UInt32(hex, radix: 16), let u = Unicode.Scalar(v) { out.unicodeScalars.append(u) }
+                    for _ in 0..<4 {
+                        if let h = next(), h.isHexDigit { hex.append(h) } else { break }
+                    }
+                    if let v = UInt32(hex, radix: 16), let u = Unicode.Scalar(v) {
+                        out.unicodeScalars.append(u)
+                    }
                 } else if n == "P" || n == "p" {
                     out.append("\n")
                 } else {
-                    out.append(n)   // drop the backslash, keep the escaped char
+                    out.append(n)  // drop the backslash, keep the escaped char
                 }
             }
             return out

@@ -1,5 +1,6 @@
-import Testing
 import Foundation
+import Testing
+
 @testable import SwiftDXF
 
 @Suite("DXF reading")
@@ -33,338 +34,384 @@ struct SwiftDXFTests {
     @Test("reads each core entity type with coordinates and counts")
     func coreEntities() throws {
         let body = """
-        0
-        LINE
-        8
-        L1
-        62
-        2
-        10
-        0.0
-        20
-        0.0
-        11
-        10.0
-        21
-        5.0
-        0
-        CIRCLE
-        8
-        0
-        10
-        3.0
-        20
-        4.0
-        40
-        2.0
-        0
-        ARC
-        10
-        0.0
-        20
-        0.0
-        40
-        5.0
-        50
-        0.0
-        51
-        90.0
-        0
-        ELLIPSE
-        10
-        1.0
-        20
-        1.0
-        11
-        4.0
-        21
-        0.0
-        40
-        0.5
-        41
-        0.0
-        42
-        6.2831853
-        0
-        POINT
-        10
-        2.0
-        20
-        3.0
-        0
-        TEXT
-        40
-        2.5
-        10
-        0.0
-        20
-        0.0
-        1
-        AB
-        """
+            0
+            LINE
+            8
+            L1
+            62
+            2
+            10
+            0.0
+            20
+            0.0
+            11
+            10.0
+            21
+            5.0
+            0
+            CIRCLE
+            8
+            0
+            10
+            3.0
+            20
+            4.0
+            40
+            2.0
+            0
+            ARC
+            10
+            0.0
+            20
+            0.0
+            40
+            5.0
+            50
+            0.0
+            51
+            90.0
+            0
+            ELLIPSE
+            10
+            1.0
+            20
+            1.0
+            11
+            4.0
+            21
+            0.0
+            40
+            0.5
+            41
+            0.0
+            42
+            6.2831853
+            0
+            POINT
+            10
+            2.0
+            20
+            3.0
+            0
+            TEXT
+            40
+            2.5
+            10
+            0.0
+            20
+            0.0
+            1
+            AB
+            """
         let dwg = try DXF.read(text: Self.doc(body))
         #expect(dwg.version == "AC1009")
         #expect(dwg.counts.line == 1 && dwg.counts.circle == 1 && dwg.counts.arc == 1)
         #expect(dwg.counts.ellipse == 1 && dwg.counts.point == 1 && dwg.counts.text == 1)
         #expect(dwg.counts.total == 6)
 
-        guard case let .line(a, b, layer, color) = dwg.entities[0] else { Issue.record("not a line"); return }
+        guard case .line(let a, let b, let layer, let color) = dwg.entities[0] else {
+            Issue.record("not a line")
+            return
+        }
         #expect(a == DXF.Point(0, 0) && b == DXF.Point(10, 5) && layer == "L1" && color == 2)
 
-        guard case let .circle(c, r, _, col) = dwg.entities[1] else { Issue.record("not a circle"); return }
-        #expect(c == DXF.Point(3, 4) && r == 2 && col == 256)   // no group 62 → BYLAYER
+        guard case .circle(let c, let r, _, let col) = dwg.entities[1] else {
+            Issue.record("not a circle")
+            return
+        }
+        #expect(c == DXF.Point(3, 4) && r == 2 && col == 256)  // no group 62 → BYLAYER
 
-        guard case let .arc(ac, ar, s, e, _, _) = dwg.entities[2] else { Issue.record("not an arc"); return }
+        guard case .arc(let ac, let ar, let s, let e, _, _) = dwg.entities[2] else {
+            Issue.record("not an arc")
+            return
+        }
         #expect(ac == DXF.Point(0, 0) && ar == 5 && s == 0 && e == 90)
 
-        guard case let .ellipse(ec, major, ratio, _, end, _, _) = dwg.entities[3] else { Issue.record("not an ellipse"); return }
-        #expect(ec == DXF.Point(1, 1) && major == DXF.Point(4, 0) && ratio == 0.5 && abs(end - 2 * .pi) < 1e-4)
+        guard case .ellipse(let ec, let major, let ratio, _, let end, _, _) = dwg.entities[3] else {
+            Issue.record("not an ellipse")
+            return
+        }
+        #expect(
+            ec == DXF.Point(1, 1) && major == DXF.Point(4, 0) && ratio == 0.5
+                && abs(end - 2 * .pi) < 1e-4)
 
-        guard case let .point(p, _, _) = dwg.entities[4] else { Issue.record("not a point"); return }
+        guard case .point(let p, _, _) = dwg.entities[4] else {
+            Issue.record("not a point")
+            return
+        }
         #expect(p == DXF.Point(2, 3))
 
-        guard case let .text(tp, h, _, str, _, _) = dwg.entities[5] else { Issue.record("not text"); return }
+        guard case .text(let tp, let h, _, let str, _, _) = dwg.entities[5] else {
+            Issue.record("not text")
+            return
+        }
         #expect(tp == DXF.Point(0, 0) && h == 2.5 && str == "AB")
     }
 
     @Test("bounds span all geometry")
     func bounds() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        LINE
-        10
-        -5.0
-        20
-        0.0
-        11
-        20.0
-        21
-        7.0
-        """))
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                LINE
+                10
+                -5.0
+                20
+                0.0
+                11
+                20.0
+                21
+                7.0
+                """))
         let b = try #require(dwg.bounds)
         #expect(b.min.x == -5 && b.max.x == 20 && b.max.y == 7)
     }
 
     @Test("LWPOLYLINE flattens to vertices with closed flag")
     func lwpolyline() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        LWPOLYLINE
-        90
-        3
-        70
-        1
-        10
-        0.0
-        20
-        0.0
-        10
-        4.0
-        20
-        0.0
-        10
-        4.0
-        20
-        3.0
-        """))
-        guard case let .polyline(verts, closed, _, _) = dwg.entities.first else { Issue.record("not a polyline"); return }
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                LWPOLYLINE
+                90
+                3
+                70
+                1
+                10
+                0.0
+                20
+                0.0
+                10
+                4.0
+                20
+                0.0
+                10
+                4.0
+                20
+                3.0
+                """))
+        guard case .polyline(let verts, let closed, _, _) = dwg.entities.first else {
+            Issue.record("not a polyline")
+            return
+        }
         #expect(verts.count == 3 && closed)
         #expect(verts[1].point == DXF.Point(4, 0) && verts[2].point == DXF.Point(4, 3))
     }
 
     @Test("LWPOLYLINE binds bulge to the right vertex")
     func lwpolylineBulge() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        LWPOLYLINE
-        90
-        3
-        70
-        0
-        10
-        0.0
-        20
-        0.0
-        42
-        0.5
-        10
-        4.0
-        20
-        0.0
-        10
-        4.0
-        20
-        3.0
-        """))
-        guard case let .polyline(verts, _, _, _) = dwg.entities.first else { Issue.record("not a polyline"); return }
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                LWPOLYLINE
+                90
+                3
+                70
+                0
+                10
+                0.0
+                20
+                0.0
+                42
+                0.5
+                10
+                4.0
+                20
+                0.0
+                10
+                4.0
+                20
+                3.0
+                """))
+        guard case .polyline(let verts, _, _, _) = dwg.entities.first else {
+            Issue.record("not a polyline")
+            return
+        }
         #expect(verts.count == 3)
-        #expect(verts[0].bulge == 0.5 && verts[1].bulge == 0 && verts[2].bulge == 0)   // bulge stays on vertex 0
+        // bulge stays on vertex 0
+        #expect(verts[0].bulge == 0.5 && verts[1].bulge == 0 && verts[2].bulge == 0)
     }
 
     @Test("header $INSUNITS and $EXTMIN/$EXTMAX are read")
     func headerVars() throws {
         let text = """
-        0
-        SECTION
-        2
-        HEADER
-        9
-        $INSUNITS
-        70
-        4
-        9
-        $EXTMIN
-        10
-        -5.0
-        20
-        -7.0
-        30
-        0.0
-        9
-        $EXTMAX
-        10
-        100.0
-        20
-        50.0
-        30
-        0.0
-        0
-        ENDSEC
-        0
-        SECTION
-        2
-        ENTITIES
-        0
-        ENDSEC
-        0
-        EOF
-        """
+            0
+            SECTION
+            2
+            HEADER
+            9
+            $INSUNITS
+            70
+            4
+            9
+            $EXTMIN
+            10
+            -5.0
+            20
+            -7.0
+            30
+            0.0
+            9
+            $EXTMAX
+            10
+            100.0
+            20
+            50.0
+            30
+            0.0
+            0
+            ENDSEC
+            0
+            SECTION
+            2
+            ENTITIES
+            0
+            ENDSEC
+            0
+            EOF
+            """
         let dwg = try DXF.read(text: text)
-        #expect(dwg.insUnits == 4)   // millimetres
+        #expect(dwg.insUnits == 4)  // millimetres
         #expect(dwg.extMin == DXF.Point(-5, -7) && dwg.extMax == DXF.Point(100, 50))
     }
 
     @Test("old-style POLYLINE consumes VERTEX run and SEQEND")
     func polylineVertices() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        POLYLINE
-        66
-        1
-        70
-        0
-        0
-        VERTEX
-        10
-        0.0
-        20
-        0.0
-        0
-        VERTEX
-        10
-        5.0
-        20
-        5.0
-        0
-        SEQEND
-        0
-        LINE
-        10
-        0.0
-        20
-        0.0
-        11
-        1.0
-        21
-        1.0
-        """))
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                POLYLINE
+                66
+                1
+                70
+                0
+                0
+                VERTEX
+                10
+                0.0
+                20
+                0.0
+                0
+                VERTEX
+                10
+                5.0
+                20
+                5.0
+                0
+                SEQEND
+                0
+                LINE
+                10
+                0.0
+                20
+                0.0
+                11
+                1.0
+                21
+                1.0
+                """))
         // The VERTEX/SEQEND run must not be mistaken for extra entities.
         #expect(dwg.counts.polyline == 1 && dwg.counts.line == 1 && dwg.counts.total == 2)
-        guard case let .polyline(verts, _, _, _) = dwg.entities[0] else { Issue.record("not a polyline"); return }
+        guard case .polyline(let verts, _, _, _) = dwg.entities[0] else {
+            Issue.record("not a polyline")
+            return
+        }
         #expect(verts.map(\.point) == [DXF.Point(0, 0), DXF.Point(5, 5)])
     }
 
     @Test("DIMENSION: linear and radius entities expose their defining points")
     func dimensionEntities() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        DIMENSION
-        8
-        DIMS
-        10
-        5.0
-        20
-        0.0
-        30
-        0.0
-        11
-        5.0
-        21
-        1.0
-        31
-        0.0
-        70
-        0
-        42
-        10.0
-        1
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                DIMENSION
+                8
+                DIMS
+                10
+                5.0
+                20
+                0.0
+                30
+                0.0
+                11
+                5.0
+                21
+                1.0
+                31
+                0.0
+                70
+                0
+                42
+                10.0
+                1
 
-        13
-        0.0
-        23
-        0.0
-        33
-        0.0
-        14
-        10.0
-        24
-        0.0
-        34
-        0.0
-        50
-        0.0
-        0
-        DIMENSION
-        8
-        DIMS
-        10
-        20.0
-        20
-        20.0
-        30
-        0.0
-        11
-        27.5
-        21
-        20.0
-        31
-        0.0
-        70
-        4
-        42
-        7.5
-        1
-        R7.5
-        15
-        27.5
-        25
-        20.0
-        35
-        0.0
-        40
-        3.0
-        """))
+                13
+                0.0
+                23
+                0.0
+                33
+                0.0
+                14
+                10.0
+                24
+                0.0
+                34
+                0.0
+                50
+                0.0
+                0
+                DIMENSION
+                8
+                DIMS
+                10
+                20.0
+                20
+                20.0
+                30
+                0.0
+                11
+                27.5
+                21
+                20.0
+                31
+                0.0
+                70
+                4
+                42
+                7.5
+                1
+                R7.5
+                15
+                27.5
+                25
+                20.0
+                35
+                0.0
+                40
+                3.0
+                """))
         #expect(dwg.counts.dimension == 2 && dwg.counts.total == 2)
 
-        guard case let .dimension(linear) = dwg.entities[0] else { Issue.record("not a dimension"); return }
+        guard case .dimension(let linear) = dwg.entities[0] else {
+            Issue.record("not a dimension")
+            return
+        }
         #expect(linear.kind == .linear)
-        #expect(linear.measurement == 10 && linear.textOverride == nil)   // blank group 1 → nil
+        #expect(linear.measurement == 10 && linear.textOverride == nil)  // blank group 1 → nil
         #expect(linear.textPosition == DXF.Point(5, 1) && linear.defPoint == DXF.Point(5, 0))
         #expect(linear.defPoint2 == DXF.Point(0, 0) && linear.defPoint3 == DXF.Point(10, 0))
         #expect(linear.defPoint4 == nil && linear.defPoint5 == nil)
         #expect(linear.layer == "DIMS")
 
-        guard case let .dimension(radius) = dwg.entities[1] else { Issue.record("not a dimension"); return }
+        guard case .dimension(let radius) = dwg.entities[1] else {
+            Issue.record("not a dimension")
+            return
+        }
         #expect(radius.kind == .radius)
         #expect(radius.measurement == 7.5 && radius.textOverride == "R7.5")
         #expect(radius.defPoint == DXF.Point(20, 20) && radius.defPoint4 == DXF.Point(27.5, 20))
@@ -373,72 +420,88 @@ struct SwiftDXFTests {
 
     @Test("DIMENSION: unrecognised group-70 base type decodes to .unknown")
     func dimensionUnknownType() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        DIMENSION
-        10
-        0.0
-        20
-        0.0
-        11
-        0.0
-        21
-        0.0
-        70
-        9
-        """))
-        guard case let .dimension(d) = dwg.entities.first else { Issue.record("not a dimension"); return }
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                DIMENSION
+                10
+                0.0
+                20
+                0.0
+                11
+                0.0
+                21
+                0.0
+                70
+                9
+                """))
+        guard case .dimension(let d) = dwg.entities.first else {
+            Issue.record("not a dimension")
+            return
+        }
         #expect(d.kind == .unknown(9) && d.measurement == nil)
     }
 
     @Test("unmodelled entities are skipped, not fatal")
     func skipsUnknown() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        SPLINE
-        10
-        0.0
-        20
-        0.0
-        0
-        LINE
-        10
-        0.0
-        20
-        0.0
-        11
-        1.0
-        21
-        1.0
-        """))
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                SPLINE
+                10
+                0.0
+                20
+                0.0
+                0
+                LINE
+                10
+                0.0
+                20
+                0.0
+                11
+                1.0
+                21
+                1.0
+                """))
         #expect(dwg.counts.total == 1 && dwg.counts.line == 1)
     }
 
     @Test("decodes \\U+XXXX unicode escapes in text")
     func unicodeEscape() throws {
-        let dwg = try DXF.read(text: Self.doc("""
-        0
-        TEXT
-        10
-        0.0
-        20
-        0.0
-        40
-        2.5
-        1
-        x\\U+00B1y
-        """))
-        guard case let .text(_, _, _, str, _, _) = dwg.entities.first else { Issue.record("not text"); return }
+        let dwg = try DXF.read(
+            text: Self.doc(
+                """
+                0
+                TEXT
+                10
+                0.0
+                20
+                0.0
+                40
+                2.5
+                1
+                x\\U+00B1y
+                """))
+        guard case .text(_, _, _, let str, _, _) = dwg.entities.first else {
+            Issue.record("not text")
+            return
+        }
         #expect(str == "x±y")
     }
 
     @Test("CRLF line endings and leading-space group codes parse")
     func crlfAndPadding() throws {
         // R12 writers pad group codes ("  0", " 10") and use CRLF.
-        let text = "  0\r\nSECTION\r\n  2\r\nENTITIES\r\n  0\r\nLINE\r\n 10\r\n0.0\r\n 20\r\n0.0\r\n 11\r\n2.0\r\n 21\r\n0.0\r\n  0\r\nENDSEC\r\n  0\r\nEOF\r\n"
+        let text =
+            "  0\r\nSECTION\r\n  2\r\nENTITIES\r\n  0\r\nLINE\r\n 10\r\n0.0\r\n 20\r\n0.0\r\n 11\r\n2.0\r\n 21\r\n0.0\r\n  0\r\nENDSEC\r\n  0\r\nEOF\r\n"
         let dwg = try DXF.read(text: text)
         #expect(dwg.counts.line == 1)
-        guard case let .line(_, b, _, _) = dwg.entities.first else { Issue.record("not a line"); return }
+        guard case .line(_, let b, _, _) = dwg.entities.first else {
+            Issue.record("not a line")
+            return
+        }
         #expect(b == DXF.Point(2, 0))
     }
 
