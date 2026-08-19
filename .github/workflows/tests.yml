@@ -1,0 +1,58 @@
+name: tests
+
+# Runs `swift build` then `swift test`.
+#
+# Filed as part of the fleet-wide CI gap recorded in ecosystem#40: 12 of the 14
+# repos in the OCCT stack carried a full test suite that no CI job ever executed,
+# so a failing test produced a green tick. That is not hypothetical. Five
+# assertions in OCCTSwiftAIS sat broken for nine days (OCCTSwiftAIS#46) because
+# nothing in its pipeline ever compiled a test target.
+#
+# `swift build` and `swift test` are separate steps on purpose, so a compile
+# failure and a test failure are distinguishable at a glance. Note that
+# `swift build` alone is a weaker signal than it looks: it does not compile test
+# targets at all. OCCTSwiftIO built clean with zero errors while carrying three
+# real breaks in its test target during the OCCTSwift v3.0.0 repin.
+#
+# Blocking, not `continue-on-error`: a red here is meant to stop a merge, the same
+# reasoning already written into OCCTSwiftScripts' tests.yml.
+#
+# macOS runner for consistency with the rest of the fleet. This package has no
+# platform-specific dependency, so it could move to Linux later if runner minutes
+# ever matter.
+#
+# Baseline at rollout: 13 tests passing.
+
+on:
+  push:
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Package.*'
+      - '.github/workflows/tests.yml'
+  pull_request:
+    paths:
+      - 'Sources/**'
+      - 'Tests/**'
+      - 'Package.*'
+      - '.github/workflows/tests.yml'
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache SwiftPM
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: swift build
+        run: swift build
+
+      - name: swift test
+        run: swift test
