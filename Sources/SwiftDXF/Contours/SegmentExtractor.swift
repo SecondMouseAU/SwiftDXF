@@ -77,7 +77,10 @@ struct SegmentExtractor {
 
     private mutating func addPolyline(_ verts: [DXF.PolyVertex], closed: Bool, layer: Int) {
         let count = verts.count
-        guard count >= 2 else { return }
+        guard count >= 2 else {
+            degenerate += 1
+            return
+        }
         for i in 0..<(closed ? count : count - 1) {
             let v = verts[i]
             let p = pt(v.point)
@@ -86,7 +89,12 @@ struct SegmentExtractor {
                 degenerate += 1
                 continue
             }
-            if p.distance(to: q) <= 1e-12 { continue }
+            if p.distance(to: q) <= 1e-12 {
+                // A closed polyline that repeats its first vertex is ordinary, not degenerate.
+                let closure = closed && i == count - 1
+                if !closure { degenerate += 1 }
+                continue
+            }
             if abs(v.bulge) < 1e-12 {
                 segments.append(RawSegment(a: p, b: q, bulge: 0, layer: layer))
             } else if abs(v.bulge) <= 1 {

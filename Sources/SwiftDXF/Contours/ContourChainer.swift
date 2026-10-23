@@ -174,8 +174,8 @@ struct ContourChainer {
             }
             let key =
                 a < b
-                ? Key(a: a, b: b, bulge: Int((s.bulge * 1e6).rounded()))
-                : Key(a: b, b: a, bulge: Int((-s.bulge * 1e6).rounded()))
+                ? Key(a: a, b: b, bulge: Int((s.bulge * 1e9).rounded()))
+                : Key(a: b, b: a, bulge: Int((-s.bulge * 1e9).rounded()))
             if !seen.insert(key).inserted {
                 dropped += 1
                 continue

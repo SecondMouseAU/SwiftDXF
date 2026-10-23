@@ -71,7 +71,9 @@ extension DXF.Drawing {
 
         let join = max(options.joinTolerance, 0)
         let chained = ContourChainer(tolerance: join).chain(extractor.segments)
-        func names(_ layers: Set<Int>) -> [String] { layers.map { layerNames[$0] }.sorted() }
+        func names(_ layers: Set<Int>) -> [String] {
+            layers.compactMap { layerNames.indices.contains($0) ? layerNames[$0] : nil }.sorted()
+        }
 
         var degenerate = extractor.degenerate + chained.degenerate
         var loops: [DXF.Contour.Loop] = []

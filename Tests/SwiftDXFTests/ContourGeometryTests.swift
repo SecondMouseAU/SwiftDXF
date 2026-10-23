@@ -246,6 +246,37 @@ struct ContourGeometryTests {
         #expect(exact.shapes.count == 2)
     }
 
+    @Test("a loop crossing two others is counted once")
+    func crossingCountedPerLoop() {
+        let r = S.drawing(S.box(0, 0, 10, 10) + S.box(12, 0, 22, 10) + S.box(5, 2, 17, 8))
+            .contours()
+        #expect(r.warnings.contains(.crossingLoops(count: 1)))
+    }
+
+    @Test("short polylines and collapsed edges are counted, a repeated closing vertex is not")
+    func degeneratePolylines() {
+        func poly(_ pts: [(Double, Double)], closed: Bool) -> DXF.Entity {
+            .polyline(
+                vertices: pts.map { DXF.PolyVertex(.init($0.0, $0.1)) }, closed: closed,
+                layer: "0", color: 256)
+        }
+        let one = S.drawing([poly([(1, 1)], closed: false), poly([], closed: true)]).contours()
+        #expect(one.warnings.contains(.degenerateGeometry(count: 2)))
+        let collapsed = S.drawing([poly([(0, 0), (5, 0), (5, 0), (5, 5), (0, 5)], closed: true)])
+            .contours()
+        #expect(collapsed.warnings.contains(.degenerateGeometry(count: 1)))
+        let closure = S.drawing([poly([(0, 0), (5, 0), (5, 5), (0, 5), (0, 0)], closed: true)])
+            .contours()
+        #expect(closure.warnings.isEmpty)
+        #expect(closure.shapes.count == 1)
+    }
+
+    @Test("a bulge of dust is a line, not an arc with a huge radius")
+    func dustBulge() {
+        let s = DXF.Contour.Segment(start: .init(0, 0), end: .init(1, 0), bulge: 1e-16)
+        #expect(!s.isArc && s.radius == nil && s.center == nil)
+    }
+
     // MARK: Scale
 
     @Test("tens of thousands of shuffled segments chain and nest in near-linear time")

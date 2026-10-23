@@ -20,6 +20,7 @@ struct ContourNesting {
         var removed = Set<Int>()
         var indexes = [LoopIndex?](repeating: nil, count: loops.count)
         for (rank, i) in order.enumerated() {
+            var crossesOne = false
             for candidate in order[..<rank].reversed() where !removed.contains(candidate) {
                 let outer = loops[candidate]
                 let contained = outer.bounds.contains(loops[i].bounds, slack: tolerance)
@@ -36,11 +37,12 @@ struct ContourNesting {
                     removed.insert(i)
                     output.coincident += 1
                 case .crossing:
-                    output.crossing += 1
+                    crossesOne = true
                     continue
                 }
                 break
             }
+            if crossesOne { output.crossing += 1 }
             if let p = parent[i] { depth[i] = depth[p] + 1 }
         }
 

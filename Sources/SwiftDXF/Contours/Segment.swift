@@ -20,7 +20,7 @@ extension DXF.Contour {
         }
 
         /// `true` when the segment is a circular arc rather than a line.
-        public var isArc: Bool { bulge != 0 }
+        public var isArc: Bool { abs(bulge) > 1e-12 }
 
         /// Signed sweep in radians: positive counter-clockwise, `0` for a line.
         public var sweep: Double { 4 * atan(bulge) }

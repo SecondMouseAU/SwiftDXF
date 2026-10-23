@@ -143,7 +143,12 @@ if let flag = arguments.firstIndex(of: "--contours") {
                 "inch": .inch, "in": .inch, "foot": .foot, "mm": .millimetre,
                 "cm": .centimetre, "m": .metre,
             ]
-            options.units = names[value.lowercased()]
+            guard let unit = names[value.lowercased()] else {
+                FileHandle.standardError.write(
+                    Data("unknown --units '\(value)' (use inch, in, foot, mm, cm, m)\n".utf8))
+                exit(2)
+            }
+            options.units = unit
         }
         arguments.removeSubrange(i...(i + 1))
     }
