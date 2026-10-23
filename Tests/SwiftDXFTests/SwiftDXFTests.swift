@@ -449,7 +449,7 @@ struct SwiftDXFTests {
             text: Self.doc(
                 """
                 0
-                SPLINE
+                INSERT
                 10
                 0.0
                 20
@@ -466,6 +466,7 @@ struct SwiftDXFTests {
                 1.0
                 """))
         #expect(dwg.counts.total == 1 && dwg.counts.line == 1)
+        #expect(dwg.skipped == ["INSERT": 1])
     }
 
     @Test("decodes \\U+XXXX unicode escapes in text")

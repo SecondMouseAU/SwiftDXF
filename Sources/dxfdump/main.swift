@@ -17,8 +17,10 @@ func summary(for path: String) -> [String: Any] {
             "counts": [
                 "LINE": c.line, "CIRCLE": c.circle, "ARC": c.arc, "ELLIPSE": c.ellipse,
                 "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline,
-                "DIMENSION": c.dimension, "total": c.total,
+                "DIMENSION": c.dimension, "SPLINE": c.spline, "total": c.total,
             ],
+            "skipped": dwg.skipped,
+            "skippedByLayer": dwg.skippedByLayer,
         ]
         if let b = dwg.bounds {
             obj["bounds"] = ["min": [b.min.x, b.min.y], "max": [b.max.x, b.max.y]]
@@ -58,6 +60,9 @@ func summary(for path: String) -> [String: Any] {
                 for p in [d.defPoint2, d.defPoint3, d.defPoint4, d.defPoint5] {
                     if let p { add("DIMENSION", p.x, p.y) }
                 }
+            case .spline(let s):
+                for p in s.controlPoints { add("SPLINE", p.x, p.y) }
+                for p in s.fitPoints { add("SPLINE", p.x, p.y) }
             }
         }
         obj["geom"] = ["sum": sum, "scalars": n]
@@ -66,6 +71,18 @@ func summary(for path: String) -> [String: Any] {
     } catch {
         return ["file": url.lastPathComponent, "error": "\(error)"]
     }
+}
+
+/// Human-readable skip table, written to stderr so stdout stays one JSON object per file.
+func skippedTable(_ dwg: DXF.Drawing) -> String {
+    var text = "skipped (unmodelled) entities:\n"
+    for (type, count) in dwg.skipped.sorted(by: { $0.key < $1.key }) {
+        let layers = (dwg.skippedByLayer[type] ?? [:]).sorted { $0.key < $1.key }
+            .map { "\($0.key): \($0.value)" }.joined(separator: ", ")
+        text +=
+            "  \(type.padding(toLength: 12, withPad: " ", startingAt: 0)) \(count)  [\(layers)]\n"
+    }
+    return text
 }
 
 let paths = Array(CommandLine.arguments.dropFirst())
@@ -78,4 +95,7 @@ for path in paths {
     let data = try JSONSerialization.data(
         withJSONObject: summary(for: path), options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
+    if let dwg = try? DXF.read(contentsOf: URL(fileURLWithPath: path)), !dwg.skipped.isEmpty {
+        FileHandle.standardError.write(Data(skippedTable(dwg).utf8))
+    }
 }
