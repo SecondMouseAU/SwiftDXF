@@ -5,6 +5,10 @@ import SwiftDXF
 // against a reference tool (e.g. ezdxf). Shape is kept identical to tools/oracle.py.
 //
 //   dxfdump file1.dxf [file2.dxf ...]
+//   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
+//
+// --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
+// millimetres, open chains, warnings) instead of the entity digest.
 
 func summary(for path: String) -> [String: Any] {
     let url = URL(fileURLWithPath: path)
@@ -85,10 +89,87 @@ func skippedTable(_ dwg: DXF.Drawing) -> String {
     return text
 }
 
-let paths = Array(CommandLine.arguments.dropFirst())
+func box(_ b: DXF.Box2) -> [String: [Double]] {
+    ["min": [b.min.x, b.min.y], "max": [b.max.x, b.max.y]]
+}
+
+func contourSummary(for path: String, options: DXF.Contour.Options) -> [String: Any] {
+    let url = URL(fileURLWithPath: path)
+    do {
+        let result = try DXF.read(contentsOf: url).contours(options)
+        func loop(_ l: DXF.Contour.Loop) -> [String: Any] {
+            [
+                "segments": l.segments.count, "arcs": l.segments.filter { $0.isArc }.count,
+                "area": l.area, "length": l.length, "bounds": box(l.bounds), "layers": l.layers,
+            ]
+        }
+        var obj: [String: Any] = [
+            "file": url.lastPathComponent,
+            "unit": "\(result.unit)",
+            "unitScale": result.unitScale,
+            "shapes": result.shapes.map { shape -> [String: Any] in
+                [
+                    "area": shape.area, "bounds": box(shape.bounds), "outer": loop(shape.outer),
+                    "holes": shape.holes.map(loop),
+                ]
+            },
+            "area": result.area,
+            "openChains": result.openChains.map {
+                ["segments": $0.segments.count, "length": $0.length, "layers": $0.layers]
+            },
+            "maxFitDeviation": result.maxFitDeviation,
+            "warnings": result.warnings.map { "\($0)" },
+        ]
+        obj["bounds"] = result.bounds.map(box) ?? NSNull()
+        return obj
+    } catch {
+        return ["file": url.lastPathComponent, "error": "\(error)"]
+    }
+}
+
+var arguments = Array(CommandLine.arguments.dropFirst())
+var contourOptions: DXF.Contour.Options?
+if let flag = arguments.firstIndex(of: "--contours") {
+    arguments.remove(at: flag)
+    var options = DXF.Contour.Options()
+    while let i = arguments.firstIndex(where: { $0 == "--layers" || $0 == "--units" }),
+        i + 1 < arguments.count
+    {
+        let value = arguments[i + 1]
+        if arguments[i] == "--layers" {
+            options.layers = Set(value.split(separator: ",").map(String.init))
+        } else {
+            let names: [String: DXF.Contour.LengthUnit] = [
+                "inch": .inch, "in": .inch, "foot": .foot, "mm": .millimetre,
+                "cm": .centimetre, "m": .metre,
+            ]
+            guard let unit = names[value.lowercased()] else {
+                FileHandle.standardError.write(
+                    Data("unknown --units '\(value)' (use inch, in, foot, mm, cm, m)\n".utf8))
+                exit(2)
+            }
+            options.units = unit
+        }
+        arguments.removeSubrange(i...(i + 1))
+    }
+    contourOptions = options
+}
+let paths = arguments
 guard !paths.isEmpty else {
-    FileHandle.standardError.write(Data("usage: dxfdump <file.dxf> [...]\n".utf8))
+    FileHandle.standardError.write(
+        Data("usage: dxfdump [--contours [--layers A,B] [--units inch|mm]] <file.dxf> [...]\n".utf8)
+    )
     exit(2)
+}
+
+if let contourOptions {
+    for path in paths {
+        let data = try JSONSerialization.data(
+            withJSONObject: contourSummary(for: path, options: contourOptions),
+            options: [.sortedKeys])
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
 }
 
 for path in paths {

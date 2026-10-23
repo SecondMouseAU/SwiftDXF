@@ -3,21 +3,23 @@ type: repo
 title: SwiftDXF
 resource: https://github.com/SecondMouseAU/SwiftDXF
 tags: [dxf, autocad, 2d, import, drawing, swift]
-description: Native-Swift reader for ASCII DXF — 2D model-space geometry into a neutral Sendable model.
-timestamp: 2026-06-26
+description: Native-Swift reader for ASCII DXF with contour extraction (closed loops, islands, units) into a neutral Sendable model.
+timestamp: 2026-10-24
 ---
 
 # SwiftDXF
 
-A small, dependency-free **native-Swift reader for ASCII DXF** — AutoCAD's *Drawing Interchange
-Format* — that lifts model-space 2D geometry (lines, arcs, circles, polylines, text, …) from the
-`ENTITIES` section into a neutral, `Sendable` value model, plus a **`dxfdump`** CLI. Clean-room,
+A small, dependency-free **native-Swift reader for ASCII DXF**: AutoCAD's *Drawing Interchange
+Format*, that lifts model-space 2D geometry (lines, arcs, circles, polylines, text, …) from the
+`ENTITIES` section into a neutral, `Sendable` value model. A contour layer
+(`drawing.contours(_:)`) turns it into closed loops, islands and holes, with units and curve
+fitting; a **`dxfdump`** CLI shows both. Clean-room,
 MIT-licensed, and validated bit-for-bit against the `ezdxf` reference reader.
 
 ## Role in the ecosystem
 
 - **Cluster:** kernel
-- **Depends on:** nothing (leaf — pure Swift)
+- **Depends on:** nothing (leaf: pure Swift)
 - **Feeds products:** 2D DXF import for the OCCTSwift CAD I/O stack (sibling of SwiftJWW on the
   drawing-import side).
 
