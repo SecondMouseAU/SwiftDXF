@@ -100,8 +100,18 @@ def summarize(path):
     modelled = {"LINE", "CIRCLE", "ARC", "ELLIPSE", "POINT", "TEXT", "MTEXT", "LWPOLYLINE",
                 "POLYLINE", "DIMENSION", "SPLINE"}
     skipped = {k: v for k, v in sorted(raw.items()) if k not in modelled}
+    skipped_by_layer = {}
+    for e in msp:
+        t = e.dxftype()
+        if t in modelled:
+            continue
+        layers = skipped_by_layer.setdefault(t, {})
+        layer = e.dxf.layer if e.dxf.hasattr("layer") else "0"
+        layers[layer] = layers.get(layer, 0) + 1
+    skipped_by_layer = {t: dict(sorted(v.items())) for t, v in sorted(skipped_by_layer.items())}
     return {
         "skipped": skipped,
+        "skippedByLayer": skipped_by_layer,
         "file": os.path.basename(path),
         "version": doc.dxfversion,
         "counts": counts,
