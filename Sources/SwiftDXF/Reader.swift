@@ -92,6 +92,26 @@ extension DXF {
             return verts
         }
 
+        /// SPLINE points for base code 10 (control) or 11 (fit): each base-code tag opens a point,
+        /// the `+10`/`+20` tags that follow fill its y and z.
+        private func splinePoints(_ base: Int, _ f: [(code: Int, value: String)]) -> [Point] {
+            var pts: [Point] = []
+            var cur: Point?
+            for (code, value) in f {
+                let v = Double(value.trimmingCharacters(in: .whitespaces)) ?? 0
+                switch code {
+                case base:
+                    if let cur { pts.append(cur) }
+                    cur = Point(v, 0, 0)
+                case base + 10: cur?.y = v
+                case base + 20: cur?.z = v
+                default: break
+                }
+            }
+            if let cur { pts.append(cur) }
+            return pts
+        }
+
         // MARK: parse
 
         mutating func parse() throws -> Drawing {
@@ -250,8 +270,24 @@ extension DXF {
                     dwg.entities.append(.dimension(dim))
                     dwg.counts.dimension += 1
 
+                case "SPLINE":
+                    dwg.entities.append(
+                        .spline(
+                            Spline(
+                                degree: ints(71, fields) ?? 3, flags: ints(70, fields) ?? 0,
+                                controlPoints: splinePoints(10, fields),
+                                knots: allDbl(40, fields), weights: allDbl(41, fields),
+                                fitPoints: splinePoints(11, fields),
+                                layer: layer(fields), color: color(fields))))
+                    dwg.counts.spline += 1
+
+                case "VERTEX", "SEQEND":
+                    break  // POLYLINE children; consumed with their parent, ignored if stray
+
                 default:
-                    break  // unmodelled entity (INSERT, SPLINE, HATCH, …); skip
+                    // Unmodelled entity (INSERT, HATCH, SOLID, …): skip, but record it.
+                    dwg.skipped[type, default: 0] += 1
+                    dwg.skippedByLayer[type, default: [:]][layer(fields), default: 0] += 1
                 }
                 i = j
             }

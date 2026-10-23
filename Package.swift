@@ -10,6 +10,8 @@ let package = Package(
     targets: [
         .target(name: "SwiftDXF"),
         .executableTarget(name: "dxfdump", dependencies: ["SwiftDXF"]),
-        .testTarget(name: "SwiftDXFTests", dependencies: ["SwiftDXF"]),
+        .testTarget(
+            name: "SwiftDXFTests", dependencies: ["SwiftDXF"],
+            resources: [.copy("Fixtures")]),
     ]
 )

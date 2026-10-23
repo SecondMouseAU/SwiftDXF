@@ -80,6 +80,11 @@ def summarize(path):
                     p = getattr(e.dxf, name)
                     vs.extend([p.x, p.y])
             add("DIMENSION", *vs)
+        elif t == "SPLINE":
+            for p in e.control_points:
+                add("SPLINE", p[0], p[1])
+            for p in e.fit_points:
+                add("SPLINE", p[0], p[1])
     counts = {
         "LINE": raw.get("LINE", 0),
         "CIRCLE": raw.get("CIRCLE", 0),
@@ -89,9 +94,14 @@ def summarize(path):
         "TEXT": raw.get("TEXT", 0) + raw.get("MTEXT", 0),
         "POLYLINE": raw.get("LWPOLYLINE", 0) + raw.get("POLYLINE", 0),
         "DIMENSION": raw.get("DIMENSION", 0),
+        "SPLINE": raw.get("SPLINE", 0),
     }
     counts["total"] = sum(counts.values())
+    modelled = {"LINE", "CIRCLE", "ARC", "ELLIPSE", "POINT", "TEXT", "MTEXT", "LWPOLYLINE",
+                "POLYLINE", "DIMENSION", "SPLINE"}
+    skipped = {k: v for k, v in sorted(raw.items()) if k not in modelled}
     return {
+        "skipped": skipped,
         "file": os.path.basename(path),
         "version": doc.dxfversion,
         "counts": counts,

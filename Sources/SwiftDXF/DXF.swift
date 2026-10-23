@@ -6,8 +6,8 @@ import Foundation
 ///
 /// The reader is a clean-room implementation of the public DXF group-code reference. It targets the
 /// 2D entity set that dominates real-world drawings: `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `POINT`,
-/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, and `DIMENSION`, and skips entities it does not
-/// model rather than failing. Only the `ENTITIES` (model-space) section is read, matching what a
+/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, and `SPLINE`, and skips entities it
+/// does not model rather than failing, recording them in ``Drawing/skipped``. Only the `ENTITIES` (model-space) section is read, matching what a
 /// tool like *ezdxf*'s `modelspace()` iterates.
 ///
 /// ```swift
@@ -70,6 +70,8 @@ public enum DXF {
         /// glyph geometry is skipped, matching what a downstream drawing-to-3D pipeline needs to
         /// bind a dimension to geometry, not draw it.
         case dimension(Dimension)
+        /// `SPLINE`: NURBS control data as stored in the file; see ``Spline``.
+        case spline(Spline)
     }
 
     /// Base `DIMENSION` type, decoded from group 70's low 4 bits (`raw & 15`).
@@ -177,10 +179,18 @@ public enum DXF {
         /// computed ``bounds`` of the entities actually read). `nil` when the header omits them.
         public var extMin: Point?
         public var extMax: Point?
+        /// Unmodelled entity types in the `ENTITIES` section, with a count of each.
+        ///
+        /// For example `["INSERT": 3, "HATCH": 1]`; empty when nothing was skipped. Skipping is
+        /// never an error.
+        public var skipped: [String: Int]
+        /// The same skipped entities broken down by layer: type name, then layer name, then count.
+        public var skippedByLayer: [String: [String: Int]]
 
         public init(
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
-            insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil
+            insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil,
+            skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:]
         ) {
             self.version = version
             self.entities = entities
@@ -188,15 +198,17 @@ public enum DXF {
             self.insUnits = insUnits
             self.extMin = extMin
             self.extMax = extMax
+            self.skipped = skipped
+            self.skippedByLayer = skippedByLayer
         }
 
         public struct Counts: Sendable, Equatable {
             public var line = 0, circle = 0, arc = 0, ellipse = 0, point = 0, text = 0, polyline = 0
-            public var dimension = 0
+            public var dimension = 0, spline = 0
             public init() {}
             /// Total modelled entities.
             public var total: Int {
-                line + circle + arc + ellipse + point + text + polyline + dimension
+                line + circle + arc + ellipse + point + text + polyline + dimension + spline
             }
         }
 
@@ -243,6 +255,9 @@ public enum DXF {
                     for p in [d.defPoint2, d.defPoint3, d.defPoint4, d.defPoint5] {
                         if let p { acc(p) }
                     }
+                case .spline(let s):
+                    // The control polygon bounds a spline with positive weights.
+                    for p in s.controlPoints.isEmpty ? s.fitPoints : s.controlPoints { acc(p) }
                 }
             }
             return any ? (lo, hi) : nil
