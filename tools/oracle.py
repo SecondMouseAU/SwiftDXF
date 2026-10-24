@@ -106,7 +106,7 @@ def summarize(path):
         if t in modelled:
             continue
         layers = skipped_by_layer.setdefault(t, {})
-        layer = e.dxf.layer if e.dxf.hasattr("layer") else "0"
+        layer = (e.dxf.layer if e.dxf.hasattr("layer") else "0").strip(" \t")
         layers[layer] = layers.get(layer, 0) + 1
     skipped_by_layer = {t: dict(sorted(v.items())) for t, v in sorted(skipped_by_layer.items())}
     return {
