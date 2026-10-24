@@ -12,10 +12,18 @@ Requires: pip install ezdxf
 import json
 import os
 import sys
+import unicodedata
 from collections import Counter
 
 import ezdxf
 from ezdxf import recover
+
+
+# Mirrors Foundation's CharacterSet.whitespaces (tab plus every Unicode Zs space separator), which
+# is what Reader.swift trims the layer name with. str.strip() with no argument trims more (newlines,
+# control characters), so pass this explicitly.
+SWIFT_WHITESPACES = "\t" + "".join(
+    c for c in map(chr, range(0x3100)) if unicodedata.category(c) == "Zs")
 
 
 def summarize(path):
@@ -106,7 +114,7 @@ def summarize(path):
         if t in modelled:
             continue
         layers = skipped_by_layer.setdefault(t, {})
-        layer = (e.dxf.layer if e.dxf.hasattr("layer") else "0").strip(" \t")
+        layer = (e.dxf.layer if e.dxf.hasattr("layer") else "0").strip(SWIFT_WHITESPACES)
         layers[layer] = layers.get(layer, 0) + 1
     skipped_by_layer = {t: dict(sorted(v.items())) for t, v in sorted(skipped_by_layer.items())}
     return {
