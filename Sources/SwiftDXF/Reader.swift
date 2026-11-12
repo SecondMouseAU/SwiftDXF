@@ -29,20 +29,20 @@ extension DXF {
 
         // MARK: field accessors (over one entity's tag bag)
 
-        private func first(_ code: Int, _ f: [(code: Int, value: String)]) -> String? {
+        func first(_ code: Int, _ f: [(code: Int, value: String)]) -> String? {
             f.first { $0.code == code }?.value
         }
-        private func dbl(_ code: Int, _ f: [(code: Int, value: String)], _ fallback: Double = 0)
+        func dbl(_ code: Int, _ f: [(code: Int, value: String)], _ fallback: Double = 0)
             -> Double
         {
             guard let s = first(code, f) else { return fallback }
             return Double(s.trimmingCharacters(in: .whitespaces)) ?? fallback
         }
-        private func ints(_ code: Int, _ f: [(code: Int, value: String)]) -> Int? {
+        func ints(_ code: Int, _ f: [(code: Int, value: String)]) -> Int? {
             guard let s = first(code, f) else { return nil }
             return Int(s.trimmingCharacters(in: .whitespaces))
         }
-        private func dblOpt(_ code: Int, _ f: [(code: Int, value: String)]) -> Double? {
+        func dblOpt(_ code: Int, _ f: [(code: Int, value: String)]) -> Double? {
             guard let s = first(code, f) else { return nil }
             return Double(s.trimmingCharacters(in: .whitespaces))
         }
@@ -134,9 +134,11 @@ extension DXF {
             if mn.contains(where: { $0.code == 10 }) { dwg.extMin = point(mn) }
             let mx = headerVar("$EXTMAX")
             if mx.contains(where: { $0.code == 10 }) { dwg.extMax = point(mx) }
+            dwg.dimensionStyles = dimensionStyles()
             guard let start = entitiesStart() else { return dwg }  // valid DXF, just no model space
 
             var i = start
+            var recordIndex = 0
             while i < pairs.count {
                 let p = pairs[i]
                 guard p.code == 0 else {
@@ -154,6 +156,7 @@ extension DXF {
                     j += 1
                 }
 
+                let entitiesBefore = dwg.entities.count
                 switch type {
                 case "LINE":
                     let a = point(fields)
@@ -266,7 +269,10 @@ extension DXF {
                         defPoint: point(fields),
                         defPoint2: pointOpt(13, fields), defPoint3: pointOpt(14, fields),
                         defPoint4: pointOpt(15, fields), defPoint5: pointOpt(16, fields),
-                        layer: layer(fields), color: color(fields))
+                        layer: layer(fields), color: color(fields),
+                        rotation: dblOpt(50, fields), obliqueAngle: dblOpt(52, fields),
+                        styleName: nonEmpty(first(3, fields)),
+                        styleOverrides: styleOverrides(fields))
                     dwg.entities.append(.dimension(dim))
                     dwg.counts.dimension += 1
 
@@ -289,6 +295,12 @@ extension DXF {
                     dwg.skipped[type, default: 0] += 1
                     dwg.skippedByLayer[type, default: [:]][layer(fields), default: 0] += 1
                 }
+                if dwg.entities.count > entitiesBefore {
+                    dwg.identities.append(
+                        EntityIdentity(
+                            handle: handle(fields), section: "ENTITIES", index: recordIndex))
+                }
+                recordIndex += 1
                 i = j
             }
             return dwg
@@ -321,7 +333,7 @@ extension DXF {
             return nil
         }
 
-        private func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+        func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
 
         /// Text payload for TEXT/MTEXT: concatenate MTEXT continuation groups (3) then the final
         /// group (1), and decode AutoCAD inline escapes.

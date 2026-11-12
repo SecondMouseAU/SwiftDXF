@@ -11,7 +11,10 @@ timestamp: 2026-10-24
 
 - **`SwiftDXF`** (library): `DXF.read(contentsOf:)` parses an ASCII DXF file into a `Sendable`
   drawing model: the DXF version, entity counts, and the model-space `DXF.Entity` cases
-  (line, arc, circle, polyline, text, spline, …) with their layer. Unmodelled entity types
+  (line, arc, circle, polyline, text, spline, …) with their layer. `DXF.Dimension` carries
+  rotation, style name and overrides, a computed measurement and `DimensionText` parts;
+  `Drawing.identities` gives each entity its handle or position; `Drawing.dimensionStyles` is the
+  `DIMSTYLE` table. Unmodelled entity types
   are tallied in `Drawing.skipped` / `skippedByLayer`; `DXF.Spline.flattened(tolerance:)` turns a
   spline into polyline points.
 - **Contour layer** (in `SwiftDXF`, `Sources/SwiftDXF/Contours/`): `drawing.contours(_:)` returns a

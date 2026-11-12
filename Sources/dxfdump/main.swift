@@ -6,6 +6,7 @@ import SwiftDXF
 //
 //   dxfdump file1.dxf [file2.dxf ...]
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
+//   dxfdump --dimensions file.dxf [...]
 //
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
@@ -60,7 +61,7 @@ func summary(for path: String) -> [String: Any] {
                 for v in verts { add("POLYLINE", v.point.x, v.point.y) }
             case .dimension(let d):
                 add("DIMENSION", d.textPosition.x, d.textPosition.y, d.defPoint.x, d.defPoint.y)
-                if let m = d.measurement { add("DIMENSION", m) }
+                if let m = d.rawMeasurement { add("DIMENSION", m) }
                 for p in [d.defPoint2, d.defPoint3, d.defPoint4, d.defPoint5] {
                     if let p { add("DIMENSION", p.x, p.y) }
                 }
@@ -127,7 +128,52 @@ func contourSummary(for path: String, options: DXF.Contour.Options) -> [String: 
     }
 }
 
+/// One JSON row per DIMENSION: identity, kind, stored and computed value, rotation, style, text.
+func dimensionRows(for path: String) -> [String: Any] {
+    let url = URL(fileURLWithPath: path)
+    do {
+        let dwg = try DXF.read(contentsOf: url)
+        var rows: [[String: Any]] = []
+        for (index, entity) in dwg.entities.enumerated() {
+            guard case .dimension(let d) = entity else { continue }
+            let style = dwg.style(of: d)
+            let text = d.text
+            rows.append([
+                "id": index < dwg.identities.count ? dwg.identities[index].id : "",
+                "kind": "\(d.kind)",
+                "stored": d.measurement as Any? ?? NSNull(),
+                "computed": d.computedMeasurement as Any? ?? NSNull(),
+                "rotation": d.rotation as Any? ?? NSNull(),
+                "oblique": d.obliqueAngle as Any? ?? NSNull(),
+                "style": d.styleName as Any? ?? NSNull(),
+                "decimals": style.decimals as Any? ?? NSNull(),
+                "suffix": style.suffix as Any? ?? NSNull(),
+                "text": d.textOverride as Any? ?? NSNull(),
+                "showsMeasurement": text.showsMeasurement,
+                "typedNumbers": text.typedNumbers,
+                "qualifiers": text.qualifiers,
+                "words": text.words,
+            ])
+        }
+        return [
+            "file": url.lastPathComponent, "insUnits": dwg.insUnits as Any? ?? NSNull(),
+            "dimensions": rows,
+        ]
+    } catch {
+        return ["file": url.lastPathComponent, "error": "\(error)"]
+    }
+}
+
 var arguments = Array(CommandLine.arguments.dropFirst())
+if let flag = arguments.firstIndex(of: "--dimensions") {
+    arguments.remove(at: flag)
+    for path in arguments {
+        let data = try JSONSerialization.data(
+            withJSONObject: dimensionRows(for: path), options: [.sortedKeys])
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
 var contourOptions: DXF.Contour.Options?
 if let flag = arguments.firstIndex(of: "--contours") {
     arguments.remove(at: flag)

@@ -31,7 +31,7 @@ The 2D entity set that dominates real-world drawings, from the `ENTITIES` (model
 | `POINT` | `.point(at, …)` |
 | `TEXT`, `MTEXT` | `.text(at, height, rotationDeg, string, …)` |
 | `LWPOLYLINE`, `POLYLINE`/`VERTEX` | `.polyline(vertices, closed, …)`: each vertex carries its **bulge** |
-| `DIMENSION` | `.dimension(Dimension)`: semantic measurement only, not the rendered arrow/text glyphs |
+| `DIMENSION` | `.dimension(Dimension)`: definition points, rotation, style and text parts; not the rendered arrow/text glyphs |
 | `SPLINE` | `.spline(Spline)`: degree, flags, control points, knots, weights, fit points; flattens to a polyline |
 
 Entities it does not model (e.g. `INSERT`, `HATCH`, `SOLID`) are **skipped, not fatal**, and
@@ -48,6 +48,35 @@ dwg.skippedByLayer   // ["INSERT": ["PARTS": 3], "HATCH": ["0": 1]]  type -> lay
 An empty `skipped` means nothing in `ENTITIES` was dropped. `dxfdump` prints the same table to
 stderr and includes both dictionaries in its JSON. The counts match `ezdxf`'s per-type counts for
 every type SwiftDXF does not model.
+
+### Dimensions
+
+```swift
+for case .dimension(let d) in dwg.entities {
+    d.measurement          // the stored value, or nil: group 42 absent, 0 or negative means "not stored"
+    d.computedMeasurement  // from the definition points and rotation (linear, aligned, radius, diameter)
+    d.measuredValue        // stored if present, else computed
+    d.rotation             // group 50, degrees; nil means 0. d.obliqueAngle is group 52
+    d.text                 // DimensionText: placeholder, typed numbers, unit, qualifiers, words
+    dwg.style(of: d)       // DIMSTYLE precision, suffix and linear scale, with the entity's own overrides
+}
+```
+
+Writers such as SolidWorks leave the value for the viewer to compute: group 42 is `-1` and the
+text is `<>`. `rawMeasurement` keeps the `-1` verbatim; `measurement` reports it as missing, so it
+can never be mistaken for a length. `DimensionText` separates a decorated default (`<> mm`), a
+label (`<>\PBore Size`), a limit (`67 mm\P(max)`), a range (`40 - 60 mm\P(Adjustable)`) and a
+note. Style fields the file does not carry (`decimals`, `suffix`, `linearScale`) are `nil`, not
+guessed. Angular and ordinate dimensions have no computed value yet. `dxfdump --dimensions` prints
+one JSON row per dimension.
+
+### Entity identity
+
+`dwg.identities[i]` identifies `dwg.entities[i]`: the DXF handle (group 5, upper case) when the
+file has one, else the position as `ENTITIES[n]`, where `n` counts every record of the section,
+modelled or skipped, so it does not move when a new entity type is modelled. A `POLYLINE` takes the
+identity of its header. `EntityIdentity.via` holds the references an entity was expanded from.
+Reading the same file twice gives the same identities.
 
 ### Splines
 

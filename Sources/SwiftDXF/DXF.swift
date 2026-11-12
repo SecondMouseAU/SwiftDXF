@@ -113,8 +113,19 @@ public enum DXF {
     ///   and `defPoint5` (group 16) is the dimension arc's location.
     public struct Dimension: Sendable {
         public var kind: DimensionType
-        /// Actual measurement (group 42), in drawing units. `nil` when the file omits it.
-        public var measurement: Double?
+        /// The measurement as stored (group 42), verbatim. `nil` when the file omits it.
+        ///
+        /// Writers that leave the value for the viewer to compute store `-1`, so prefer
+        /// ``measurement``.
+        public var rawMeasurement: Double?
+        /// The measurement the file stored, in drawing units.
+        ///
+        /// `nil` when group 42 is absent, zero or negative, which all mean "not stored". See
+        /// ``computedMeasurement``.
+        public var measurement: Double? {
+            get { rawMeasurement.flatMap { $0 > 0 ? $0 : nil } }
+            set { rawMeasurement = newValue }
+        }
         /// User-entered text override (group 1).
         ///
         /// `nil` when the field is absent or empty (the DXF convention for "use the default
@@ -133,6 +144,15 @@ public enum DXF {
         public var defPoint4: Point?
         /// Group 16/26/36, dimension-arc location (angular dimensions only).
         public var defPoint5: Point?
+        /// Rotation of a linear dimension's measurement direction, in degrees from the x axis
+        /// (group 50). `nil` when absent, which means 0.
+        public var rotation: Double?
+        /// Oblique angle of a linear dimension's extension lines, in degrees (group 52).
+        public var obliqueAngle: Double?
+        /// The dimension style name (group 3), looked up in ``Drawing/dimensionStyles``.
+        public var styleName: String?
+        /// Style overrides carried by the entity's own `DSTYLE` extended data.
+        public var styleOverrides: DimensionStyle.Overrides
         public var layer: String
         public var color: Int
 
@@ -140,10 +160,15 @@ public enum DXF {
             kind: DimensionType, measurement: Double?, textOverride: String?,
             textPosition: Point, defPoint: Point, defPoint2: Point? = nil,
             defPoint3: Point? = nil, defPoint4: Point? = nil, defPoint5: Point? = nil,
-            layer: String, color: Int
+            layer: String, color: Int, rotation: Double? = nil, obliqueAngle: Double? = nil,
+            styleName: String? = nil, styleOverrides: DimensionStyle.Overrides = .init()
         ) {
             self.kind = kind
-            self.measurement = measurement
+            self.rawMeasurement = measurement
+            self.rotation = rotation
+            self.obliqueAngle = obliqueAngle
+            self.styleName = styleName
+            self.styleOverrides = styleOverrides
             self.textOverride = textOverride
             self.textPosition = textPosition
             self.defPoint = defPoint
@@ -186,12 +211,21 @@ public enum DXF {
         public var skipped: [String: Int]
         /// The same skipped entities broken down by layer: type name, then layer name, then count.
         public var skippedByLayer: [String: [String: Int]]
+        /// One identity per entry of ``entities``, in the same order.
+        ///
+        /// The handle where the file has one, else the position. Empty for a drawing built by hand.
+        public var identities: [EntityIdentity]
+        /// The `DIMSTYLE` table by style name.
+        public var dimensionStyles: [String: DimensionStyle]
 
         public init(
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
             insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil,
-            skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:]
+            skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:],
+            identities: [EntityIdentity] = [], dimensionStyles: [String: DimensionStyle] = [:]
         ) {
+            self.identities = identities
+            self.dimensionStyles = dimensionStyles
             self.version = version
             self.entities = entities
             self.counts = counts
