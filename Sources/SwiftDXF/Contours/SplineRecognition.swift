@@ -72,19 +72,11 @@ enum SplineRecognition {
         let p0 = pts[0]
         let p1 = pts[closed ? last / 3 : last / 2]
         let p2 = pts[closed ? 2 * last / 3 : last]
-        let bx = p1.x - p0.x
-        let by = p1.y - p0.y
-        let cx = p2.x - p0.x
-        let cy = p2.y - p0.y
-        let d = 2 * (bx * cy - by * cx)
-        let b2 = bx * bx + by * by
-        let c2 = cx * cx + cy * cy
-        guard abs(d) > 1e-9 * (b2 + c2), b2 > 0, c2 > 0 else { return nil }
-        let centre = DXF.Point2(p0.x + (cy * b2 - by * c2) / d, p0.y + (bx * c2 - cx * b2) / d)
-        let radius = centre.distance(to: p0)
-        guard radius.isFinite, radius <= 1e4 * size else { return nil }
+        guard let circle = Circumcircle(p0, p1, p2), circle.radius <= 1e4 * size else { return nil }
+        let (centre, radius, counterClockwise) = (
+            circle.centre, circle.radius, circle.counterClockwise
+        )
 
-        let counterClockwise = d > 0
         func angle(_ p: DXF.Point2) -> Double { atan2(p.y - centre.y, p.x - centre.x) }
         var worst = 0.0
         var total = 0.0

@@ -15,7 +15,7 @@ extension DXF.Contour {
         case ignoredHatches(count: Int)
         case ignoredLeaders(count: Int)
         /// Ellipses and splines replaced by lines and arcs, with the largest measured deviation
-        /// from the true curve (an upper bound), in millimetres.
+        /// from the true curve, in millimetres.
         case fittedCurves(count: Int, maxDeviation: Double)
         /// Segments that did not close into a loop.
         case openChains(count: Int, totalLength: Double)

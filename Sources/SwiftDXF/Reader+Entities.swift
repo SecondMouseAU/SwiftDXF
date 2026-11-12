@@ -70,7 +70,7 @@ extension DXF.Reader {
                 run.counts.record(entity)
                 position += 1
             } else if type != "VERTEX" && type != "SEQEND" {
-                // Unmodelled entity (INSERT, HATCH, SOLID, …): skip, but record it.
+                // Unmodelled entity (INSERT, SOLID, TRACE, …): skip, but record it.
                 run.skipped[type, default: 0] += 1
                 run.skippedByLayer[type, default: [:]][layer(fields), default: 0] += 1
                 position += 1

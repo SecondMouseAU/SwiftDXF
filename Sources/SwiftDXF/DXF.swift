@@ -6,9 +6,12 @@ import Foundation
 ///
 /// The reader is a clean-room implementation of the public DXF group-code reference. It targets the
 /// 2D entity set that dominates real-world drawings: `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `POINT`,
-/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, and `SPLINE`, and skips entities it
-/// does not model rather than failing, recording them in ``Drawing/skipped``. Only the `ENTITIES` (model-space) section is read, matching what a
-/// tool like *ezdxf*'s `modelspace()` iterates.
+/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, `SPLINE`, `HATCH` and `LEADER`, and
+/// skips entities it does not model rather than failing, recording them in
+/// ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space) section, matching what a
+/// tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is read for block
+/// definitions and `TABLES` for layers, line types and dimension styles; `INSERT` is not
+/// expanded.
 ///
 /// ```swift
 /// let dwg = try DXF.read(contentsOf: url)
@@ -103,19 +106,21 @@ public enum DXF {
         public var extMax: Point?
         /// Unmodelled entity types in the `ENTITIES` section, with a count of each.
         ///
-        /// For example `["INSERT": 3, "HATCH": 1]`; empty when nothing was skipped. Skipping is
+        /// For example `["INSERT": 3, "SOLID": 1]`; empty when nothing was skipped. Skipping is
         /// never an error.
         public var skipped: [String: Int]
         /// The same skipped entities broken down by layer: type name, then layer name, then count.
         public var skippedByLayer: [String: [String: Int]]
         /// One ``Identity`` per entry in ``entities``, in the same order.
         ///
-        /// A drawing built by hand may leave this empty; ``identity(ofEntityAt:)`` then names
-        /// each entity by its position.
+        /// Code that edits ``entities`` must edit this alongside it. A drawing built by hand, or
+        /// one whose ``entities`` changed length, has no usable identities: ``identity(ofEntityAt:)``
+        /// then names each entity by its position.
         public var identities: [Identity]
         /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
         ///
-        /// Use ``effectiveLineType(ofEntityAt:)`` for the line type an entity is drawn with.
+        /// Parallel to ``entities`` like ``identities``; ignored when the lengths differ. Use
+        /// ``effectiveLineType(ofEntityAt:)`` for the line type an entity is drawn with.
         public var entityLineTypes: [String?]
         /// The block definitions of the `BLOCKS` section.
         public var blocks: [Block]
@@ -163,7 +168,9 @@ public enum DXF {
         /// file has one and its position in the file otherwise. For a drawing assembled by hand
         /// it is the position in ``entities``.
         public func identity(ofEntityAt index: Int) -> Identity {
-            if identities.indices.contains(index) { return identities[index] }
+            if identities.count == entities.count, identities.indices.contains(index) {
+                return identities[index]
+            }
             return Identity(locator: "ENTITIES:\(index)")
         }
 

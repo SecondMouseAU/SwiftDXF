@@ -5,7 +5,7 @@ extension DXF.Entity {
     /// if case .spline(let s) = entity {
     ///     let fit = s.fitted(tolerance: 0.001)    // drawing units
     ///     fit.pieces.map(\.segment)                // lines and arcs
-    ///     fit.deviation                           // at most 0.001
+    ///     fit.deviation                           // 0.001 or less for a smooth curve
     /// }
     /// ```
     ///
@@ -16,6 +16,7 @@ extension DXF.Entity {
     ///
     /// - Parameters:
     ///   - tolerance: The largest distance a piece may stray from the curve, in drawing units.
+    ///     Anything below `1e-9` is raised to it.
     ///   - source: The identity to stamp on the fit and on each piece, usually
     ///     ``DXF/Drawing/identity(ofEntityAt:)``.
     /// - Returns: The fit, or `nil` when the entity is not a spline or an ellipse.

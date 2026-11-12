@@ -97,19 +97,10 @@ enum CurveFitter {
         pieces: [(a: DXF.Point2, b: DXF.Point2, bulge: Double)], deviation: Double
     )? {
         let m = (i + j) / 2
-        let bx = p[m].x - p[i].x
-        let by = p[m].y - p[i].y
-        let cx = p[j].x - p[i].x
-        let cy = p[j].y - p[i].y
-        let d = 2 * (bx * cy - by * cx)
-        let b2 = bx * bx + by * by
-        let c2 = cx * cx + cy * cy
-        guard abs(d) > 1e-9 * (b2 + c2), b2 > 0, c2 > 0 else { return nil }
-        let centre = DXF.Point2(
-            p[i].x + (cy * b2 - by * c2) / d, p[i].y + (bx * c2 - cx * b2) / d)
-        let radius = centre.distance(to: p[i])
-        guard radius.isFinite, radius < 1e6 else { return nil }
-        let counterClockwise = d > 0
+        guard let circle = Circumcircle(p[i], p[m], p[j]), circle.radius < 1e6 else { return nil }
+        let (centre, radius, counterClockwise) = (
+            circle.centre, circle.radius, circle.counterClockwise
+        )
         let a0 = atan2(p[i].y - centre.y, p[i].x - centre.x)
         func progress(_ q: DXF.Point2) -> Double {
             let a = atan2(q.y - centre.y, q.x - centre.x)

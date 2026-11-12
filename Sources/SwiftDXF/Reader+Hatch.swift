@@ -59,9 +59,15 @@ extension DXF.Reader {
     private func polylinePath(_ f: Fields, from start: Int) -> (DXF.Hatch.Geometry, Int) {
         var i = start
         var closed = true
+        var limit = Int.max
         while i < f.count, f[i].code != 10 {
             if f[i].code == 73 { closed = integer(f, i) != 0 }
             if f[i].code == 92 { break }
+            if f[i].code == 93 {
+                limit = max(0, integer(f, i))
+                // No vertices: stop here, so the scan cannot run on into the seed points.
+                if limit == 0 { return (.polyline(vertices: [], closed: closed), i + 1) }
+            }
             i += 1
         }
         var vertices: [DXF.PolyVertex] = []
@@ -78,6 +84,7 @@ extension DXF.Reader {
             switch f[i].code {
             case 10:
                 flush()
+                if vertices.count >= limit { break scan }
                 x = number(f, i)
             case 20: y = number(f, i)
             case 42: bulge = number(f, i)

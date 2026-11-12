@@ -10,7 +10,8 @@ extension DXF {
             case measurement
             /// A number typed into the text, with the characters it was written with.
             case number(Double, text: String)
-            /// Other text, as written. Formatting codes other than `\P` are left in.
+            /// Other text, as written. Formatting codes other than `\P` are left in, and the
+            /// numbers inside them are not read as typed numbers.
             case words(String)
             /// `\P`: a paragraph break.
             case lineBreak
@@ -53,6 +54,12 @@ extension DXF {
             }
         }
 
+        /// MTEXT codes written `\X...;`: alignment, colour, font, height, oblique, stack,
+        /// tracking, width and paragraph properties.
+        private static let takesArguments: Set<Character> = [
+            "A", "C", "c", "F", "f", "H", "Q", "S", "T", "W", "p",
+        ]
+
         private static func split(_ raw: String) -> [Part] {
             let chars = Array(raw)
             var parts: [Part] = []
@@ -68,11 +75,26 @@ extension DXF {
                     flush()
                     parts.append(.measurement)
                     i += 2
-                } else if c == "\\", i + 1 < chars.count, chars[i + 1] == "P" || chars[i + 1] == "p"
-                {
-                    flush()
-                    parts.append(.lineBreak)
-                    i += 2
+                } else if c == "\\", i + 1 < chars.count {
+                    let code = chars[i + 1]
+                    if code == "P" {
+                        flush()
+                        parts.append(.lineBreak)
+                        i += 2
+                    } else if Self.takesArguments.contains(code),
+                        let end = chars[(i + 2)...].firstIndex(of: ";")
+                    {
+                        // Colour, font, height, stack and the like: its digits are not typed.
+                        buffer.append(contentsOf: chars[i...end])
+                        i = end + 1
+                    } else if code == "\\" || code == "{" || code == "}" || code.isLetter {
+                        buffer.append(c)
+                        buffer.append(code)
+                        i += 2
+                    } else {
+                        buffer.append(c)
+                        i += 1
+                    }
                 } else if let end = numberEnd(chars, from: i) {
                     flush()
                     let text = String(chars[i..<end])

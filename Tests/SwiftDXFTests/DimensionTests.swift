@@ -287,6 +287,20 @@ struct DimensionTests {
         #expect(DXF.DimensionText("a - b").typedNumbers.isEmpty)
     }
 
+    @Test("numbers inside MTEXT formatting codes are not typed numbers")
+    func formattingCodes() {
+        #expect(DXF.DimensionText("\\C1;12.5").typedNumbers == [12.5])
+        let font = DXF.DimensionText("{\\fArial|b0|i0|c0|p34;<> mm}")
+        #expect(font.typedNumbers.isEmpty && font.parts.contains(.measurement))
+        #expect(DXF.DimensionText("\\S1/2;").typedNumbers.isEmpty)
+        #expect(DXF.DimensionText("\\H2.5;<>").typedNumbers.isEmpty)
+        // Only `\P` breaks a line; `\p` carries paragraph properties.
+        #expect(!DXF.DimensionText("\\pxqc;<>").parts.contains(.lineBreak))
+        #expect(DXF.DimensionText("a\\Pb").parts == [.words("a"), .lineBreak, .words("b")])
+        // An escaped backslash is text, so the number after it is typed.
+        #expect(DXF.DimensionText("\\\\5").typedNumbers == [5])
+    }
+
     @Test("a dimension exposes its text parts")
     func dimensionText() throws {
         let dims = Self.dimensions(try Self.fixture())

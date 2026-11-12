@@ -232,4 +232,23 @@ struct ContourFixtureTests {
         #expect(without.shapes.count == 1)
         #expect(without.warnings == [.ignoredHatches(count: 1)])
     }
+
+    @Test("an unmodelled type and ignored leaders and hatches are each reported")
+    func ignoredKinds() throws {
+        let text = RawDXF.entities([
+            RawDXF.line(), RawDXF.record("TRACE", (8, "0")), RawDXF.record("TRACE", (8, "0")),
+            RawDXF.record(
+                "LEADER", (8, "0"), (76, "2"), (10, "0"), (20, "0"), (30, "0"), (10, "5"),
+                (20, "5"), (30, "0")),
+        ])
+        let result = try DXF.read(text: text).contours()
+        #expect(result.warnings.contains(.skippedEntities(type: "TRACE", count: 2)))
+        #expect(result.warnings.contains(.ignoredLeaders(count: 1)))
+        typealias Warning = DXF.Contour.Warning
+        #expect(
+            Warning.skippedEntities(type: "TRACE", count: 2).description
+                == "2 TRACE entities not read")
+        #expect(Warning.ignoredLeaders(count: 1).description == "1 leaders ignored")
+        #expect(Warning.ignoredHatches(count: 3).description == "3 hatches ignored")
+    }
 }

@@ -21,8 +21,12 @@ extension DXF {
         ///
         /// Empty when the entity is degenerate (zero size, or not enough points).
         public var pieces: [Piece]
-        /// An upper bound on the distance from any piece to the true curve, never above the
-        /// tolerance asked for.
+        /// The largest distance found from the curve to the pieces covering it.
+        ///
+        /// Measured on the exact curve at points between the samples the fit used, so it holds
+        /// the tolerance for any smooth curve: compare it with the tolerance asked for. It can
+        /// exceed it when the fit gave up refining, and a fold of the curve narrower than a
+        /// quarter of a knot span can escape the measurement (see the README).
         public var deviation: Double
         /// `true` when the curve is exactly a straight line or a circular arc (or circle), so
         /// ``pieces`` are the curve itself and ``deviation`` is rounding error only.

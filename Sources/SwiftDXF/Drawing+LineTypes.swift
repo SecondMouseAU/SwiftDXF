@@ -13,7 +13,9 @@ extension DXF.Drawing {
 
     /// The line type name written on the entity at `index` (group 6), or `nil` when it has none.
     public func lineTypeName(ofEntityAt index: Int) -> String? {
-        entityLineTypes.indices.contains(index) ? entityLineTypes[index] : nil
+        guard entityLineTypes.count == entities.count, entityLineTypes.indices.contains(index)
+        else { return nil }
+        return entityLineTypes[index]
     }
 
     /// The name of the line type the entity at `index` is drawn with.

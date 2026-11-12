@@ -83,6 +83,18 @@ struct IdentityTests {
         #expect(try DXF.read(text: text).identities == dwg.identities)
     }
 
+    @Test("changing the entities falls back to positions, not stale handles or line types")
+    func replacedEntities() throws {
+        let dashed = RawDXF.record(
+            "LINE", (5, "A1"), (8, "0"), (6, "DASHED"), (10, "0"), (20, "0"), (11, "1"), (21, "0"))
+        var dwg = try DXF.read(text: RawDXF.entities([dashed, RawDXF.line(handle: "A2")]))
+        #expect(dwg.identity(ofEntityAt: 0).id == "A1")
+        #expect(dwg.lineTypeName(ofEntityAt: 0) == "DASHED")
+        dwg.entities.removeFirst()
+        #expect(dwg.identity(ofEntityAt: 0).id == "ENTITIES:0")
+        #expect(dwg.lineTypeName(ofEntityAt: 0) == nil)
+    }
+
     @Test("a handle is kept as the file writes it, trimmed")
     func handleKeptAsWritten() throws {
         let text = RawDXF.entities([RawDXF.line(handle: " a1f "), RawDXF.line(handle: "")])

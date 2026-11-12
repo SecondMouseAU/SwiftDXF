@@ -327,6 +327,29 @@ struct HatchTests {
         #expect(Self.hatches(dwg)[1].paths.isEmpty)
     }
 
+    @Test("a polyline path stops at its vertex count, and an empty one stays empty")
+    func polylinePathBounds() throws {
+        let empty = RawDXF.record(
+            "HATCH", (8, "0"), (2, "SOLID"), (70, "1"), (91, "1"), (92, "2"), (72, "0"),
+            (73, "1"), (93, "0"), (97, "0"), (75, "0"), (76, "1"), (98, "1"), (10, "7.0"),
+            (20, "7.0"))
+        let two = RawDXF.record(
+            "HATCH", (8, "0"), (2, "SOLID"), (70, "1"), (91, "1"), (92, "2"), (72, "0"),
+            (73, "1"), (93, "2"), (10, "0.0"), (20, "0.0"), (10, "4.0"), (20, "0.0"),
+            (97, "0"), (98, "1"), (10, "7.0"), (20, "7.0"))
+        let dwg = try DXF.read(text: RawDXF.entities([empty, two]))
+        let found = Self.hatches(dwg)
+        #expect(found.count == 2)
+        for (hatch, count) in zip(found, [0, 2]) {
+            guard case .polyline(let vertices, _) = hatch.paths.first?.geometry else {
+                Issue.record("the path is not a polyline")
+                continue
+            }
+            #expect(vertices.count == count)
+            #expect(!vertices.contains { $0.point.x == 7 })
+        }
+    }
+
     @Test("a closed LTYPE and LAYER table from an old file read as written")
     func oldStyleTables() throws {
         let tables = RawDXF.section(

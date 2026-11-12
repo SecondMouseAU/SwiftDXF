@@ -133,7 +133,8 @@ struct SegmentExtractor {
         layer: Int
     ) {
         let a = (major.x * major.x + major.y * major.y).squareRoot() * scale
-        guard Self.finite(c.x, c.y, major.x, major.y, ratio, start, end), a > 1e-12, ratio > 0
+        guard Self.finite(c.x, c.y, major.x, major.y, ratio, start, end), a.isFinite, a > 1e-12,
+            ratio > 0
         else {
             degenerate += 1
             return
@@ -169,7 +170,8 @@ struct SegmentExtractor {
             // |r''| <= a for the parametric ellipse, so a step of sqrt(8 tol / a) keeps every
             // chord within a quarter of the tolerance of the curve.
             let step = (8 * flat / a).squareRoot()
-            let count = min(1_000_000, max(16, Int((sweep / step).rounded(.up))))
+            // Clamp as a Double first: a huge axis makes the quotient too big for an Int.
+            let count = Int(min(1_000_000, max(16, (sweep / step).rounded(.up))))
             var pts: [DXF.Point2] = []
             pts.reserveCapacity(count + 1)
             for k in 0...count {

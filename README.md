@@ -68,7 +68,8 @@ same file twice gives the same identities, and the handles are the ones `ezdxf` 
 entity can be named in a ledger and found again in the original file or in another program.
 
 The locator counts **every** record in its section, including the ones SwiftDXF skips, so an
-entity keeps its locator when a later release starts reading another type. A file with no handles
+entity keeps its locator when a later release starts reading another type (unless that type owns
+the records after it, as a `POLYLINE` owns its `VERTEX` records). A file with no handles
 (some R12 files) is still fully identified by its locators. An old-style `POLYLINE` is one record:
 its handle and position are the header's, not its `VERTEX` records'.
 
@@ -81,6 +82,10 @@ Blocks and tables carry identities too:
 | `dwg.dimensionStyles` | the `DIMSTYLE` records: `name` and `handle` (group 105) |
 
 `INSERT` references are still not expanded ([#5](https://github.com/SecondMouseAU/SwiftDXF/issues/5)).
+
+`identities` and `entityLineTypes` run parallel to `entities`: code that edits `entities` has to
+edit them too. When their length no longer matches, `identity(ofEntityAt:)` names each entity by
+its position and `lineTypeName(ofEntityAt:)` returns `nil`, rather than hand back a stale entry.
 
 ### Hatches, leaders, line types and layers
 
@@ -140,7 +145,7 @@ if case .spline(let s) = dwg.entities[i] {
         piece.segment                       // DXF.Contour.Segment: a line, or an arc as chord + bulge
         piece.source                        // the entity's Identity, when you name it
     }
-    fit.deviation                           // never above the tolerance
+    fit.deviation                           // the tolerance or less, for a smooth curve
     fit.isExact                             // the curve is a line or arc, so the pieces are it
 }
 let named = dwg.fittedCurve(at: i, tolerance: 0.001)   // stamped with dwg.identity(ofEntityAt: i)
@@ -160,6 +165,8 @@ contour layer finds.
   half the tolerance of the samples. The result is then checked against the exact curve at extra
   points between the samples, and sampled again, finer, until it is within the tolerance (at most
   five attempts). `deviation` is the larger of the fit's own bound and what that check measured.
+  It can exceed the tolerance if the fit gave up refining, and a fold narrower than a quarter of
+  a knot span can escape the check (see Splines), so compare it with the tolerance asked for.
 - Degenerate input (fewer than two points, a zero-size ellipse) gives no pieces and does not trap.
   A tolerance that is not positive and finite is clamped to a billionth.
 
@@ -245,6 +252,19 @@ entities actually read.
 - **Binary DXF** is detected and rejected (`Error.binaryUnsupported`): convert to ASCII DXF first.
 - **Model space only.** Mirrors what `ezdxf`'s `modelspace()` iterates; `BLOCKS` definitions are not
   expanded.
+
+### Upgrading from 0.3
+
+- **`DXF.Entity` has two new cases**, `.hatch` and `.leader`, so an exhaustive `switch` needs them
+  (as `.spline` did in 0.3.0). `HATCH` and `LEADER` no longer appear in `dwg.skipped`.
+- **`Dimension.measurement` is `nil`** where the file stores zero or a negative number. SolidWorks
+  and McMaster drawings store `-1`, which used to come back as a length. Use
+  `computedMeasurement` for the value.
+- **Contour warnings.** `.ignoredHatches` and `.ignoredLeaders` are new cases; those entities were
+  `.skippedEntities` before. The deviation in `.fittedCurves` is now measured against the exact
+  curve, so it can be larger than before, when it was not always a true bound. A spline that is
+  exactly a line or arc is emitted as that line or arc.
+- **`Drawing`, `Block` and the table records** gain stored properties, all defaulted in `init`.
 
 ## Contours
 

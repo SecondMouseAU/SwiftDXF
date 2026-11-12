@@ -172,7 +172,7 @@ struct CurveFitTests {
     // MARK: Fitting within a tolerance
 
     @Test(
-        "a general spline fits within each tolerance asked for, and the deviation is honest",
+        "a general spline fits within each tolerance asked for, with a measured deviation",
         arguments: [0.1, 0.01, 0.001, 0.00001])
     func fitsWithinTolerance(_ tolerance: Double) {
         let fit = Self.cubic.fitted(tolerance: tolerance)
@@ -241,6 +241,19 @@ struct CurveFitTests {
         for tolerance in [0, -1, .nan, .infinity] {
             let fit = Self.cubic.fitted(tolerance: tolerance)
             #expect(!fit.pieces.isEmpty && fit.deviation.isFinite)
+        }
+    }
+
+    @Test("an ellipse too large to square or to sample is dropped or capped, never trapped on")
+    func hugeEllipse() throws {
+        // An axis whose square overflows is dropped; one that needs more samples than an Int
+        // holds is capped.
+        for axis in [1e300, 1e155, 4e34] {
+            let huge = DXF.Entity.ellipse(
+                center: .init(0, 0), majorAxis: .init(axis, 0), ratio: 0.5, startParam: 0,
+                endParam: 2 * .pi, layer: "0", color: 256)
+            let fit = try #require(huge.fitted(tolerance: 0.01))
+            #expect(fit.deviation.isFinite)
         }
     }
 
@@ -367,6 +380,7 @@ struct CurveFitTests {
         var copy = dwg
         copy.entities = replaced
         copy.identities = []
+        copy.entityLineTypes = []
         let rebuilt = copy.contours(options)
         #expect(reference.shapes.count == rebuilt.shapes.count)
         #expect(near(reference.area, rebuilt.area, 1e-6 * max(1, reference.area)))

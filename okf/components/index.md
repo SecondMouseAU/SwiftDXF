@@ -40,7 +40,8 @@ timestamp: 2026-11-12
   `DXF.Contour.Result` of `Shape`s (a counter-clockwise outer `Loop` plus clockwise hole `Loop`s),
   leftover open `Chain`s and `Warning`s, in millimetres. `Segment` is a line or arc as chord plus
   bulge (never more than a half turn). Pieces: `SegmentExtractor` (entity to segments),
-  `CurveFitter` (ellipse and spline to lines and arcs within `fitTolerance`), `ContourChainer`
+  `CurveFitter` (ellipse and spline to lines and arcs within `fitTolerance`; the circle through
+  three points is `Circumcircle`), `ContourChainer`
   (grid-hash endpoint merge, loop tracing), `ContourNesting` with `LoopIndex` (even-odd island
   nesting). Pure Swift and OCCT-free: OCCT consumers belong in OCCTSwiftIO. Known limits are in the
   README (no OCS/extrusion, no `INSERT` expansion).
