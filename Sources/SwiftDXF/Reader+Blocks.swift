@@ -9,7 +9,7 @@ extension DXF.Reader {
             rotation: dbl(50, f), columns: max(ints(70, f) ?? 1, 1), rows: max(ints(71, f) ?? 1, 1),
             columnSpacing: dbl(44, f), rowSpacing: dbl(45, f), layer: layer(f), color: color(f),
             lineType: nonEmpty(first(6, f).map(trimmed)),
-            extrusion: DXF.Point(dbl(210, f, 0), dbl(220, f, 0), dbl(230, f, 1)),
+            extrusion: extrusion(f),
             identity: identity)
     }
 }

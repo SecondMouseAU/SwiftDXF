@@ -38,6 +38,8 @@ extension DXF.Reader {
         ///
         /// Only counted in model space.
         var paperSpace: [String: Int] = [:]
+        /// Records written in an object coordinate system whose normal is not along z, by type.
+        var tilted: [String: Int] = [:]
         /// Index of the pair that ended the run.
         var end = 0
     }
@@ -76,7 +78,10 @@ extension DXF.Reader {
                     continue
                 }
             }
-            if let entity = readEntity(type: type, fields: fields, next: &j) {
+            // The plane of a record written in an OCS; the rest are in the world.
+            let plane = usesObjectCoordinates(type, fields) ? objectPlane(fields) : .up
+            if let entity = readEntity(type: type, fields: fields, plane: plane, next: &j) {
+                if plane == .tilted { run.tilted[type, default: 0] += 1 }
                 run.entities.append(entity)
                 run.identities.append(
                     DXF.Identity(handle: handle(fields), locator: locator(position)))
@@ -117,12 +122,24 @@ extension DXF.Reader {
         return value
     }
 
-    /// One entity from its fields, or `nil` for a type that is not modelled.
+    /// One entity from its fields, in world coordinates, or `nil` for a type that is not modelled.
     ///
     /// `next` is the index of the pair after the record, and moves forward when the record owns
     /// following records (a `POLYLINE` owns its `VERTEX` run and the `SEQEND`).
     private func readEntity(
-        type: String, fields: [(code: Int, value: String)], next j: inout Int
+        type: String, fields: [(code: Int, value: String)], plane: DXF.ObjectPlane,
+        next j: inout Int
+    ) -> DXF.Entity? {
+        guard let entity = readRecord(type: type, fields: fields, plane: plane, next: &j)
+        else { return nil }
+        return inWorld(entity, plane: plane)
+    }
+
+    /// One entity from its fields as written, which for some types is in the object coordinate
+    /// system; see ``readEntity(type:fields:plane:next:)``.
+    private func readRecord(
+        type: String, fields: [(code: Int, value: String)], plane: DXF.ObjectPlane,
+        next j: inout Int
     ) -> DXF.Entity? {
         switch type {
         case "LINE":
@@ -146,6 +163,11 @@ extension DXF.Reader {
             var ratio = dbl(40, fields, 1)
             var startP = dbl(41, fields, 0)
             var endP = dbl(42, fields, 2 * .pi)
+            // An extrusion of -z makes the parameter run clockwise; turn it into the same curve
+            // running counter-clockwise, before the ratio is normalised below.
+            if plane == .down {
+                (startP, endP) = Self.mirroredEllipseRange(start: startP, end: endP)
+            }
             // The DXF spec requires ratio = minor/major ≤ 1. Some writers emit ratio > 1
             // (a swapped major axis). Normalise to the canonical form: rotate the major axis
             // +90° and scale by ratio, invert the ratio, shift the params by −π/2, so the curve
@@ -185,7 +207,11 @@ extension DXF.Reader {
 
         case "POLYLINE":
             // Old-style: a POLYLINE header followed by VERTEX entities and a terminating SEQEND.
-            let closed = (ints(70, fields) ?? 0) & 1 == 1
+            let flags = ints(70, fields) ?? 0
+            let closed = flags & 1 == 1
+            // A 2D polyline's elevation (group 30 of the header) is the z of every vertex, as in
+            // ezdxf; a 3D polyline, polygon mesh or polyface mesh has none.
+            let elevation = flags & (8 | 16 | 64) == 0 ? dbl(30, fields) : 0
             var verts: [DXF.PolyVertex] = []
             while j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "VERTEX" {
                 var m = j + 1
@@ -194,7 +220,9 @@ extension DXF.Reader {
                     vf.append(pairs[m])
                     m += 1
                 }
-                verts.append(DXF.PolyVertex(point(vf), bulge: dbl(42, vf, 0)))
+                var location = point(vf)
+                if elevation != 0 { location.z = elevation }
+                verts.append(DXF.PolyVertex(location, bulge: dbl(42, vf, 0)))
                 j = m
             }
             if j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "SEQEND" {

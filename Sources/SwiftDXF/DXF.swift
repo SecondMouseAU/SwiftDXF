@@ -12,7 +12,8 @@ import Foundation
 /// tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is read for block
 /// definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is read into
 /// ``Drawing/references`` and flattened into the entities when ``ReadOptions/expandBlocks`` is
-/// set.
+/// set. An entity written in a coordinate system with a `-z` extrusion is read as its world
+/// geometry; one on a tilted plane is read as written and reported in ``Drawing/warnings``.
 ///
 /// ```swift
 /// let dwg = try DXF.read(contentsOf: url)
@@ -62,13 +63,16 @@ public enum DXF {
             layer: String, color: Int)
         case point(at: Point, layer: String, color: Int)
         /// `TEXT` or `MTEXT`. `height` is the text height (group 40); `rotationDeg` the rotation in
-        /// degrees (group 50); `string` is decoded to Unicode at read time.
+        /// degrees (group 50), in the world; `string` is decoded to Unicode at read time. `TEXT` on
+        /// a `-z` plane is converted into the world; `MTEXT` is read as written.
         case text(
             at: Point, height: Double, rotationDeg: Double, string: String, layer: String,
             color: Int)
         /// `LWPOLYLINE` or an old-style `POLYLINE`/`VERTEX` run. `closed` reflects the closed flag
         /// (group 70 bit 1). Each vertex carries its **bulge** (group 42), `tan(θ/4)` of the arc to
-        /// the next vertex, `0` for a straight segment, so curved polylines survive the read.
+        /// the next vertex, `0` for a straight segment, so curved polylines survive the read. The
+        /// vertices are in the world: an `LWPOLYLINE`'s elevation (group 38), or a 2D `POLYLINE`'s,
+        /// is their z, and a `-z` extrusion is converted.
         case polyline(vertices: [PolyVertex], closed: Bool, layer: String, color: Int)
         /// `DIMENSION`. Only the semantic measurement is modelled; the rendered arrow/text-block
         /// glyph geometry is skipped, matching what a downstream drawing-to-3D pipeline needs to

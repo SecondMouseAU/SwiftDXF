@@ -117,7 +117,8 @@ into `dwg.entities`:
   `skipped`.
 - `counts`, `bounds`, `identities` and `entityLineTypes` follow the expanded entities.
 
-`dwg.warnings` says what an expansion could not do: `missingBlock`, `blockCycle` (a block that
+`dwg.warnings` says what the reader could not do: at read time `extrusionNotApplied` (see
+*Extrusion*), and for an expansion `missingBlock`, `blockCycle` (a block that
 contains itself; the inner reference is dropped), `blockNestingTooDeep` (more than 32 levels),
 `unsupportedExtrusion` (an extrusion that is not along z, expanded as if it were),
 `expansionTruncated` (a file can multiply entities without bound, so expansion stops after about two
@@ -129,6 +130,31 @@ as before. `skipPaperSpace: true` leaves them out, as `ezdxf`'s `modelspace()` d
 locators of the rest. Expansion was checked against `ezdxf` on a drawing with nested, arrayed,
 rotated, mirrored and non-uniformly scaled references: every one of the 56 expanded entities is the
 same curve.
+
+### Extrusion
+
+Arcs, circles, polylines, text, hatches and the text point of a dimension are written in their own
+coordinate system (OCS), whose z axis is the entity's extrusion direction (groups 210, 220, 230).
+For an extrusion of `(0, 0, -1)`, which is what a drawing made on a flipped plane or mirrored in
+a CAD program holds, the OCS x axis is the world `-x`. The reader gives you world coordinates:
+
+| Entity | On a `-z` plane |
+|---|---|
+| `ARC`, `CIRCLE`, `LWPOLYLINE`, 2D `POLYLINE` | centre or vertices mirrored (x and z change sign), arc angles `180 - angle`, swapped and wrapped into `0..<360`, bulges change sign. A 2D `POLYLINE`'s elevation (group 30) is the z of its vertices, as for `LWPOLYLINE` |
+| `ELLIPSE` | centre and axis are world coordinates already; the parameter range is reversed, so it still runs counter-clockwise |
+| `TEXT` | insertion point mirrored, rotation `180 - rotation` |
+| `HATCH` | boundary paths mirrored; a path that travelled an arc counter-clockwise now travels it clockwise |
+| `DIMENSION` | the text point (group 11) and the arc point (group 16), and the rotation (group 50), an angle in the OCS, becomes `180 - rotation`. The definition points are world coordinates already, and the oblique angle (group 52) is left as written, as in `ezdxf` |
+
+`MTEXT`, `POINT`, `SPLINE`, `LEADER` and a 3D polyline hold world coordinates and are never
+converted (an `MTEXT`'s rotation is read as written). An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
+with `ezdxf.upright`, `ezdxf`'s own, on a drawing with one of each.
+
+A normal that is not along z cannot be held by a planar entity, so such an entity is read as written
+and counted: `dwg.warnings` has `.extrusionNotApplied(type:count:)` for each type, counting the
+model space and the blocks. The contour layer then sees the entity where the file wrote it, not where
+it is drawn. An `INSERT`'s extrusion is applied when the reference is expanded; a tilted one is
+expanded flat, unmirrored, and reported as `unsupportedExtrusion`.
 
 ### Hatches, leaders, line types and layers
 
@@ -311,6 +337,16 @@ entities actually read.
 - **`bounds` and `counts.total` include hatches and leaders**, so the extents of a drawing whose
   `HATCH` lies outside its other geometry grow.
 - **`Drawing`, `Block` and the table records** gain stored properties, all defaulted in `init`.
+- **Entities on a `-z` plane change coordinates.** `ARC`, `CIRCLE`, `LWPOLYLINE`, 2D `POLYLINE`,
+  `TEXT`, `HATCH` and a dimension's text point used to come out as the file wrote them, in the
+  entity's own coordinate system; they are now mirrored into the world, so a drawing that relied on
+  the old values moves. Other drawings are unchanged, apart from the next two items.
+- **`LWPOLYLINE` vertices carry the elevation** (group 38) as their z, which was `0`.
+- **Arcs carried through a mirroring or rotating reference have both angles in `0..<360`** unless
+  they are a full turn, and **text through a mirroring reference gets the mirrored rotation**
+  (`180 - rotation` for a flip of x) instead of `rotation + 180`.
+- **`Warning` has a new case**, `.extrusionNotApplied(type:count:)`, so an exhaustive `switch` over
+  it needs it.
 - **`Identity` gains `via` and `blocks`** (empty unless a block was expanded), and `id` includes
   `via`. `DXF.read` gains an `options:` parameter, defaulted so existing calls are unchanged: with
   the defaults the reader returns the same entities as before. `Drawing` gains `references`,
@@ -386,9 +422,8 @@ How it works:
 Limits:
 
 - Geometry is projected onto the XY plane; `z` is ignored.
-- The extrusion direction (OCS) of `ARC`, `CIRCLE` and `LWPOLYLINE` is not read, so such entities
-  on a mirrored plane such as `(0, 0, -1)` come out un-mirrored
-  ([#21](https://github.com/SecondMouseAU/SwiftDXF/issues/21)). An `INSERT`'s extrusion is read.
+- Entities on a tilted plane (an extrusion that is not along z) are read as written, not tipped
+  into the drawing plane; see *Extrusion* above. A normal of `(0, 0, -1)` is handled.
 - `INSERT` blocks are flattened only when the drawing was read with `expandBlocks: true`.
 - Loops are assumed not to cross. Loops that do are reported (`crossingLoops`) and left unnested.
   Collinear segments that overlap only in part are not merged.
@@ -430,8 +465,8 @@ every spline in it fits within 0.001 and chains into the contour layer's regions
 
 ## Scope
 
-A focused 2D reader, not a full DXF/DWG toolkit. Out of scope for now: DWG, binary DXF, OCS/extrusion
-on entities other than `INSERT`, and writing. (DXF *writing* for the JWW format lives in
+A focused 2D reader, not a full DXF/DWG toolkit. Out of scope for now: DWG, binary DXF, entities on
+a tilted plane, and writing. (DXF *writing* for the JWW format lives in
 [SwiftJWW](https://github.com/SecondMouseAU/SwiftJWW).)
 
 ## License

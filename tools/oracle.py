@@ -10,6 +10,7 @@ section). TEXT/MTEXT and LWPOLYLINE/POLYLINE are folded together the same way Sw
 Requires: pip install ezdxf
 """
 import json
+import math
 import os
 import sys
 import unicodedata
@@ -17,6 +18,8 @@ from collections import Counter
 
 import ezdxf
 from ezdxf import recover
+from ezdxf.math import Vec3
+from ezdxf.upright import upright_all
 
 
 # Mirrors Foundation's CharacterSet.whitespaces (tab plus every Unicode Zs space separator), which
@@ -24,6 +27,14 @@ from ezdxf import recover
 # control characters), so pass this explicitly.
 SWIFT_WHITESPACES = "\t" + "".join(
     c for c in map(chr, range(0x3100)) if unicodedata.category(c) == "Zs")
+
+
+def flipped(e):
+    """Whether the entity is written in an object coordinate system whose normal is -z."""
+    if not e.dxf.hasattr("extrusion"):
+        return False
+    n = Vec3(e.dxf.extrusion)
+    return abs(n.x) < 1e-9 and abs(n.y) < 1e-9 and n.z < 0
 
 
 def summarize(path):
@@ -34,6 +45,15 @@ def summarize(path):
 
     msp = doc.modelspace()
     raw = Counter(e.dxftype() for e in msp)
+
+    # SwiftDXF reads an entity written in a -z object coordinate system as its world geometry.
+    # ezdxf's own conversion does ARC, CIRCLE, LWPOLYLINE, POLYLINE, ELLIPSE and HATCH. TEXT keeps
+    # its OCS values, and so do the OCS points of a DIMENSION, so mirror those here.
+    flipped_text = {e.dxf.handle for e in msp if e.dxftype() == "TEXT" and flipped(e)}
+    flipped_dim = {e.dxf.handle for e in msp if e.dxftype() == "DIMENSION" and flipped(e)}
+    flipped_ellipse = {e.dxf.handle for e in msp if e.dxftype() == "ELLIPSE" and flipped(e)}
+    flipped_arc = {e.dxf.handle for e in msp if e.dxftype() == "ARC" and flipped(e)}
+    upright_all(msp)
 
     # Geometry digest: sum + count of every defining scalar (rounded), mirroring dxfdump exactly.
     acc = {"sum": 0.0, "n": 0}
@@ -58,16 +78,29 @@ def summarize(path):
             add("CIRCLE", c.x, c.y, e.dxf.radius)
         elif t == "ARC":
             c = e.dxf.center
-            add("ARC", c.x, c.y, e.dxf.radius, e.dxf.start_angle, e.dxf.end_angle)
+            start, end = e.dxf.start_angle, e.dxf.end_angle
+            if e.dxf.handle in flipped_arc:
+                # upright gives 180 - angle; SwiftDXF starts the range in 0..<360 and, unless the
+                # arc is a full turn, ends it there too.
+                shift = math.floor(start / 360) * 360
+                start, end = start - shift, end - shift
+                if abs(end - start) < 360 - 1e-9:
+                    end -= math.floor(end / 360) * 360
+            add("ARC", c.x, c.y, e.dxf.radius, start, end)
         elif t == "ELLIPSE":
             c, m = e.dxf.center, e.dxf.major_axis
-            add("ELLIPSE", c.x, c.y, m.x, m.y, e.dxf.ratio, e.dxf.start_param, e.dxf.end_param)
+            start, end = e.dxf.start_param, e.dxf.end_param
+            if e.dxf.handle in flipped_ellipse:
+                # Reversed by upright; SwiftDXF also starts the range in 0..<2 pi.
+                shift = math.floor(start / (2 * math.pi)) * 2 * math.pi
+                start, end = start - shift, end - shift
+            add("ELLIPSE", c.x, c.y, m.x, m.y, e.dxf.ratio, start, end)
         elif t == "POINT":
             p = e.dxf.location
             add("POINT", p.x, p.y)
         elif t == "TEXT":
             p = e.dxf.insert
-            add("TEXT", p.x, p.y, e.dxf.height)
+            add("TEXT", -p.x if e.dxf.handle in flipped_text else p.x, p.y, e.dxf.height)
         elif t == "MTEXT":
             p = e.dxf.insert
             add("TEXT", p.x, p.y, e.dxf.char_height)
@@ -80,17 +113,27 @@ def summarize(path):
                 add("POLYLINE", loc.x, loc.y)
         elif t == "DIMENSION":
             tm, dp = e.dxf.text_midpoint, e.dxf.defpoint
-            vs = [tm.x, tm.y, dp.x, dp.y]
+            mirror = -1 if e.dxf.handle in flipped_dim else 1
+            vs = [mirror * tm.x, tm.y, dp.x, dp.y]
             # Zero or negative means "none" (some writers store -1), as in SwiftDXF.
             if e.dxf.hasattr("actual_measurement") and e.dxf.actual_measurement > 0:
                 vs.append(e.dxf.actual_measurement)
             for name in ("defpoint2", "defpoint3", "defpoint4", "defpoint5"):
                 if e.dxf.hasattr(name):
                     p = getattr(e.dxf, name)
-                    vs.extend([p.x, p.y])
-            for name in ("angle", "oblique_angle"):
-                if e.dxf.hasattr(name):
-                    vs.append(getattr(e.dxf, name))
+                    # defpoint5 is the one OCS point.
+                    vs.extend([mirror * p.x if name == "defpoint5" else p.x, p.y])
+            if e.dxf.hasattr("angle") and (e.dxf.dimtype & 15) in (0, 1):
+                angle = e.dxf.angle
+                if e.dxf.handle in flipped_dim:
+                    # An OCS angle: SwiftDXF reports the world direction of the measuring axis.
+                    r = math.radians(angle)
+                    angle = math.degrees(math.atan2(math.sin(r), -math.cos(r)))
+                vs.append(angle)
+            elif e.dxf.hasattr("angle"):
+                vs.append(e.dxf.angle)
+            if e.dxf.hasattr("oblique_angle"):
+                vs.append(e.dxf.oblique_angle)
             add("DIMENSION", *vs)
         elif t == "SPLINE":
             for p in e.control_points:
@@ -152,6 +195,8 @@ def summarize(path):
             continue
         try:
             # ezdxf's own measurement: geometry with no style scale, as SwiftDXF's computedMeasurement.
+            # It differs for a rotated linear dimension on a -z plane, where it passes the world
+            # definition points through the OCS (see tools/ocs_fixtures.py).
             kind = e.dxf.dimtype & 15
             m = e.get_measurement() if kind in (0, 1, 3, 4) else None
             dimensions.append(float(m) if m is not None else None)

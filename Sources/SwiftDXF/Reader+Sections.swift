@@ -19,9 +19,13 @@ extension DXF.Reader {
     ///
     /// A block runs from its `BLOCK` record to the `ENDBLK` that closes it. Its entities are read
     /// the same way model space is, and each carries a locator of the form `BLOCKS:<block>/<n>`.
-    func blocks() -> [DXF.Block] {
-        guard var k = sectionStart("BLOCKS") else { return [] }
+    ///
+    /// Also returns, by record type, how many entities of the blocks have an extrusion that is not
+    /// along z.
+    func blocks() -> (blocks: [DXF.Block], tilted: [String: Int]) {
+        guard var k = sectionStart("BLOCKS") else { return ([], [:]) }
         var out: [DXF.Block] = []
+        var tilted: [String: Int] = [:]
         while k < pairs.count {
             guard pairs[k].code == 0 else {
                 k += 1
@@ -39,6 +43,7 @@ extension DXF.Reader {
             let run = readEntities(from: j, stopAt: ["ENDBLK", "BLOCK", "ENDSEC", "EOF"]) {
                 "BLOCKS:\(index)/\($0)"
             }
+            tilted.merge(run.tilted, uniquingKeysWith: +)
             var skipped = run.skippedByLayer
             skipped["INSERT"] = nil
             out.append(
@@ -52,6 +57,6 @@ extension DXF.Reader {
             // Step over the ENDBLK so the next BLOCK is found, not the ENDBLK again.
             if k < pairs.count, trimmed(pairs[k].value) == "ENDBLK" { k += 1 }
         }
-        return out
+        return (out, tilted)
     }
 }

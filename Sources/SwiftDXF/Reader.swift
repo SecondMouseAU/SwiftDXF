@@ -70,13 +70,17 @@ extension DXF {
             Point(dbl(10, f), dbl(20, f), dbl(30, f))
         }
         /// LWPOLYLINE vertices in field order: each `10` opens a vertex, `20` is its y, `42` its bulge.
+        ///
+        /// Every vertex has the polyline's elevation (group 38) as its z, in the object coordinate
+        /// system.
         func lwVertices(_ f: [(code: Int, value: String)]) -> [PolyVertex] {
+            let elevation = dbl(38, f)
             var verts: [PolyVertex] = []
             var x: Double?
             var y: Double = 0
             var bulge: Double = 0
             func flush() {
-                if let x { verts.append(PolyVertex(Point(x, y), bulge: bulge)) }
+                if let x { verts.append(PolyVertex(Point(x, y, elevation), bulge: bulge)) }
                 x = nil
                 y = 0
                 bulge = 0
@@ -142,8 +146,12 @@ extension DXF {
             dwg.lineTypes = lineTypes()
             dwg.dimensionStyles = dimensionStyles()
             dwg.dimensionDefaults = headerStyleVariables()
-            dwg.blocks = blocks()
-            guard let start = sectionStart("ENTITIES") else { return dwg }  // no model space
+            let (blockList, blockTilted) = blocks()
+            dwg.blocks = blockList
+            guard let start = sectionStart("ENTITIES") else {  // no model space
+                dwg.warnings = Self.extrusionWarnings(blockTilted)
+                return dwg
+            }
 
             let run = readEntities(
                 from: start, stopAt: ["ENDSEC", "EOF"], inModelSpace: true
@@ -156,8 +164,17 @@ extension DXF {
             dwg.skippedByLayer = run.skippedByLayer
             dwg.references = run.references
             dwg.paperSpace = run.paperSpace
+            dwg.warnings = Self.extrusionWarnings(
+                blockTilted.merging(run.tilted, uniquingKeysWith: +))
             if options.expandBlocks { dwg.expandBlockReferences() }
             return dwg
+        }
+
+        /// A warning per entity type that has records with an extrusion that is not along z.
+        static func extrusionWarnings(_ tilted: [String: Int]) -> [Warning] {
+            tilted.sorted { $0.key < $1.key }.map {
+                .extrusionNotApplied(type: $0.key, count: $0.value)
+            }
         }
 
         /// The value pairs of a HEADER variable (`9`/`$NAME`), up to the next `9` or section `0`.

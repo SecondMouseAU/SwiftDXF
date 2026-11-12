@@ -49,7 +49,8 @@ extension DXF {
         /// formatted measurement"). A literal single space is the convention for "suppress the
         /// dimension text" and is passed through as `" "` verbatim.
         public var textOverride: String?
-        /// Midpoint of the dimension text (group 11/21/31).
+        /// Midpoint of the dimension text (group 11/21/31), in the world: the file writes it in the
+        /// dimension's own coordinate system, and it is converted for a `-z` extrusion.
         public var textPosition: Point
         /// Group 10/20/30, always present; meaning depends on ``kind`` (see above).
         public var defPoint: Point
@@ -59,14 +60,20 @@ extension DXF {
         public var defPoint3: Point?
         /// Group 15/25/35. `nil` when absent (e.g. plain linear/aligned dimensions).
         public var defPoint4: Point?
-        /// Group 16/26/36, dimension-arc location (angular dimensions only).
+        /// Group 16/26/36, dimension-arc location (angular dimensions only), in the world like
+        /// ``textPosition``.
         public var defPoint5: Point?
         /// Rotation of a linear dimension's measuring direction, in degrees (group 50).
         ///
         /// `nil` when absent, which means horizontal. For a linear dimension this is what says
         /// whether it measures horizontally, vertically or at another angle.
+        ///
+        /// The file gives the angle from the x axis of the dimension's own coordinate system; on a
+        /// `-z` plane that axis is the world `-x`, and this is the world direction, `180 - angle`.
         public var rotation: Double?
         /// Oblique angle of the extension lines, in degrees (group 52), or `nil` when absent.
+        ///
+        /// Left as written on a `-z` plane, where ``rotation`` is converted.
         public var obliqueAngle: Double?
         /// The name of the dimension style (group 3), or `nil` when absent.
         public var styleName: String?

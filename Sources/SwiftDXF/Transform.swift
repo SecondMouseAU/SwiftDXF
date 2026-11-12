@@ -30,20 +30,16 @@ extension DXF {
             ty = -(b * base.x + d * base.y) + r.insertion.y + sn * ox + cs * oy
             zScale = r.scaleZ
             tz = r.insertion.z - r.scaleZ * base.z
-            if r.extrusion.z < 0 {
+            if ObjectPlane(extrusion: r.extrusion) == .down {
                 // The block is placed in an object coordinate system whose normal is -z, so its
                 // x axis maps to -x and z to -z in the world.
-                a = -a
-                c = -c
-                tx = -tx
-                zScale = -zScale
-                tz = -tz
+                self = ObjectPlane.mirror.composed(with: self)
             }
         }
 
         /// Whether `extrusion` is a normal this planar map can honour: along z, either way.
         static func supportsExtrusion(_ extrusion: Point) -> Bool {
-            abs(extrusion.x) < 1e-9 && abs(extrusion.y) < 1e-9
+            ObjectPlane(extrusion: extrusion) != .tilted
         }
 
         func apply(_ p: Point) -> Point {
@@ -71,14 +67,29 @@ extension DXF {
             return l0
         }
 
+        /// The angle of the direction that makes `degrees` with the x axis before this map.
+        ///
+        /// In degrees, in `(-180, 180]`. A mirror turns the angle round rather than adding to it.
+        func directionAngle(degrees: Double) -> Double {
+            let (cs, sn) = ArcPieces.cosSin(degrees: degrees)
+            let v = applyVector(cs, sn)
+            return atan2(v.y, v.x) * 180 / .pi
+        }
+
         /// The angle the x axis is turned by, in degrees.
         var rotationDegrees: Double { atan2(b, a) * 180 / .pi }
 
         /// An arc's angle range with the start moved into `0..<360` and the end moved with it, so
         /// the sweep is unchanged and a full circle stays a full circle.
+        ///
+        /// An arc that is not a full turn also gets its end in `0..<360`, so a range that wraps
+        /// through 0 has an end below its start, as the file writes it.
         static func normalizedArc(_ range: (Double, Double)) -> (Double, Double) {
             let shift = (range.0 / 360).rounded(.down) * 360
-            return (range.0 - shift, range.1 - shift)
+            let start = range.0 - shift
+            var end = range.1 - shift
+            if abs(end - start) < 360 - 1e-9 { end -= (end / 360).rounded(.down) * 360 }
+            return (start, end)
         }
 
         /// This map applied after `inner`.

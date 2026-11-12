@@ -138,6 +138,23 @@ struct BlockTests {
         }
     }
 
+    @Test("a rotated arc keeps both angles in 0..<360, and a full circle stays a full turn")
+    func rotatedArcAngles() throws {
+        var b = DXFBuilder()
+        b.blocks = [("B", (0, 0), [B.arc((0, 0), 1, 300, 50), B.arc((0, 0), 2, 0, 360)])]
+        b.entities = [B.insert("B", at: (0, 0), rotation: 90)]
+        let d = try Self.read(b)
+        guard case .arc(_, _, let s, let e, _, _) = d.entities[0],
+            case .arc(_, _, let fullStart, let fullEnd, _, _) = d.entities[1]
+        else {
+            Issue.record("expected two arcs")
+            return
+        }
+        // 300 to 50 turned by 90 is 30 to 140, not 30 to -220.
+        #expect(abs(s - 30) < 1e-9 && abs(e - 140) < 1e-9)
+        #expect(abs(fullEnd - fullStart - 360) < 1e-9)
+    }
+
     @Test("a non-uniform scale turns a circle into an ellipse")
     func nonUniformCircle() throws {
         var b = DXFBuilder()
@@ -174,6 +191,30 @@ struct BlockTests {
         } else {
             Issue.record("not an ellipse")
         }
+    }
+
+    @Test("text through a mirroring reference turns round instead of adding the rotation")
+    func mirroredText() throws {
+        var b = DXFBuilder()
+        let text: DXFBuilder.Record = [
+            (0, "TEXT"), (8, "0"), (10, "1"), (20, "0"), (30, "0"), (40, "2"), (1, "hi"),
+            (50, "30"),
+        ]
+        b.blocks = [("B", (0, 0), [text])]
+        b.entities = [
+            B.insert("B", at: (10, 0), scale: (-1, 1)), B.insert("B", at: (0, 5), rotation: 90),
+        ]
+        let d = try Self.read(b)
+        guard case .text(let p, let h, let rotation, _, _, _) = d.entities[0],
+            case .text(let q, _, let turned, _, _, _) = d.entities[1]
+        else {
+            Issue.record("expected two texts")
+            return
+        }
+        #expect(Self.close(p, 9, 0) && abs(h - 2) < 1e-12)
+        #expect(abs(rotation - 150) < 1e-9)
+        // A plain rotation still adds.
+        #expect(Self.close(q, 0, 6) && abs(turned - 120) < 1e-9)
     }
 
     @Test("a missing block and a cycle are reported, not trapped")
@@ -419,6 +460,22 @@ struct ExtrusionBlockTests {
         }
         #expect(d.references[0].extrusion == DXF.Point(0, 0, -1))
         #expect(d.warnings.isEmpty)
+    }
+
+    @Test("a tilted extrusion is expanded flat, and unmirrored even when its z is negative")
+    func tiltedNegative() throws {
+        var b = DXFBuilder()
+        b.blocks = [("B", (0, 0), [B.line((0, 0), (1, 0))])]
+        var insert = B.insert("B", at: (10, 0))
+        insert += [(210, "1.0"), (220, "0.0"), (230, "-1.0")]
+        b.entities = [insert]
+        let d = try DXF.read(text: b.text(), options: .init(expandBlocks: true))
+        if case .line(let a, let e, _, _) = d.entities[0] {
+            #expect(BlockTests.close(a, 10, 0) && BlockTests.close(e, 11, 0))
+        } else {
+            Issue.record("not a line")
+        }
+        #expect(d.warnings.contains(.unsupportedExtrusion(count: 1)))
     }
 
     @Test("a tilted extrusion is reported")
