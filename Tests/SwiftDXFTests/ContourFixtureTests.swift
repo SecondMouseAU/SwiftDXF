@@ -215,13 +215,13 @@ struct ContourFixtureTests {
         #expect(all.shapes.count == 2)
         #expect(all.warnings.contains(.ignoredText(count: 1)))
         #expect(all.warnings.contains(.blockReferencesNotExpanded(count: 1)))
-        #expect(all.warnings.contains(.skippedEntities(type: "HATCH", count: 1)))
+        #expect(all.warnings.contains(.ignoredHatches(count: 1)))
 
         let cut = dwg.contours(.init(layers: ["cut"]))
         #expect(cut.shapes.count == 1)
         #expect(near(cut.area, 100))
         #expect(cut.shapes.first?.outer.layers == ["CUT"])
-        #expect(cut.warnings == [.skippedEntities(type: "HATCH", count: 1)])
+        #expect(cut.warnings == [.ignoredHatches(count: 1)])
 
         let guides = dwg.contours(.init(layers: ["GUIDES"]))
         #expect(guides.shapes.count == 1)
@@ -230,6 +230,25 @@ struct ContourFixtureTests {
 
         let without = dwg.contours(.init(excludedLayers: ["GUIDES", "NOTES"]))
         #expect(without.shapes.count == 1)
-        #expect(without.warnings == [.skippedEntities(type: "HATCH", count: 1)])
+        #expect(without.warnings == [.ignoredHatches(count: 1)])
+    }
+
+    @Test("an unmodelled type and ignored leaders and hatches are each reported")
+    func ignoredKinds() throws {
+        let text = RawDXF.entities([
+            RawDXF.line(), RawDXF.record("TRACE", (8, "0")), RawDXF.record("TRACE", (8, "0")),
+            RawDXF.record(
+                "LEADER", (8, "0"), (76, "2"), (10, "0"), (20, "0"), (30, "0"), (10, "5"),
+                (20, "5"), (30, "0")),
+        ])
+        let result = try DXF.read(text: text).contours()
+        #expect(result.warnings.contains(.skippedEntities(type: "TRACE", count: 2)))
+        #expect(result.warnings.contains(.ignoredLeaders(count: 1)))
+        typealias Warning = DXF.Contour.Warning
+        #expect(
+            Warning.skippedEntities(type: "TRACE", count: 2).description
+                == "2 TRACE entities not read")
+        #expect(Warning.ignoredLeaders(count: 1).description == "1 leaders ignored")
+        #expect(Warning.ignoredHatches(count: 3).description == "3 hatches ignored")
     }
 }

@@ -21,11 +21,14 @@ func summary(for path: String) -> [String: Any] {
             "counts": [
                 "LINE": c.line, "CIRCLE": c.circle, "ARC": c.arc, "ELLIPSE": c.ellipse,
                 "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline,
-                "DIMENSION": c.dimension, "SPLINE": c.spline, "total": c.total,
+                "DIMENSION": c.dimension, "SPLINE": c.spline, "HATCH": c.hatch, "LEADER": c.leader,
+                "total": c.total,
             ],
             "skipped": dwg.skipped,
             "skippedByLayer": dwg.skippedByLayer,
         ]
+        // One entry per entity, in order: the file's handle, or null when it has none.
+        obj["handles"] = dwg.identities.map { $0.handle ?? NSNull() as Any }
         if let b = dwg.bounds {
             obj["bounds"] = ["min": [b.min.x, b.min.y], "max": [b.max.x, b.max.y]]
         } else {
@@ -64,10 +67,39 @@ func summary(for path: String) -> [String: Any] {
                 for p in [d.defPoint2, d.defPoint3, d.defPoint4, d.defPoint5] {
                     if let p { add("DIMENSION", p.x, p.y) }
                 }
+                if let r = d.rotation { add("DIMENSION", r) }
+                if let o = d.obliqueAngle { add("DIMENSION", o) }
             case .spline(let s):
                 for p in s.controlPoints { add("SPLINE", p.x, p.y) }
                 for p in s.fitPoints { add("SPLINE", p.x, p.y) }
+            case .leader(let l):
+                for p in l.vertices { add("LEADER", p.x, p.y) }
+            case .hatch(let h):
+                for path in h.paths {
+                    switch path.geometry {
+                    case .polyline(let vertices, _):
+                        for v in vertices { add("HATCH", v.point.x, v.point.y, v.bulge) }
+                    case .edges(let edges):
+                        for edge in edges {
+                            switch edge {
+                            case .line(let a, let b): add("HATCH", a.x, a.y, b.x, b.y)
+                            case .arc(let c, let r, let s, let e, _):
+                                add("HATCH", c.x, c.y, r, s, e)
+                            case .ellipse(let c, let m, let ratio, _, _, _):
+                                add("HATCH", c.x, c.y, m.x, m.y, ratio)
+                            case .spline(let sp):
+                                for p in sp.controlPoints { add("HATCH", p.x, p.y) }
+                            }
+                        }
+                    }
+                }
             }
+        }
+        // The geometric measurement of each DIMENSION in order (null where there is none), for
+        // diffing against ezdxf's Dimension.get_measurement().
+        obj["dimensions"] = dwg.entities.compactMap { e -> Any? in
+            guard case .dimension(let d) = e else { return nil }
+            return d.computedMeasurement ?? NSNull()
         }
         obj["geom"] = ["sum": sum, "scalars": n]
         obj["geomByType"] = byType.mapValues { ["sum": $0[0], "scalars": Int($0[1])] }

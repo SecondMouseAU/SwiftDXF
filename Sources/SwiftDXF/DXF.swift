@@ -6,9 +6,12 @@ import Foundation
 ///
 /// The reader is a clean-room implementation of the public DXF group-code reference. It targets the
 /// 2D entity set that dominates real-world drawings: `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `POINT`,
-/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, and `SPLINE`, and skips entities it
-/// does not model rather than failing, recording them in ``Drawing/skipped``. Only the `ENTITIES` (model-space) section is read, matching what a
-/// tool like *ezdxf*'s `modelspace()` iterates.
+/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, `SPLINE`, `HATCH` and `LEADER`, and
+/// skips entities it does not model rather than failing, recording them in
+/// ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space) section, matching what a
+/// tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is read for block
+/// definitions and `TABLES` for layers, line types and dimension styles; `INSERT` is not
+/// expanded.
 ///
 /// ```swift
 /// let dwg = try DXF.read(contentsOf: url)
@@ -72,88 +75,10 @@ public enum DXF {
         case dimension(Dimension)
         /// `SPLINE`: NURBS control data as stored in the file; see ``Spline``.
         case spline(Spline)
-    }
-
-    /// Base `DIMENSION` type, decoded from group 70's low 4 bits (`raw & 15`).
-    ///
-    /// Uses the same masking `ezdxf`'s `Dimension.dimtype` applies to strip the independent flag
-    /// bits (32/64/128).
-    public enum DimensionType: Sendable, Equatable {
-        /// Group 70 value `0`: a rotated, horizontal, or vertical linear dimension.
-        case linear
-        case aligned
-        case angular
-        case diameter
-        case radius
-        case angular3Point
-        case ordinate
-        /// An unrecognised base type (values `7…15`; the DXF spec defines none).
-        case unknown(Int)
-
-        init(group70 raw: Int) {
-            switch raw & 15 {
-            case 0: self = .linear
-            case 1: self = .aligned
-            case 2: self = .angular
-            case 3: self = .diameter
-            case 4: self = .radius
-            case 5: self = .angular3Point
-            case 6: self = .ordinate
-            default: self = .unknown(raw & 15)
-            }
-        }
-    }
-
-    /// A `DIMENSION` entity. Which definition points are populated depends on ``DimensionType``:
-    /// - `.linear` / `.aligned`: `defPoint` is the dimension line location; `defPoint2`/`defPoint3`
-    ///   are the two extension-line origins (the witness points, groups 13/14).
-    /// - `.radius` / `.diameter`: `defPoint` and `defPoint4` are the two ends of the measured
-    ///   radius/diameter (group 10 and 15); `defPoint2`/`defPoint3` are unused.
-    /// - `.angular` / `.angular3Point`: `defPoint`…`defPoint4` bound the two measured lines/rays,
-    ///   and `defPoint5` (group 16) is the dimension arc's location.
-    public struct Dimension: Sendable {
-        public var kind: DimensionType
-        /// Actual measurement (group 42), in drawing units. `nil` when the file omits it.
-        public var measurement: Double?
-        /// User-entered text override (group 1).
-        ///
-        /// `nil` when the field is absent or empty (the DXF convention for "use the default
-        /// formatted measurement"). A literal single space is the convention for "suppress the
-        /// dimension text" and is passed through as `" "` verbatim.
-        public var textOverride: String?
-        /// Midpoint of the dimension text (group 11/21/31).
-        public var textPosition: Point
-        /// Group 10/20/30, always present; meaning depends on ``kind`` (see above).
-        public var defPoint: Point
-        /// Group 13/23/33. `nil` when absent (e.g. radius/diameter dimensions).
-        public var defPoint2: Point?
-        /// Group 14/24/34. `nil` when absent (e.g. radius/diameter dimensions).
-        public var defPoint3: Point?
-        /// Group 15/25/35. `nil` when absent (e.g. plain linear/aligned dimensions).
-        public var defPoint4: Point?
-        /// Group 16/26/36, dimension-arc location (angular dimensions only).
-        public var defPoint5: Point?
-        public var layer: String
-        public var color: Int
-
-        public init(
-            kind: DimensionType, measurement: Double?, textOverride: String?,
-            textPosition: Point, defPoint: Point, defPoint2: Point? = nil,
-            defPoint3: Point? = nil, defPoint4: Point? = nil, defPoint5: Point? = nil,
-            layer: String, color: Int
-        ) {
-            self.kind = kind
-            self.measurement = measurement
-            self.textOverride = textOverride
-            self.textPosition = textPosition
-            self.defPoint = defPoint
-            self.defPoint2 = defPoint2
-            self.defPoint3 = defPoint3
-            self.defPoint4 = defPoint4
-            self.defPoint5 = defPoint5
-            self.layer = layer
-            self.color = color
-        }
+        /// `HATCH`: the filled regions and their boundaries; see ``Hatch``.
+        case hatch(Hatch)
+        /// `LEADER`: the line from an annotation to the feature it refers to; see ``Leader``.
+        case leader(Leader)
     }
 
     /// One polyline vertex: a point plus the bulge of the segment leaving it (`0` = straight).
@@ -169,7 +94,16 @@ public enum DXF {
     public struct Drawing: Sendable {
         /// `$ACADVER` header value (e.g. `AC1009` for R12), or `""` if the header was absent.
         public var version: String
-        public var entities: [Entity]
+        /// The modelled entities of model space.
+        ///
+        /// Changing this clears ``identities`` and ``entityLineTypes``, which would no longer line
+        /// up. Set them again afterwards when they still do.
+        public var entities: [Entity] {
+            didSet {
+                identities = []
+                entityLineTypes = []
+            }
+        }
         /// Per-type entity counts, for verification against reference tools (ezdxf, IxMilia.Dxf).
         public var counts: Counts
         /// `$INSUNITS` header code (0 = unitless, 1 = inches, 2 = feet, 4 = mm, 5 = cm, 6 = m, …),
@@ -181,16 +115,43 @@ public enum DXF {
         public var extMax: Point?
         /// Unmodelled entity types in the `ENTITIES` section, with a count of each.
         ///
-        /// For example `["INSERT": 3, "HATCH": 1]`; empty when nothing was skipped. Skipping is
+        /// For example `["INSERT": 3, "SOLID": 1]`; empty when nothing was skipped. Skipping is
         /// never an error.
         public var skipped: [String: Int]
         /// The same skipped entities broken down by layer: type name, then layer name, then count.
         public var skippedByLayer: [String: [String: Int]]
+        /// One ``Identity`` per entry in ``entities``, in the same order.
+        ///
+        /// Empty for a drawing built by hand and after any change to ``entities``;
+        /// ``identity(ofEntityAt:)`` then names each entity by its position.
+        public var identities: [Identity]
+        /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
+        ///
+        /// Parallel to ``entities`` like ``identities``, and cleared with it. Use
+        /// ``effectiveLineType(ofEntityAt:)`` for the line type an entity is drawn with.
+        public var entityLineTypes: [String?]
+        /// The block definitions of the `BLOCKS` section.
+        public var blocks: [Block]
+        /// The records of the `LAYER` table.
+        public var layers: [Layer]
+        /// The records of the `LTYPE` table.
+        public var lineTypes: [LineType]
+        /// The records of the `DIMSTYLE` table.
+        public var dimensionStyles: [DimensionStyle]
+        /// The dimension variables the header holds (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`).
+        ///
+        /// These belong to the style that is current when the file is saved, not to any one
+        /// dimension; see ``styleVariables(of:)``.
+        public var dimensionDefaults: DimensionStyle.Variables
 
         public init(
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
             insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil,
-            skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:]
+            skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:],
+            identities: [Identity] = [], entityLineTypes: [String?] = [], blocks: [Block] = [],
+            layers: [Layer] = [],
+            lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = [],
+            dimensionDefaults: DimensionStyle.Variables = .init()
         ) {
             self.version = version
             self.entities = entities
@@ -200,15 +161,36 @@ public enum DXF {
             self.extMax = extMax
             self.skipped = skipped
             self.skippedByLayer = skippedByLayer
+            self.identities = identities
+            self.entityLineTypes = entityLineTypes
+            self.blocks = blocks
+            self.layers = layers
+            self.lineTypes = lineTypes
+            self.dimensionStyles = dimensionStyles
+            self.dimensionDefaults = dimensionDefaults
+        }
+
+        /// The identity of the entity at `index` in ``entities``.
+        ///
+        /// Reading a file gives every entity an identity, so this is the entity's handle when the
+        /// file has one and its position in the file otherwise. For a drawing assembled by hand
+        /// it is the position in ``entities``. A position outside ``entities`` gets a locator too,
+        /// so the result is always a usable key; check the index first if it may be out of range.
+        public func identity(ofEntityAt index: Int) -> Identity {
+            if identities.count == entities.count, identities.indices.contains(index) {
+                return identities[index]
+            }
+            return Identity(locator: "ENTITIES:\(index)")
         }
 
         public struct Counts: Sendable, Equatable {
             public var line = 0, circle = 0, arc = 0, ellipse = 0, point = 0, text = 0, polyline = 0
-            public var dimension = 0, spline = 0
+            public var dimension = 0, spline = 0, hatch = 0, leader = 0
             public init() {}
             /// Total modelled entities.
             public var total: Int {
-                line + circle + arc + ellipse + point + text + polyline + dimension + spline
+                line + circle + arc + ellipse + point + text + polyline + dimension + spline + hatch
+                    + leader
             }
         }
 
@@ -258,6 +240,10 @@ public enum DXF {
                 case .spline(let s):
                     // The control polygon bounds a spline with positive weights.
                     for p in s.controlPoints.isEmpty ? s.fitPoints : s.controlPoints { acc(p) }
+                case .hatch(let h):
+                    for p in h.extentPoints { acc(p) }
+                case .leader(let l):
+                    for p in l.vertices { acc(p) }
                 }
             }
             return any ? (lo, hi) : nil

@@ -5,10 +5,19 @@ import Foundation
 /// Greedy: from each start point it takes the longest run of samples that one line, or one circle
 /// through the run's first, middle and last samples, reproduces within the tolerance.
 enum CurveFitter {
+    /// The pieces `pieces[firstPiece..<firstPiece + pieceCount]` replace samples `from...to`.
+    struct Run {
+        var from: Int
+        var to: Int
+        var firstPiece: Int
+        var pieceCount: Int
+    }
+
     struct Result {
         var pieces: [(a: DXF.Point2, b: DXF.Point2, bulge: Double)] = []
         /// Largest distance from a sample to the piece that replaces it.
         var deviation = 0.0
+        var runs: [Run] = []
     }
 
     static func fit(_ points: [DXF.Point2], tolerance: Double) -> Result {
@@ -25,10 +34,16 @@ enum CurveFitter {
                 let fit = arc(points, i, arcEnd, tolerance: tolerance)
             {
                 result.deviation = max(result.deviation, fit.deviation)
+                result.runs.append(
+                    Run(
+                        from: i, to: arcEnd, firstPiece: result.pieces.count,
+                        pieceCount: fit.pieces.count))
                 for piece in fit.pieces { result.pieces.append(piece) }
                 i = arcEnd
             } else {
                 result.deviation = max(result.deviation, lineDeviation(points, i, lineEnd))
+                result.runs.append(
+                    Run(from: i, to: lineEnd, firstPiece: result.pieces.count, pieceCount: 1))
                 result.pieces.append((points[i], points[lineEnd], 0))
                 i = lineEnd
             }
@@ -82,19 +97,10 @@ enum CurveFitter {
         pieces: [(a: DXF.Point2, b: DXF.Point2, bulge: Double)], deviation: Double
     )? {
         let m = (i + j) / 2
-        let bx = p[m].x - p[i].x
-        let by = p[m].y - p[i].y
-        let cx = p[j].x - p[i].x
-        let cy = p[j].y - p[i].y
-        let d = 2 * (bx * cy - by * cx)
-        let b2 = bx * bx + by * by
-        let c2 = cx * cx + cy * cy
-        guard abs(d) > 1e-9 * (b2 + c2), b2 > 0, c2 > 0 else { return nil }
-        let centre = DXF.Point2(
-            p[i].x + (cy * b2 - by * c2) / d, p[i].y + (bx * c2 - cx * b2) / d)
-        let radius = centre.distance(to: p[i])
-        guard radius.isFinite, radius < 1e6 else { return nil }
-        let counterClockwise = d > 0
+        guard let circle = Circumcircle(p[i], p[m], p[j]), circle.radius < 1e6 else { return nil }
+        let (centre, radius, counterClockwise) = (
+            circle.centre, circle.radius, circle.counterClockwise
+        )
         let a0 = atan2(p[i].y - centre.y, p[i].x - centre.x)
         func progress(_ q: DXF.Point2) -> Double {
             let a = atan2(q.y - centre.y, q.x - centre.x)

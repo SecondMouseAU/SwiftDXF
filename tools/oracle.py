@@ -81,18 +81,44 @@ def summarize(path):
         elif t == "DIMENSION":
             tm, dp = e.dxf.text_midpoint, e.dxf.defpoint
             vs = [tm.x, tm.y, dp.x, dp.y]
-            if e.dxf.hasattr("actual_measurement"):
+            # Zero or negative means "none" (some writers store -1), as in SwiftDXF.
+            if e.dxf.hasattr("actual_measurement") and e.dxf.actual_measurement > 0:
                 vs.append(e.dxf.actual_measurement)
             for name in ("defpoint2", "defpoint3", "defpoint4", "defpoint5"):
                 if e.dxf.hasattr(name):
                     p = getattr(e.dxf, name)
                     vs.extend([p.x, p.y])
+            for name in ("angle", "oblique_angle"):
+                if e.dxf.hasattr(name):
+                    vs.append(getattr(e.dxf, name))
             add("DIMENSION", *vs)
         elif t == "SPLINE":
             for p in e.control_points:
                 add("SPLINE", p[0], p[1])
             for p in e.fit_points:
                 add("SPLINE", p[0], p[1])
+        elif t == "LEADER":
+            for v in e.vertices:
+                add("LEADER", v[0], v[1])
+        elif t == "HATCH":
+            for boundary in e.paths:
+                if type(boundary).__name__ == "PolylinePath":
+                    for v in boundary.vertices:
+                        add("HATCH", v[0], v[1], v[2])
+                    continue
+                for edge in boundary.edges:
+                    kind = type(edge).__name__
+                    if kind == "LineEdge":
+                        add("HATCH", edge.start[0], edge.start[1], edge.end[0], edge.end[1])
+                    elif kind == "ArcEdge":
+                        add("HATCH", edge.center[0], edge.center[1], edge.radius,
+                            edge.start_angle, edge.end_angle)
+                    elif kind == "EllipseEdge":
+                        add("HATCH", edge.center[0], edge.center[1], edge.major_axis[0],
+                            edge.major_axis[1], edge.ratio)
+                    elif kind == "SplineEdge":
+                        for p in edge.control_points:
+                            add("HATCH", p[0], p[1])
     counts = {
         "LINE": raw.get("LINE", 0),
         "CIRCLE": raw.get("CIRCLE", 0),
@@ -103,10 +129,12 @@ def summarize(path):
         "POLYLINE": raw.get("LWPOLYLINE", 0) + raw.get("POLYLINE", 0),
         "DIMENSION": raw.get("DIMENSION", 0),
         "SPLINE": raw.get("SPLINE", 0),
+        "HATCH": raw.get("HATCH", 0),
+        "LEADER": raw.get("LEADER", 0),
     }
     counts["total"] = sum(counts.values())
     modelled = {"LINE", "CIRCLE", "ARC", "ELLIPSE", "POINT", "TEXT", "MTEXT", "LWPOLYLINE",
-                "POLYLINE", "DIMENSION", "SPLINE"}
+                "POLYLINE", "DIMENSION", "SPLINE", "HATCH", "LEADER"}
     skipped = {k: v for k, v in sorted(raw.items()) if k not in modelled}
     skipped_by_layer = {}
     for e in msp:
@@ -117,7 +145,21 @@ def summarize(path):
         layer = (e.dxf.layer if e.dxf.hasattr("layer") else "0").strip(SWIFT_WHITESPACES)
         layers[layer] = layers.get(layer, 0) + 1
     skipped_by_layer = {t: dict(sorted(v.items())) for t, v in sorted(skipped_by_layer.items())}
+    handles = [e.dxf.handle for e in msp if e.dxftype() in modelled]
+    dimensions = []
+    for e in msp:
+        if e.dxftype() != "DIMENSION":
+            continue
+        try:
+            # ezdxf's own measurement: geometry with no style scale, as SwiftDXF's computedMeasurement.
+            kind = e.dxf.dimtype & 15
+            m = e.get_measurement() if kind in (0, 1, 3, 4) else None
+            dimensions.append(float(m) if m is not None else None)
+        except Exception:  # noqa: BLE001
+            dimensions.append(None)
     return {
+        "dimensions": dimensions,
+        "handles": handles,
         "skipped": skipped,
         "skippedByLayer": skipped_by_layer,
         "file": os.path.basename(path),
