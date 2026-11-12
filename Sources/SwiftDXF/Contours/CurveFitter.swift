@@ -5,10 +5,19 @@ import Foundation
 /// Greedy: from each start point it takes the longest run of samples that one line, or one circle
 /// through the run's first, middle and last samples, reproduces within the tolerance.
 enum CurveFitter {
+    /// The pieces `pieces[firstPiece..<firstPiece + pieceCount]` replace samples `from...to`.
+    struct Run {
+        var from: Int
+        var to: Int
+        var firstPiece: Int
+        var pieceCount: Int
+    }
+
     struct Result {
         var pieces: [(a: DXF.Point2, b: DXF.Point2, bulge: Double)] = []
         /// Largest distance from a sample to the piece that replaces it.
         var deviation = 0.0
+        var runs: [Run] = []
     }
 
     static func fit(_ points: [DXF.Point2], tolerance: Double) -> Result {
@@ -25,10 +34,16 @@ enum CurveFitter {
                 let fit = arc(points, i, arcEnd, tolerance: tolerance)
             {
                 result.deviation = max(result.deviation, fit.deviation)
+                result.runs.append(
+                    Run(
+                        from: i, to: arcEnd, firstPiece: result.pieces.count,
+                        pieceCount: fit.pieces.count))
                 for piece in fit.pieces { result.pieces.append(piece) }
                 i = arcEnd
             } else {
                 result.deviation = max(result.deviation, lineDeviation(points, i, lineEnd))
+                result.runs.append(
+                    Run(from: i, to: lineEnd, firstPiece: result.pieces.count, pieceCount: 1))
                 result.pieces.append((points[i], points[lineEnd], 0))
                 i = lineEnd
             }

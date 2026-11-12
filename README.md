@@ -128,6 +128,41 @@ dwg.isVisible(entityAt: i)                  // on a layer that is on and not fro
 `pattern` (positive dash, negative gap, zero dot), `patternLength` and `description`. A block's
 entities keep their line type names in `Block.entityLineTypes`.
 
+### Fitting one curve
+
+A consumer that reads entities, not contours, can turn one `SPLINE` or `ELLIPSE` into lines and
+arcs it can build with:
+
+```swift
+if case .spline(let s) = dwg.entities[i] {
+    let fit = s.fitted(tolerance: 0.001)    // drawing units
+    for piece in fit.pieces {
+        piece.segment                       // DXF.Contour.Segment: a line, or an arc as chord + bulge
+        piece.source                        // the entity's Identity, when you name it
+    }
+    fit.deviation                           // never above the tolerance
+    fit.isExact                             // the curve is a line or arc, so the pieces are it
+}
+let named = dwg.fittedCurve(at: i, tolerance: 0.001)   // stamped with dwg.identity(ofEntityAt: i)
+```
+
+`entity.fitted(tolerance:source:)` returns `nil` for anything but a spline or an ellipse. The
+tolerance is in the drawing's units (millimetres for a drawing in millimetres). This is the fit
+`drawing.contours(_:)` makes, so pieces from a drawing's splines close into the same regions the
+contour layer finds.
+
+- **Exact lines and arcs.** Many exporters write a straight line or a circle as a spline. A spline
+  whose samples all lie on one line (running along it without doubling back), or on one circle
+  (turning one way, at most a full turn), within a billionth of its size, comes back as that line
+  or arc, with `isExact` set and a deviation that is only rounding. A rational circle or a 270
+  degree arc comes back as half-turn arcs. An `ELLIPSE` with equal axes is the same.
+- **Everything else** is sampled and covered greedily by the longest line or arc that stays within
+  half the tolerance of the samples. The result is then checked against the exact curve at extra
+  points between the samples, and sampled again, finer, until it is within the tolerance (at most
+  five attempts). `deviation` is the larger of the fit's own bound and what that check measured.
+- Degenerate input (fewer than two points, a zero-size ellipse) gives no pieces and does not trap.
+  A tolerance that is not positive and finite is clamped to a billionth.
+
 ### Dimensions
 
 A `DIMENSION` says what it measures, and how the number is to be stated:
@@ -188,6 +223,9 @@ tolerance. Fallbacks, so malformed data never traps:
 - With **no control points**, a uniform Catmull-Rom curve through the fit points is used. It passes
   through every fit point but does not reproduce a file's own tangent data.
 - A closed spline whose flattened end differs from its start gets the start appended.
+- Flattening judges each span from three samples, so a sharp fold or cusp narrower than a quarter
+  of a span, such as a control polygon that doubles back on its own line, can fall between them
+  and be rounded off.
 - Fewer than two control points returns what is there; `point(at:)` returns `nil`.
 
 `Drawing` also exposes header essentials: `version` (`$ACADVER`), `insUnits` (`$INSUNITS`), and the
@@ -237,6 +275,7 @@ half turn, so a circle is two segments and a 270 degree arc is two. A `Loop` is 
 | `LINE`, `ARC`, `CIRCLE` | exact lines and arcs |
 | `LWPOLYLINE`, `POLYLINE` | exact lines and arcs from the bulges (`closed` adds the closing segment) |
 | `ELLIPSE` with ratio 1 | exact arcs |
+| `SPLINE` that is exactly a line or arc | that line or arc |
 | other `ELLIPSE`, `SPLINE` | sampled, then fitted with lines and circular arcs |
 | `TEXT`, `DIMENSION`, `POINT`, `HATCH`, `LEADER` | ignored, with a warning |
 | `INSERT` and unmodelled types | not read, with a warning |
@@ -259,10 +298,13 @@ How it works:
   even-odd rule (a loop inside one loop is a hole, inside two is an island, and so on). The test
   handles arcs, skips probes that sit on the other loop's boundary, and uses a per-loop index so a
   30,000 segment outline is not rescanned for every hole.
-- **Fitting.** Ellipses and splines are sampled so every chord is within a quarter of
-  `fitTolerance`, then covered greedily by the longest line or arc that stays within half of it.
-  `result.maxFitDeviation` is an upper bound on the distance to the true curve and never exceeds
-  `fitTolerance`; the tests measure the true deviation against the exact curve.
+- **Fitting.** A spline that is exactly a line or arc comes out as that line or arc. Other ellipses
+  and splines are sampled so every chord is within a quarter of `fitTolerance`, then covered
+  greedily by the longest line or arc that stays within half of it. Each fit is checked against the
+  exact curve at extra points between the samples and sampled finer if it strays beyond
+  `fitTolerance`. `result.maxFitDeviation` is the larger of the fit's own bound and the measured
+  deviation, and does not exceed `fitTolerance`; the tests measure the true deviation against the
+  exact curve. The same fit is available for one entity, see *Fitting one curve*.
 - **Warnings** (`result.warnings`): `unitlessAssumed`, `unknownUnitCode`, `skippedEntities`,
   `blockReferencesNotExpanded`, `ignoredText`, `ignoredDimensions`, `ignoredPoints`,
   `ignoredHatches`, `ignoredLeaders`, `fittedCurves`, `openChains`, `degenerateGeometry`,

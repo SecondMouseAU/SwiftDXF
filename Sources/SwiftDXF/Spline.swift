@@ -161,6 +161,15 @@ extension DXF {
             _ ta: Double, _ tb: Double, _ pa: Point, _ pb: Point, _ tol: Double, _ depth: Int,
             _ eval: (Double) -> Point, _ out: inout [Point]
         ) {
+            var times: [Double] = []
+            subdivide(ta, tb, pa, pb, tol, depth, eval, &out, times: &times)
+        }
+
+        /// As above, also appending the parameter of each appended point to `times`.
+        static func subdivide(
+            _ ta: Double, _ tb: Double, _ pa: Point, _ pb: Point, _ tol: Double, _ depth: Int,
+            _ eval: (Double) -> Point, _ out: inout [Point], times: inout [Double]
+        ) {
             if depth < 12 {
                 let dev =
                     [0.25, 0.5, 0.75].map {
@@ -169,12 +178,13 @@ extension DXF {
                 if dev > tol * 0.9 || depth < 1 {
                     let tm = 0.5 * (ta + tb)
                     let pm = eval(tm)
-                    subdivide(ta, tm, pa, pm, tol, depth + 1, eval, &out)
-                    subdivide(tm, tb, pm, pb, tol, depth + 1, eval, &out)
+                    subdivide(ta, tm, pa, pm, tol, depth + 1, eval, &out, times: &times)
+                    subdivide(tm, tb, pm, pb, tol, depth + 1, eval, &out, times: &times)
                     return
                 }
             }
             out.append(pb)
+            times.append(tb)
         }
 
         static func distance(_ a: Point, _ b: Point) -> Double {
@@ -245,16 +255,23 @@ extension DXF.Spline.Curve {
     }
 
     func flatten(tolerance: Double) -> [DXF.Point] {
+        flattenWithParameters(tolerance: tolerance).map(\.point)
+    }
+
+    /// The flattened points, each with the curve parameter it was evaluated at.
+    func flattenWithParameters(tolerance: Double) -> [(t: Double, point: DXF.Point)] {
         var distinct: [Double] = []
         for k in knots where k >= domain.lowerBound && k <= domain.upperBound {
             if distinct.last.map({ k > $0 }) ?? true { distinct.append(k) }
         }
         var out = [point(at: domain.lowerBound)]
+        var times = [domain.lowerBound]
         for (a, b) in zip(distinct, distinct.dropFirst()) {
             DXF.Spline.subdivide(
-                a, b, out[out.count - 1], point(at: b), tolerance, 0, { point(at: $0) }, &out)
+                a, b, out[out.count - 1], point(at: b), tolerance, 0, { point(at: $0) }, &out,
+                times: &times)
         }
-        return out
+        return zip(times, out).map { (t: $0, point: $1) }
     }
 }
 

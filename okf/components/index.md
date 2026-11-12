@@ -31,6 +31,11 @@ timestamp: 2026-11-12
   (linear, aligned, radius, diameter); `Drawing.styleVariables(of:)` resolves overrides over the
   `DIMSTYLE` record, and `displayedMeasurement(of:)` applies `DIMLFAC`. `DimensionText` splits the
   override into measurement, number, words and line-break parts. Read by `Reader+Dimension.swift`.
+- **Curve fit** (`CurveFit.swift`, `CurveFit+Fitting.swift`): `Entity.fitted(tolerance:source:)`,
+  `Spline.fitted(tolerance:source:)` and `Drawing.fittedCurve(at:tolerance:)` turn one `SPLINE` or
+  `ELLIPSE` into a `DXF.CurveFit` of `Contour.Segment` pieces (each stamped with the entity's
+  `Identity`) plus the deviation achieved. It runs the contour layer's `SegmentExtractor`, so the
+  two agree; `Contours/SplineRecognition.swift` recognises a spline that is exactly a line or arc.
 - **Contour layer** (in `SwiftDXF`, `Sources/SwiftDXF/Contours/`): `drawing.contours(_:)` returns a
   `DXF.Contour.Result` of `Shape`s (a counter-clockwise outer `Loop` plus clockwise hole `Loop`s),
   leftover open `Chain`s and `Warning`s, in millimetres. `Segment` is a line or arc as chord plus
