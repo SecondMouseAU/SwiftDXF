@@ -217,6 +217,21 @@ public enum DXF {
         public var identities: [EntityIdentity]
         /// The `DIMSTYLE` table by style name.
         public var dimensionStyles: [String: DimensionStyle]
+        /// The `LAYER` table by layer name.
+        public var layers: [String: Layer]
+        /// The `LTYPE` table by line type name.
+        public var lineTypeTable: [String: LineType]
+        /// One line type name per entry of ``entities``, as written: `nil` is by-layer, and
+        /// `BYBLOCK` has been replaced by the reference's line type for an expanded entity.
+        public var entityLineTypes: [String?]
+        /// Block definitions by name (`BLOCKS` section, without the model and paper space blocks).
+        public var blocks: [String: Block]
+        /// The `INSERT`s of the `ENTITIES` section, whether or not they were expanded.
+        public var references: [BlockReference]
+        public var hatches: [Hatch]
+        public var leaders: [Leader]
+        /// What a reader did that a consumer should not miss.
+        public var warnings: [Warning]
 
         public init(
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
@@ -226,6 +241,14 @@ public enum DXF {
         ) {
             self.identities = identities
             self.dimensionStyles = dimensionStyles
+            layers = [:]
+            lineTypeTable = [:]
+            entityLineTypes = []
+            blocks = [:]
+            references = []
+            hatches = []
+            leaders = []
+            warnings = []
             self.version = version
             self.entities = entities
             self.counts = counts
@@ -308,21 +331,23 @@ public enum DXF {
 
     // MARK: Entry points
 
-    public static func read(contentsOf url: URL) throws -> Drawing {
-        try read(data: try Data(contentsOf: url))
+    public static func read(contentsOf url: URL, options: ReadOptions = .init()) throws -> Drawing {
+        try read(data: try Data(contentsOf: url), options: options)
     }
 
-    public static func read(data: Data) throws -> Drawing {
+    public static func read(data: Data, options: ReadOptions = .init()) throws -> Drawing {
         guard !data.isEmpty else { throw Error.empty }
         if isBinary(data) { throw Error.binaryUnsupported }
         var r = Reader(decode(data))
+        r.expandBlocks = options.expandBlocks
         return try r.parse()
     }
 
     /// Parse an already-decoded DXF string.
-    public static func read(text: String) throws -> Drawing {
+    public static func read(text: String, options: ReadOptions = .init()) throws -> Drawing {
         guard !text.isEmpty else { throw Error.empty }
         var r = Reader(text)
+        r.expandBlocks = options.expandBlocks
         return try r.parse()
     }
 

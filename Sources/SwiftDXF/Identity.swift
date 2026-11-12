@@ -15,14 +15,23 @@ extension DXF {
         public var section: String
         /// Zero-based position of the record among the records of its section.
         public var index: Int
-        /// The identities (``id`` strings) of the block references this entity was expanded from.
+        /// The block references this entity was expanded from, outermost first.
+        ///
+        /// Each is the reference's ``local`` identity, with `[column,row]` added for a reference
+        /// that is an array.
         public var via: [String]
+        /// The names of the blocks in ``via``, in the same order.
+        public var blocks: [String]
 
-        public init(handle: String?, section: String, index: Int, via: [String] = []) {
+        public init(
+            handle: String?, section: String, index: Int, via: [String] = [],
+            blocks: [String] = []
+        ) {
             self.handle = handle
             self.section = section
             self.index = index
             self.via = via
+            self.blocks = blocks
         }
 
         /// The entity's own identity without its references: `#2F` or `ENTITIES[12]`.

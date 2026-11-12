@@ -7,6 +7,7 @@ import SwiftDXF
 //   dxfdump file1.dxf [file2.dxf ...]
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
 //   dxfdump --dimensions file.dxf [...]
+//   dxfdump --expand file.dxf [...]
 //
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
@@ -164,7 +165,54 @@ func dimensionRows(for path: String) -> [String: Any] {
     }
 }
 
+/// Per-type counts and a coordinate digest of the drawing with block references expanded.
+func expandedSummary(for path: String) -> [String: Any] {
+    let url = URL(fileURLWithPath: path)
+    do {
+        let dwg = try DXF.read(contentsOf: url, options: .init(expandBlocks: true))
+        var counts: [String: Int] = [:]
+        var lineSum = 0.0
+        var lineScalars = 0
+        var circleSum = 0.0
+        for e in dwg.entities {
+            switch e {
+            case .line(let a, let b, _, _):
+                counts["LINE", default: 0] += 1
+                lineSum += a.x + a.y + b.x + b.y
+                lineScalars += 4
+            case .circle(let c, let r, _, _):
+                counts["CIRCLE", default: 0] += 1
+                circleSum += c.x + c.y + r
+            case .arc: counts["ARC", default: 0] += 1
+            case .ellipse: counts["ELLIPSE", default: 0] += 1
+            case .point: counts["POINT", default: 0] += 1
+            case .text: counts["TEXT", default: 0] += 1
+            case .polyline: counts["POLYLINE", default: 0] += 1
+            case .dimension: counts["DIMENSION", default: 0] += 1
+            case .spline: counts["SPLINE", default: 0] += 1
+            }
+        }
+        return [
+            "file": url.lastPathComponent, "counts": counts, "lineSum": lineSum,
+            "lineScalars": lineScalars, "circleSum": circleSum, "hatches": dwg.hatches.count,
+            "leaders": dwg.leaders.count, "references": dwg.references.count,
+            "warnings": dwg.warnings.map { "\($0)" }, "skipped": dwg.skipped,
+        ]
+    } catch {
+        return ["file": url.lastPathComponent, "error": "\(error)"]
+    }
+}
+
 var arguments = Array(CommandLine.arguments.dropFirst())
+if let flag = arguments.firstIndex(of: "--expand") {
+    arguments.remove(at: flag)
+    for path in arguments {
+        let data = try JSONSerialization.data(
+            withJSONObject: expandedSummary(for: path), options: [.sortedKeys])
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
 if let flag = arguments.firstIndex(of: "--dimensions") {
     arguments.remove(at: flag)
     for path in arguments {

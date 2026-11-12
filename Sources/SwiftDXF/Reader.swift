@@ -7,6 +7,8 @@ extension DXF {
         /// (group code, raw value) pairs, in file order. `\r` already stripped from values.
         let pairs: [(code: Int, value: String)]
         var version = ""
+        /// Whether `INSERT` references are flattened into ``Drawing/entities``.
+        var expandBlocks = false
 
         init(_ text: String) {
             var out: [(Int, String)] = []
@@ -48,25 +50,25 @@ extension DXF {
         }
         /// A point whose base group code (and `+10`/`+20` for y/z) may be entirely absent, e.g.
         /// DIMENSION's per-type definition points (13/14/15/16). `nil`, not a zero point, when unset.
-        private func pointOpt(_ base: Int, _ f: [(code: Int, value: String)]) -> Point? {
+        func pointOpt(_ base: Int, _ f: [(code: Int, value: String)]) -> Point? {
             guard first(base, f) != nil else { return nil }
             return Point(dbl(base, f), dbl(base + 10, f), dbl(base + 20, f))
         }
-        private func allDbl(_ code: Int, _ f: [(code: Int, value: String)]) -> [Double] {
+        func allDbl(_ code: Int, _ f: [(code: Int, value: String)]) -> [Double] {
             f.compactMap {
                 $0.code == code ? Double($0.value.trimmingCharacters(in: .whitespaces)) : nil
             }
         }
-        private func layer(_ f: [(code: Int, value: String)]) -> String {
+        func layer(_ f: [(code: Int, value: String)]) -> String {
             first(8, f).map { $0.trimmingCharacters(in: .whitespaces) } ?? "0"
         }
         /// AutoCAD Color Index (group 62); 256 = BYLAYER when absent.
-        private func color(_ f: [(code: Int, value: String)]) -> Int { ints(62, f) ?? 256 }
-        private func point(_ f: [(code: Int, value: String)]) -> Point {
+        func color(_ f: [(code: Int, value: String)]) -> Int { ints(62, f) ?? 256 }
+        func point(_ f: [(code: Int, value: String)]) -> Point {
             Point(dbl(10, f), dbl(20, f), dbl(30, f))
         }
         /// LWPOLYLINE vertices in field order: each `10` opens a vertex, `20` is its y, `42` its bulge.
-        private func lwVertices(_ f: [(code: Int, value: String)]) -> [PolyVertex] {
+        func lwVertices(_ f: [(code: Int, value: String)]) -> [PolyVertex] {
             var verts: [PolyVertex] = []
             var x: Double?
             var y: Double = 0
@@ -94,7 +96,7 @@ extension DXF {
 
         /// SPLINE points for base code 10 (control) or 11 (fit): each base-code tag opens a point,
         /// the `+10`/`+20` tags that follow fill its y and z.
-        private func splinePoints(_ base: Int, _ f: [(code: Int, value: String)]) -> [Point] {
+        func splinePoints(_ base: Int, _ f: [(code: Int, value: String)]) -> [Point] {
             var pts: [Point] = []
             var cur: Point?
             for (code, value) in f {
@@ -135,8 +137,23 @@ extension DXF {
             let mx = headerVar("$EXTMAX")
             if mx.contains(where: { $0.code == 10 }) { dwg.extMax = point(mx) }
             dwg.dimensionStyles = dimensionStyles()
+            dwg.layers = layerTable()
+            dwg.lineTypeTable = lineTypeTable()
             guard let start = entitiesStart() else { return dwg }  // valid DXF, just no model space
 
+            _ = readRecords(
+                from: start, section: "ENTITIES", terminators: ["ENDSEC", "EOF"], into: &dwg)
+            readBlocks(into: &dwg)
+            if expandBlocks { dwg.expandBlockReferences() }
+            return dwg
+        }
+
+        /// Reads the `0`-tagged records from `start` until one of `terminators`.
+        ///
+        /// What it models is appended to `dwg`. Returns the index of the terminating record.
+        mutating func readRecords(
+            from start: Int, section: String, terminators: Set<String>, into dwg: inout Drawing
+        ) -> Int {
             var i = start
             var recordIndex = 0
             while i < pairs.count {
@@ -146,7 +163,7 @@ extension DXF {
                     continue
                 }
                 let type = trimmed(p.value)
-                if type == "ENDSEC" || type == "EOF" { break }
+                if terminators.contains(type) { break }
 
                 // Collect this entity's fields up to the next 0-tag.
                 var j = i + 1
@@ -157,6 +174,7 @@ extension DXF {
                 }
 
                 let entitiesBefore = dwg.entities.count
+                recordExtras(type, fields, section: section, index: recordIndex, into: &dwg)
                 switch type {
                 case "LINE":
                     let a = point(fields)
@@ -298,16 +316,17 @@ extension DXF {
                 if dwg.entities.count > entitiesBefore {
                     dwg.identities.append(
                         EntityIdentity(
-                            handle: handle(fields), section: "ENTITIES", index: recordIndex))
+                            handle: handle(fields), section: section, index: recordIndex))
+                    dwg.entityLineTypes.append(nonEmpty(first(6, fields)))
                 }
                 recordIndex += 1
                 i = j
             }
-            return dwg
+            return i
         }
 
         /// The value pairs of a HEADER variable (`9`/`$NAME`), up to the next `9` or section `0`.
-        private func headerVar(_ name: String) -> [(code: Int, value: String)] {
+        func headerVar(_ name: String) -> [(code: Int, value: String)] {
             guard let start = pairs.firstIndex(where: { $0.code == 9 && trimmed($0.value) == name })
             else { return [] }
             var out: [(code: Int, value: String)] = []
@@ -320,7 +339,7 @@ extension DXF {
         }
 
         /// Index of the first pair *after* a `2`/`ENTITIES` tag inside a `SECTION`.
-        private func entitiesStart() -> Int? {
+        func entitiesStart() -> Int? {
             var k = 0
             while k + 1 < pairs.count {
                 if pairs[k].code == 0, trimmed(pairs[k].value) == "SECTION",
@@ -337,14 +356,14 @@ extension DXF {
 
         /// Text payload for TEXT/MTEXT: concatenate MTEXT continuation groups (3) then the final
         /// group (1), and decode AutoCAD inline escapes.
-        private func textValue(_ f: [(code: Int, value: String)]) -> String {
+        func textValue(_ f: [(code: Int, value: String)]) -> String {
             let continued = f.filter { $0.code == 3 }.map(\.value).joined()
             let main = first(1, f) ?? ""
             return unescape(continued + main)
         }
 
         /// Decode the inline escapes that matter for plain text: `\U+XXXX` unicode, and `\P` newline.
-        private func unescape(_ s: String) -> String {
+        func unescape(_ s: String) -> String {
             guard s.contains("\\") else { return s }
             var out = ""
             var it = s.makeIterator()

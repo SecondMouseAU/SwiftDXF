@@ -89,3 +89,31 @@ extension DXF.Reader {
         return out
     }
 }
+
+extension DXF.Reader {
+    /// The `LAYER` table by layer name.
+    func layerTable() -> [String: DXF.Layer] {
+        var out: [String: DXF.Layer] = [:]
+        for fields in tableRecords("LAYER") {
+            guard let name = nonEmpty(first(2, fields)) else { continue }
+            let color = ints(62, fields) ?? 7
+            let flags = ints(70, fields) ?? 0
+            out[name] = DXF.Layer(
+                name: name, color: abs(color), isOff: color < 0, isFrozen: flags & 1 != 0,
+                isLocked: flags & 4 != 0, lineType: nonEmpty(first(6, fields)) ?? "Continuous")
+        }
+        return out
+    }
+
+    /// The `LTYPE` table by line type name.
+    func lineTypeTable() -> [String: DXF.LineType] {
+        var out: [String: DXF.LineType] = [:]
+        for fields in tableRecords("LTYPE") {
+            guard let name = nonEmpty(first(2, fields)) else { continue }
+            out[name] = DXF.LineType(
+                name: name, description: nonEmpty(first(3, fields)) ?? "",
+                pattern: allDbl(49, fields), patternLength: dbl(40, fields))
+        }
+        return out
+    }
+}
