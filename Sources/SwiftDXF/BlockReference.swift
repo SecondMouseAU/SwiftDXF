@@ -74,6 +74,12 @@ extension DXF {
 
     /// Something a reader did to a file that a consumer should not miss.
     public enum Warning: Equatable, Sendable, CustomStringConvertible {
+        /// Entities of `type` written in an object coordinate system whose normal (the extrusion,
+        /// groups 210, 220, 230) is not along z, which a planar entity cannot carry. They were read
+        /// as if it were, so they sit where the file wrote them rather than where they are drawn.
+        ///
+        /// Counts every such entity of the model space and of the blocks.
+        case extrusionNotApplied(type: String, count: Int)
         /// A reference names a block the file does not define.
         case missingBlock(name: String, count: Int)
         /// A block contains itself, directly or through other blocks; the inner reference was
@@ -92,6 +98,8 @@ extension DXF {
 
         public var description: String {
             switch self {
+            case .extrusionNotApplied(let type, let count):
+                return "\(count) \(type) entities have an extrusion not along z, read as if it were"
             case .missingBlock(let name, let count):
                 return "\(count) references to missing block \(name)"
             case .blockCycle(let name): return "block \(name) contains itself"

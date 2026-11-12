@@ -16,6 +16,11 @@ timestamp: 2026-11-12
   `Drawing.identities` gives each entity its handle or position; `Drawing.dimensionStyles` is the
   `DIMSTYLE` table. Unmodelled entity types are tallied in `Drawing.skipped` / `skippedByLayer`;
   `DXF.Spline.flattened(tolerance:)` turns a spline into polyline points.
+- **Extrusion** (`ObjectPlane.swift`, `Reader+Extrusion.swift`): an entity written in an object
+  coordinate system with a `-z` normal is read as its world geometry (`Entity.transformed(by:)` with
+  `ObjectPlane.mirror`; an `ELLIPSE` only reverses its parameter range). A normal that is not along z
+  is read as written and reported as `Warning.extrusionNotApplied`. `tools/ocs_fixtures.py` builds
+  the fixture and the `ezdxf.upright` reference values.
 - **Block references** (`BlockReference.swift`, `BlockExpansion.swift`, `Transform.swift`,
   `Entity+Transform.swift`, `Reader+Blocks.swift`): `INSERT` is read into `Drawing.references` and
   `Block.references`. `DXF.read(_:options:)` with `ReadOptions(expandBlocks: true)` flattens every
@@ -52,7 +57,7 @@ timestamp: 2026-11-12
   three points is `Circumcircle`), `ContourChainer`
   (grid-hash endpoint merge, loop tracing), `ContourNesting` with `LoopIndex` (even-odd island
   nesting). Pure Swift and OCCT-free: OCCT consumers belong in OCCTSwiftIO. Known limits are in the
-  README (no OCS/extrusion on entities, `INSERT` flattened only on request).
+  README (entities on a tilted plane are read as written, `INSERT` flattened only on request).
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
   `--contours` prints the contour summary as JSON; `--expand` and `--skip-paper-space` read with
   those `ReadOptions`.

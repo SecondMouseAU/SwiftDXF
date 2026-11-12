@@ -113,9 +113,16 @@ extension DXF.Entity {
 
         case .text(let p, let h, let rot, let string, let l, let c):
             let scaleY = hypot(t.c, t.d)
+            var direction = rot + t.rotationDegrees
+            if t.isMirrored {
+                // A mirror turns the angle round instead of adding to it.
+                let (cs, sn) = ArcPieces.cosSin(degrees: rot)
+                let v = t.applyVector(cs, sn)
+                direction = atan2(v.y, v.x) * deg
+            }
             return .text(
-                at: t.apply(p), height: h * scaleY, rotationDeg: rot + t.rotationDegrees,
-                string: string, layer: l, color: c)
+                at: t.apply(p), height: h * scaleY, rotationDeg: direction, string: string,
+                layer: l, color: c)
 
         case .polyline(let vertices, let closed, let l, let c):
             guard let moved = t.apply(vertices) else { return nil }

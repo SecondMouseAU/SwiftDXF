@@ -38,6 +38,8 @@ extension DXF.Reader {
         ///
         /// Only counted in model space.
         var paperSpace: [String: Int] = [:]
+        /// Records written in an object coordinate system whose normal is not along z, by type.
+        var tilted: [String: Int] = [:]
         /// Index of the pair that ended the run.
         var end = 0
     }
@@ -77,6 +79,9 @@ extension DXF.Reader {
                 }
             }
             if let entity = readEntity(type: type, fields: fields, next: &j) {
+                if usesObjectCoordinates(type, fields), objectPlane(fields) == .tilted {
+                    run.tilted[type, default: 0] += 1
+                }
                 run.entities.append(entity)
                 run.identities.append(
                     DXF.Identity(handle: handle(fields), locator: locator(position)))
@@ -117,11 +122,20 @@ extension DXF.Reader {
         return value
     }
 
-    /// One entity from its fields, or `nil` for a type that is not modelled.
+    /// One entity from its fields, in world coordinates, or `nil` for a type that is not modelled.
     ///
     /// `next` is the index of the pair after the record, and moves forward when the record owns
     /// following records (a `POLYLINE` owns its `VERTEX` run and the `SEQEND`).
     private func readEntity(
+        type: String, fields: [(code: Int, value: String)], next j: inout Int
+    ) -> DXF.Entity? {
+        guard let entity = readRecord(type: type, fields: fields, next: &j) else { return nil }
+        return usesObjectCoordinates(type, fields) ? inWorld(entity, fields) : entity
+    }
+
+    /// One entity from its fields as written, which for some types is in the object coordinate
+    /// system; see ``readEntity(type:fields:next:)``.
+    private func readRecord(
         type: String, fields: [(code: Int, value: String)], next j: inout Int
     ) -> DXF.Entity? {
         switch type {
@@ -146,6 +160,11 @@ extension DXF.Reader {
             var ratio = dbl(40, fields, 1)
             var startP = dbl(41, fields, 0)
             var endP = dbl(42, fields, 2 * .pi)
+            // An extrusion of -z makes the parameter run clockwise; turn it into the same curve
+            // running counter-clockwise, before the ratio is normalised below.
+            if objectPlane(fields) == .down {
+                (startP, endP) = Self.mirroredEllipseRange(start: startP, end: endP)
+            }
             // The DXF spec requires ratio = minor/major ≤ 1. Some writers emit ratio > 1
             // (a swapped major axis). Normalise to the canonical form: rotate the major axis
             // +90° and scale by ratio, invert the ratio, shift the params by −π/2, so the curve

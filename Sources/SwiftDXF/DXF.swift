@@ -12,7 +12,8 @@ import Foundation
 /// tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is read for block
 /// definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is read into
 /// ``Drawing/references`` and flattened into the entities when ``ReadOptions/expandBlocks`` is
-/// set.
+/// set. An entity written in a coordinate system with a `-z` extrusion is read as its world
+/// geometry; one on a tilted plane is read as written and reported in ``Drawing/warnings``.
 ///
 /// ```swift
 /// let dwg = try DXF.read(contentsOf: url)

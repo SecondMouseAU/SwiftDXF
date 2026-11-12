@@ -176,6 +176,30 @@ struct BlockTests {
         }
     }
 
+    @Test("text through a mirroring reference turns round instead of adding the rotation")
+    func mirroredText() throws {
+        var b = DXFBuilder()
+        let text: DXFBuilder.Record = [
+            (0, "TEXT"), (8, "0"), (10, "1"), (20, "0"), (30, "0"), (40, "2"), (1, "hi"),
+            (50, "30"),
+        ]
+        b.blocks = [("B", (0, 0), [text])]
+        b.entities = [
+            B.insert("B", at: (10, 0), scale: (-1, 1)), B.insert("B", at: (0, 5), rotation: 90),
+        ]
+        let d = try Self.read(b)
+        guard case .text(let p, let h, let rotation, _, _, _) = d.entities[0],
+            case .text(let q, _, let turned, _, _, _) = d.entities[1]
+        else {
+            Issue.record("expected two texts")
+            return
+        }
+        #expect(Self.close(p, 9, 0) && abs(h - 2) < 1e-12)
+        #expect(abs(rotation - 150) < 1e-9)
+        // A plain rotation still adds.
+        #expect(Self.close(q, 0, 6) && abs(turned - 120) < 1e-9)
+    }
+
     @Test("a missing block and a cycle are reported, not trapped")
     func missingAndCycle() throws {
         var b = DXFBuilder()
