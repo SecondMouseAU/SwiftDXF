@@ -81,12 +81,54 @@ Blocks and tables carry identities too:
 | `dwg.layers`, `dwg.lineTypes` | the `LAYER` and `LTYPE` records: `name` and `handle` |
 | `dwg.dimensionStyles` | the `DIMSTYLE` records: `name` and `handle` (group 105) |
 
-`INSERT` references are still not expanded ([#5](https://github.com/SecondMouseAU/SwiftDXF/issues/5)).
+An entity that came out of an expanded block reference (see below) also carries `via`, the
+references it came through, and `blocks`, their names. Its `id` then reads like `8E/31`: the
+reference `8E`, then the entity `31` inside the block.
 
 `identities` and `entityLineTypes` run parallel to `entities`, so changing `entities` clears
 them: `identity(ofEntityAt:)` then names each entity by its position and
 `lineTypeName(ofEntityAt:)` returns `nil`, rather than hand back a stale entry. Set them again
 afterwards if they still line up. A position outside `entities` gets a locator too.
+
+### Block references and paper space
+
+```swift
+let dwg = try DXF.read(contentsOf: url, options: .init(expandBlocks: true, skipPaperSpace: true))
+dwg.references   // every INSERT of ENTITIES: name, insertion, scale, rotation, array, extrusion
+dwg.warnings     // [.missingBlock(name: "GONE", count: 1), ...]
+dwg.paperSpace   // ["LINE": 12, "TEXT": 3]  entities flagged as paper space (group 67), by type
+```
+
+`INSERT` is always read into `dwg.references` (and `Block.references` inside a block). By default
+nothing is flattened: the geometry a reference places stays out of `entities`, and the `INSERT`
+stays in `dwg.skipped`, as before. With `expandBlocks: true` every top-level reference is flattened
+into `dwg.entities`:
+
+- Nested blocks, scale (also non-uniform), rotation, mirroring (a negative scale, or an extrusion
+  of `(0, 0, -1)`) and the array form (`columns`, `rows`, spacing along the rotated axes) are
+  carried through. A circle or arc under a non-uniform scale becomes an ellipse.
+- An entity on layer `0` takes the reference's layer, and `BYBLOCK` colour and line type take the
+  reference's. `entityLineTypes` holds the result.
+- Each expanded entity's `identity.via` names the references it came through, outermost first (the
+  handle, or the locator when there is none, with `[column,row]` for an array), and
+  `identity.blocks` their names. A block drawn twice gives two entities with different identities.
+- Expanded references leave `dwg.skipped`; what a block holds that has no entity form (a `SOLID`)
+  is added to it once per instance. A reference to a block the file does not define stays in
+  `skipped`.
+- `counts`, `bounds`, `identities` and `entityLineTypes` follow the expanded entities.
+
+`dwg.warnings` says what an expansion could not do: `missingBlock`, `blockCycle` (a block that
+contains itself; the inner reference is dropped), `blockNestingTooDeep` (more than 32 levels),
+`unsupportedExtrusion` (an extrusion that is not along z, expanded as if it were),
+`expansionTruncated` (a file can multiply entities without bound, so expansion stops after about two
+million) and `notTransformed` (a polyline or hatch path with bulges cannot pass a non-uniform scale, because its
+arcs would become ellipses; it is dropped and counted).
+
+Entities flagged as paper space (group 67) are counted in `dwg.paperSpace` and read into `entities`
+as before. `skipPaperSpace: true` leaves them out, as `ezdxf`'s `modelspace()` does, and keeps the
+locators of the rest. Expansion was checked against `ezdxf` on a drawing with nested, arrayed,
+rotated, mirrored and non-uniformly scaled references: every one of the 56 expanded entities is the
+same curve.
 
 ### Hatches, leaders, line types and layers
 
@@ -251,8 +293,9 @@ entities actually read.
   like OCCT's `Geom_Ellipse` (which demands `majorRadius ≥ minorRadius`) get correct geometry. This
   matches `ezdxf`'s normalisation exactly.
 - **Binary DXF** is detected and rejected (`Error.binaryUnsupported`): convert to ASCII DXF first.
-- **Model space only.** Mirrors what `ezdxf`'s `modelspace()` iterates; `BLOCKS` definitions are not
-  expanded.
+- **Model space.** The `ENTITIES` section is what `ezdxf`'s `modelspace()` iterates. Paper-space
+  entities are counted and can be left out, and `BLOCKS` definitions are read and flattened into the
+  entities only on request (see *Block references and paper space*).
 
 ### Upgrading from 0.3
 
@@ -268,6 +311,10 @@ entities actually read.
 - **`bounds` and `counts.total` include hatches and leaders**, so the extents of a drawing whose
   `HATCH` lies outside its other geometry grow.
 - **`Drawing`, `Block` and the table records** gain stored properties, all defaulted in `init`.
+- **`Identity` gains `via` and `blocks`** (empty unless a block was expanded), and `id` includes
+  `via`. `DXF.read` gains an `options:` parameter, defaulted so existing calls are unchanged: with
+  the defaults the reader returns the same entities as before. `Drawing` gains `references`,
+  `warnings` and `paperSpace`, and `Block` gains `references` and `skippedByLayer`.
 
 ## Contours
 
@@ -301,7 +348,8 @@ half turn, so a circle is two segments and a 270 degree arc is two. A `Loop` is 
 | `SPLINE` that is exactly a line or arc | that line or arc |
 | other `ELLIPSE`, `SPLINE` | sampled, then fitted with lines and circular arcs |
 | `TEXT`, `DIMENSION`, `POINT`, `HATCH`, `LEADER` | ignored, with a warning |
-| `INSERT` and unmodelled types | not read, with a warning |
+| `INSERT` | flattened first when the drawing was read with `expandBlocks: true`; otherwise not read, with a warning |
+| unmodelled types | not read, with a warning |
 
 Options (`DXF.Contour.Options`), all tolerances in millimetres:
 
@@ -338,15 +386,17 @@ How it works:
 Limits:
 
 - Geometry is projected onto the XY plane; `z` is ignored.
-- The extrusion direction (OCS) is not read, so entities on a mirrored plane such as
-  `(0, 0, -1)` come out un-mirrored ([#21](https://github.com/SecondMouseAU/SwiftDXF/issues/21)).
-- `INSERT` blocks are not expanded ([#5](https://github.com/SecondMouseAU/SwiftDXF/issues/5)).
+- The extrusion direction (OCS) of `ARC`, `CIRCLE` and `LWPOLYLINE` is not read, so such entities
+  on a mirrored plane such as `(0, 0, -1)` come out un-mirrored
+  ([#21](https://github.com/SecondMouseAU/SwiftDXF/issues/21)). An `INSERT`'s extrusion is read.
+- `INSERT` blocks are flattened only when the drawing was read with `expandBlocks: true`.
 - Loops are assumed not to cross. Loops that do are reported (`crossingLoops`) and left unnested.
   Collinear segments that overlap only in part are not merged.
 - Nesting compares bounding boxes pairwise, so it is quadratic in the number of loops (tens of
   thousands of loops are fine; millions are not).
 
 `dxfdump --contours [--layers A,B] [--units inch|mm] file.dxf` prints the same summary as JSON.
+`--expand` and `--skip-paper-space` read with those options, for the digest and for `--contours`.
 
 ## Correctness: tested against an oracle
 
@@ -380,8 +430,8 @@ every spline in it fits within 0.001 and chains into the contour layer's regions
 
 ## Scope
 
-A focused 2D reader, not a full DXF/DWG toolkit. Out of scope for now: DWG, binary DXF, block/insert
-expansion, OCS/extrusion, and writing. (DXF *writing* for the JWW format lives in
+A focused 2D reader, not a full DXF/DWG toolkit. Out of scope for now: DWG, binary DXF, OCS/extrusion
+on entities other than `INSERT`, and writing. (DXF *writing* for the JWW format lives in
 [SwiftJWW](https://github.com/SecondMouseAU/SwiftJWW).)
 
 ## License

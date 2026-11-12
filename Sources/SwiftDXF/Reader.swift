@@ -8,8 +8,11 @@ extension DXF {
         /// (group code, raw value) pairs, in file order. `\r` already stripped from values.
         let pairs: [(code: Int, value: String)]
         var version = ""
+        /// What to flatten and what to leave out; see ``ReadOptions``.
+        let options: ReadOptions
 
-        init(_ text: String) {
+        init(_ text: String, options: ReadOptions = .init()) {
+            self.options = options
             var out: [(Int, String)] = []
             out.reserveCapacity(text.count / 16)
             // Split on any newline. Swift folds CRLF into a single `\r\n` grapheme, so `\.isNewline`
@@ -142,13 +145,18 @@ extension DXF {
             dwg.blocks = blocks()
             guard let start = sectionStart("ENTITIES") else { return dwg }  // no model space
 
-            let run = readEntities(from: start, stopAt: ["ENDSEC", "EOF"]) { "ENTITIES:\($0)" }
+            let run = readEntities(
+                from: start, stopAt: ["ENDSEC", "EOF"], inModelSpace: true
+            ) { "ENTITIES:\($0)" }
             dwg.entities = run.entities
             dwg.identities = run.identities
             dwg.entityLineTypes = run.lineTypes
             dwg.counts = run.counts
             dwg.skipped = run.skipped
             dwg.skippedByLayer = run.skippedByLayer
+            dwg.references = run.references
+            dwg.paperSpace = run.paperSpace
+            if options.expandBlocks { dwg.expandBlockReferences() }
             return dwg
         }
 

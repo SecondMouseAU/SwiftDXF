@@ -10,8 +10,9 @@ import Foundation
 /// skips entities it does not model rather than failing, recording them in
 /// ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space) section, matching what a
 /// tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is read for block
-/// definitions and `TABLES` for layers, line types and dimension styles; `INSERT` is not
-/// expanded.
+/// definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is read into
+/// ``Drawing/references`` and flattened into the entities when ``ReadOptions/expandBlocks`` is
+/// set.
 ///
 /// ```swift
 /// let dwg = try DXF.read(contentsOf: url)
@@ -143,6 +144,18 @@ public enum DXF {
         /// These belong to the style that is current when the file is saved, not to any one
         /// dimension; see ``styleVariables(of:)``.
         public var dimensionDefaults: DimensionStyle.Variables
+        /// The `INSERT`s of the `ENTITIES` section, whether or not they were expanded.
+        ///
+        /// With ``ReadOptions/expandBlocks`` set the geometry they place is in ``entities``, and
+        /// each expanded entity's ``Identity/via`` names the reference it came through.
+        public var references: [BlockReference]
+        /// What a reader did that a consumer should not miss, such as a reference to a block the
+        /// file does not define.
+        public var warnings: [Warning]
+        /// Entities of the `ENTITIES` section flagged as paper space (group 67), by type.
+        ///
+        /// They are in ``entities`` unless ``ReadOptions/skipPaperSpace`` was set.
+        public var paperSpace: [String: Int]
 
         public init(
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
@@ -151,7 +164,9 @@ public enum DXF {
             identities: [Identity] = [], entityLineTypes: [String?] = [], blocks: [Block] = [],
             layers: [Layer] = [],
             lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = [],
-            dimensionDefaults: DimensionStyle.Variables = .init()
+            dimensionDefaults: DimensionStyle.Variables = .init(),
+            references: [BlockReference] = [], warnings: [Warning] = [],
+            paperSpace: [String: Int] = [:]
         ) {
             self.version = version
             self.entities = entities
@@ -168,6 +183,9 @@ public enum DXF {
             self.lineTypes = lineTypes
             self.dimensionStyles = dimensionStyles
             self.dimensionDefaults = dimensionDefaults
+            self.references = references
+            self.warnings = warnings
+            self.paperSpace = paperSpace
         }
 
         /// The identity of the entity at `index` in ``entities``.
@@ -260,21 +278,21 @@ public enum DXF {
 
     // MARK: Entry points
 
-    public static func read(contentsOf url: URL) throws -> Drawing {
-        try read(data: try Data(contentsOf: url))
+    public static func read(contentsOf url: URL, options: ReadOptions = .init()) throws -> Drawing {
+        try read(data: try Data(contentsOf: url), options: options)
     }
 
-    public static func read(data: Data) throws -> Drawing {
+    public static func read(data: Data, options: ReadOptions = .init()) throws -> Drawing {
         guard !data.isEmpty else { throw Error.empty }
         if isBinary(data) { throw Error.binaryUnsupported }
-        var r = Reader(decode(data))
+        var r = Reader(decode(data), options: options)
         return try r.parse()
     }
 
     /// Parse an already-decoded DXF string.
-    public static func read(text: String) throws -> Drawing {
+    public static func read(text: String, options: ReadOptions = .init()) throws -> Drawing {
         guard !text.isEmpty else { throw Error.empty }
-        var r = Reader(text)
+        var r = Reader(text, options: options)
         return try r.parse()
     }
 

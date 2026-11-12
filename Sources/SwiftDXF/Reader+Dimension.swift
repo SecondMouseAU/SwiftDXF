@@ -65,5 +65,5 @@ extension DXF.Reader {
             unitSuffix: nonEmpty(raw[3]))
     }
 
-    private func nonEmpty(_ s: String?) -> String? { s.flatMap { $0.isEmpty ? nil : $0 } }
+    func nonEmpty(_ s: String?) -> String? { s.flatMap { $0.isEmpty ? nil : $0 } }
 }

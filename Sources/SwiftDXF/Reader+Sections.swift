@@ -39,12 +39,15 @@ extension DXF.Reader {
             let run = readEntities(from: j, stopAt: ["ENDBLK", "BLOCK", "ENDSEC", "EOF"]) {
                 "BLOCKS:\(index)/\($0)"
             }
+            var skipped = run.skippedByLayer
+            skipped["INSERT"] = nil
             out.append(
                 DXF.Block(
                     name: name,
                     identity: DXF.Identity(handle: handle(fields), locator: "BLOCKS:\(index)"),
                     basePoint: point(fields), entities: run.entities,
-                    identities: run.identities, entityLineTypes: run.lineTypes))
+                    identities: run.identities, entityLineTypes: run.lineTypes,
+                    references: run.references, skippedByLayer: skipped))
             k = run.end
             // Step over the ENDBLK so the next BLOCK is found, not the ENDBLK again.
             if k < pairs.count, trimmed(pairs[k].value) == "ENDBLK" { k += 1 }

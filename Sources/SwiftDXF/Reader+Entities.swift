@@ -30,6 +30,14 @@ extension DXF.Reader {
         var counts = DXF.Drawing.Counts()
         var skipped: [String: Int] = [:]
         var skippedByLayer: [String: [String: Int]] = [:]
+        /// The `INSERT`s of the run.
+        ///
+        /// Each is also counted in `skipped`, until an expansion takes it out.
+        var references: [DXF.BlockReference] = []
+        /// Entities flagged as paper space (group 67), by type.
+        ///
+        /// Only counted in model space.
+        var paperSpace: [String: Int] = [:]
         /// Index of the pair that ended the run.
         var end = 0
     }
@@ -38,8 +46,12 @@ extension DXF.Reader {
     ///
     /// `locator` names the position of the n-th top-level record, counting every record (also the
     /// ones that are skipped) so the name does not depend on which types are modelled.
+    ///
+    /// In `inModelSpace`, entities flagged as paper space are counted, and left out when
+    /// ``ReadOptions/skipPaperSpace`` is set.
     func readEntities(
-        from start: Int, stopAt terminators: Set<String>, locator: (Int) -> String
+        from start: Int, stopAt terminators: Set<String>, inModelSpace: Bool = false,
+        locator: (Int) -> String
     ) -> EntityRun {
         var run = EntityRun()
         var position = 0
@@ -56,6 +68,14 @@ extension DXF.Reader {
             // Collect this entity's fields up to the next 0-tag.
             var (fields, j) = recordFields(after: i)
 
+            if inModelSpace, ints(67, fields) == 1 {
+                run.paperSpace[type, default: 0] += 1
+                if options.skipPaperSpace {
+                    position += 1
+                    i = j
+                    continue
+                }
+            }
             if let entity = readEntity(type: type, fields: fields, next: &j) {
                 run.entities.append(entity)
                 run.identities.append(
@@ -66,6 +86,10 @@ extension DXF.Reader {
                 position += 1
             } else if type != "VERTEX" && type != "SEQEND" {
                 // Unmodelled entity (INSERT, SOLID, TRACE, …): skip, but record it.
+                if type == "INSERT" {
+                    let identity = DXF.Identity(handle: handle(fields), locator: locator(position))
+                    run.references.append(blockReference(fields, identity: identity))
+                }
                 run.skipped[type, default: 0] += 1
                 run.skippedByLayer[type, default: [:]][layer(fields), default: 0] += 1
                 position += 1

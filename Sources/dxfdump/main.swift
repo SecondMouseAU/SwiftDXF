@@ -6,14 +6,20 @@ import SwiftDXF
 //
 //   dxfdump file1.dxf [file2.dxf ...]
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
+//   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
 //
+// --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
+// entities flagged as paper space. Both work with the digest and with --contours.
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
+
+/// How the files are read, set by `--expand` and `--skip-paper-space`.
+var readOptions = DXF.ReadOptions()
 
 func summary(for path: String) -> [String: Any] {
     let url = URL(fileURLWithPath: path)
     do {
-        let dwg = try DXF.read(contentsOf: url)
+        let dwg = try DXF.read(contentsOf: url, options: readOptions)
         let c = dwg.counts
         var obj: [String: Any] = [
             "file": url.lastPathComponent,
@@ -26,6 +32,9 @@ func summary(for path: String) -> [String: Any] {
             ],
             "skipped": dwg.skipped,
             "skippedByLayer": dwg.skippedByLayer,
+            "references": dwg.references.count,
+            "paperSpace": dwg.paperSpace,
+            "warnings": dwg.warnings.map { "\($0)" },
         ]
         // One entry per entity, in order: the file's handle, or null when it has none.
         obj["handles"] = dwg.identities.map { $0.handle ?? NSNull() as Any }
@@ -128,7 +137,7 @@ func box(_ b: DXF.Box2) -> [String: [Double]] {
 func contourSummary(for path: String, options: DXF.Contour.Options) -> [String: Any] {
     let url = URL(fileURLWithPath: path)
     do {
-        let result = try DXF.read(contentsOf: url).contours(options)
+        let result = try DXF.read(contentsOf: url, options: readOptions).contours(options)
         func loop(_ l: DXF.Contour.Loop) -> [String: Any] {
             [
                 "segments": l.segments.count, "arcs": l.segments.filter { $0.isArc }.count,
@@ -160,6 +169,14 @@ func contourSummary(for path: String, options: DXF.Contour.Options) -> [String: 
 }
 
 var arguments = Array(CommandLine.arguments.dropFirst())
+if let flag = arguments.firstIndex(of: "--expand") {
+    arguments.remove(at: flag)
+    readOptions.expandBlocks = true
+}
+if let flag = arguments.firstIndex(of: "--skip-paper-space") {
+    arguments.remove(at: flag)
+    readOptions.skipPaperSpace = true
+}
 var contourOptions: DXF.Contour.Options?
 if let flag = arguments.firstIndex(of: "--contours") {
     arguments.remove(at: flag)
@@ -189,7 +206,9 @@ if let flag = arguments.firstIndex(of: "--contours") {
 let paths = arguments
 guard !paths.isEmpty else {
     FileHandle.standardError.write(
-        Data("usage: dxfdump [--contours [--layers A,B] [--units inch|mm]] <file.dxf> [...]\n".utf8)
+        Data(
+            ("usage: dxfdump [--expand] [--skip-paper-space]"
+                + " [--contours [--layers A,B] [--units inch|mm]] <file.dxf> [...]\n").utf8)
     )
     exit(2)
 }
@@ -208,7 +227,9 @@ for path in paths {
     let data = try JSONSerialization.data(
         withJSONObject: summary(for: path), options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
-    if let dwg = try? DXF.read(contentsOf: URL(fileURLWithPath: path)), !dwg.skipped.isEmpty {
+    if let dwg = try? DXF.read(contentsOf: URL(fileURLWithPath: path), options: readOptions),
+        !dwg.skipped.isEmpty
+    {
         FileHandle.standardError.write(Data(skippedTable(dwg).utf8))
     }
 }

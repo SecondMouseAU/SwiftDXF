@@ -11,9 +11,17 @@ timestamp: 2026-11-12
 
 - **`SwiftDXF`** (library): `DXF.read(contentsOf:)` parses an ASCII DXF file into a `Sendable`
   drawing model: the DXF version, entity counts, and the model-space `DXF.Entity` cases
-  (line, arc, circle, polyline, text, spline, …) with their layer. Unmodelled entity types
-  are tallied in `Drawing.skipped` / `skippedByLayer`; `DXF.Spline.flattened(tolerance:)` turns a
-  spline into polyline points.
+  (line, arc, circle, polyline, text, spline, …) with their layer. `DXF.Dimension` carries
+  rotation, style name and overrides, a computed measurement and `DimensionText` parts;
+  `Drawing.identities` gives each entity its handle or position; `Drawing.dimensionStyles` is the
+  `DIMSTYLE` table. Unmodelled entity types are tallied in `Drawing.skipped` / `skippedByLayer`;
+  `DXF.Spline.flattened(tolerance:)` turns a spline into polyline points.
+- **Block references** (`BlockReference.swift`, `BlockExpansion.swift`, `Transform.swift`,
+  `Entity+Transform.swift`, `Reader+Blocks.swift`): `INSERT` is read into `Drawing.references` and
+  `Block.references`. `DXF.read(_:options:)` with `ReadOptions(expandBlocks: true)` flattens every
+  reference into the entities (nested blocks, scale, rotation, mirroring, arrays), with the
+  references it came through in `Identity.via` and what it could not do in `Drawing.warnings`.
+  `ReadOptions(skipPaperSpace:)` leaves out group-67 entities, which `Drawing.paperSpace` counts.
 - **Identity** (`Identity.swift`, `Block.swift`, `Tables.swift`): `Drawing.identities` holds a
   `DXF.Identity` (the file's handle plus a section-and-position locator) for each entity, index
   aligned with `entities`; `Drawing.blocks`, `layers`, `lineTypes` and `dimensionStyles` carry the
@@ -44,6 +52,7 @@ timestamp: 2026-11-12
   three points is `Circumcircle`), `ContourChainer`
   (grid-hash endpoint merge, loop tracing), `ContourNesting` with `LoopIndex` (even-odd island
   nesting). Pure Swift and OCCT-free: OCCT consumers belong in OCCTSwiftIO. Known limits are in the
-  README (no OCS/extrusion, no `INSERT` expansion).
+  README (no OCS/extrusion on entities, `INSERT` flattened only on request).
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
-  `--contours` prints the contour summary as JSON.
+  `--contours` prints the contour summary as JSON; `--expand` and `--skip-paper-space` read with
+  those `ReadOptions`.

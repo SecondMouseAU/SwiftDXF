@@ -1,9 +1,10 @@
 extension DXF {
     /// A block definition from the `BLOCKS` section.
     ///
-    /// The block's own entities are read, but `INSERT` references to a block are not expanded
-    /// (see issue 5). Every drawing also holds the built-in blocks such as `*Model_Space` and the
-    /// anonymous `*D` blocks that carry the drawn form of a dimension.
+    /// The block's own entities are read. `INSERT` references to a block are read too, and
+    /// expanded into the drawing when ``ReadOptions/expandBlocks`` is set. Every drawing also
+    /// holds the built-in blocks such as `*Model_Space` and the anonymous `*D` blocks that carry
+    /// the drawn form of a dimension.
     public struct Block: Sendable {
         public var name: String
         public var identity: Identity
@@ -21,10 +22,16 @@ extension DXF {
         public var identities: [Identity]
         /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
         public var entityLineTypes: [String?]
+        /// The `INSERT`s inside the block, which an expansion carries through with the block.
+        public var references: [BlockReference]
+        /// Entities of unmodelled types inside the block, by type then layer. `INSERT` is not
+        /// counted, as ``references`` holds it.
+        public var skippedByLayer: [String: [String: Int]]
 
         public init(
             name: String, identity: Identity, basePoint: Point = .init(0, 0, 0),
-            entities: [Entity] = [], identities: [Identity] = [], entityLineTypes: [String?] = []
+            entities: [Entity] = [], identities: [Identity] = [], entityLineTypes: [String?] = [],
+            references: [BlockReference] = [], skippedByLayer: [String: [String: Int]] = [:]
         ) {
             self.name = name
             self.identity = identity
@@ -32,6 +39,8 @@ extension DXF {
             self.entities = entities
             self.identities = identities
             self.entityLineTypes = entityLineTypes
+            self.references = references
+            self.skippedByLayer = skippedByLayer
         }
 
         /// The block's handle (group 5), or `nil` when the file has none.
