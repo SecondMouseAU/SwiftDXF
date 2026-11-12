@@ -140,11 +140,11 @@ a CAD program holds, the OCS x axis is the world `-x`. The reader gives you worl
 
 | Entity | On a `-z` plane |
 |---|---|
-| `ARC`, `CIRCLE`, `LWPOLYLINE`, 2D `POLYLINE` | centre or vertices mirrored (x and z change sign), arc angles `180 - angle` and swapped, bulges change sign. A 2D `POLYLINE`'s elevation (group 30) is the z of its vertices, as for `LWPOLYLINE` |
+| `ARC`, `CIRCLE`, `LWPOLYLINE`, 2D `POLYLINE` | centre or vertices mirrored (x and z change sign), arc angles `180 - angle`, swapped and wrapped into `0..<360`, bulges change sign. A 2D `POLYLINE`'s elevation (group 30) is the z of its vertices, as for `LWPOLYLINE` |
 | `ELLIPSE` | centre and axis are world coordinates already; the parameter range is reversed, so it still runs counter-clockwise |
 | `TEXT` | insertion point mirrored, rotation `180 - rotation` |
 | `HATCH` | boundary paths mirrored; a path that travelled an arc counter-clockwise now travels it clockwise |
-| `DIMENSION` | the text point (group 11) and the arc point (group 16), and the rotation (group 50), an angle in the OCS, becomes `180 - rotation`. The definition points are world coordinates already |
+| `DIMENSION` | the text point (group 11) and the arc point (group 16), and the rotation (group 50), an angle in the OCS, becomes `180 - rotation`. The definition points are world coordinates already, and the oblique angle (group 52) is left as written, as in `ezdxf` |
 
 `MTEXT`, `POINT`, `SPLINE`, `LEADER` and a 3D polyline hold world coordinates and are never
 converted (an `MTEXT`'s rotation is read as written). An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees

@@ -113,13 +113,8 @@ extension DXF.Entity {
 
         case .text(let p, let h, let rot, let string, let l, let c):
             let scaleY = hypot(t.c, t.d)
-            var direction = rot + t.rotationDegrees
-            if t.isMirrored {
-                // A mirror turns the angle round instead of adding to it.
-                let (cs, sn) = ArcPieces.cosSin(degrees: rot)
-                let v = t.applyVector(cs, sn)
-                direction = atan2(v.y, v.x) * deg
-            }
+            // A mirror turns the angle round instead of adding to it.
+            let direction = t.isMirrored ? t.directionAngle(degrees: rot) : rot + t.rotationDegrees
             return .text(
                 at: t.apply(p), height: h * scaleY, rotationDeg: direction, string: string,
                 layer: l, color: c)
@@ -143,12 +138,7 @@ extension DXF.Entity {
             // The stored value is a length: it scales with a uniform scale, and is dropped
             // (the computed value still follows the points) when the scale is not uniform.
             if let m = d.measurement { d.measurement = t.similarity.map { m * $0 } }
-            if d.kind == .linear {
-                let (cs, sn) = ArcPieces.cosSin(degrees: d.rotation ?? 0)
-                let v = t.applyVector(cs, sn)
-                let angle = atan2(v.y, v.x) * deg
-                if d.rotation != nil || abs(angle) > 1e-12 { d.rotation = angle }
-            }
+            d.carryRotation(through: t)
             return .dimension(d)
 
         case .hatch(let h):
@@ -168,6 +158,17 @@ extension DXF.Entity {
             center: DXF.Point(e.center.x, e.center.y, z),
             majorAxis: DXF.Point(e.major.x, e.major.y, 0), ratio: e.ratio, startParam: e.start,
             endParam: e.end, layer: layer, color: color)
+    }
+}
+
+extension DXF.Dimension {
+    /// Turns a linear dimension's ``rotation`` into the world direction `t` gives its measuring
+    /// axis. A horizontal axis stays `nil` when it was, whichever way it points.
+    mutating func carryRotation(through t: DXF.Transform) {
+        guard kind == .linear else { return }
+        let angle = t.directionAngle(degrees: rotation ?? 0)
+        let horizontal = abs(sin(angle * .pi / 180)) < 1e-12
+        if rotation != nil || !horizontal { rotation = angle }
     }
 }
 

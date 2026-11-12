@@ -123,9 +123,17 @@ def summarize(path):
                     p = getattr(e.dxf, name)
                     # defpoint5 is the one OCS point.
                     vs.extend([mirror * p.x if name == "defpoint5" else p.x, p.y])
-            for name in ("angle", "oblique_angle"):
-                if e.dxf.hasattr(name):
-                    vs.append(getattr(e.dxf, name))
+            if e.dxf.hasattr("angle") and (e.dxf.dimtype & 15) in (0, 1):
+                angle = e.dxf.angle
+                if e.dxf.handle in flipped_dim:
+                    # An OCS angle: SwiftDXF reports the world direction of the measuring axis.
+                    r = math.radians(angle)
+                    angle = math.degrees(math.atan2(math.sin(r), -math.cos(r)))
+                vs.append(angle)
+            elif e.dxf.hasattr("angle"):
+                vs.append(e.dxf.angle)
+            if e.dxf.hasattr("oblique_angle"):
+                vs.append(e.dxf.oblique_angle)
             add("DIMENSION", *vs)
         elif t == "SPLINE":
             for p in e.control_points:

@@ -451,6 +451,42 @@ struct ExtrusionPracticeTests {
         #expect(p == DXF.Point(1, 2, 0))
     }
 
+    @Test("tilted entities in blocks are counted when there is no model space section")
+    func tiltedWithoutModelSpace() throws {
+        let arc = RawDXF.record(
+            "ARC",
+            [
+                (8, "0"), (10, "0.0"), (20, "0.0"), (30, "0.0"), (40, "1.0"), (50, "0.0"),
+                (51, "90.0"), (210, "0.0"), (220, "1.0"), (230, "0.0"),
+            ])
+        let blocks = RawDXF.section(
+            "BLOCKS",
+            [
+                RawDXF.record("BLOCK", (8, "0"), (2, "B"), (70, "0"), (10, "0"), (20, "0")),
+                arc, RawDXF.record("ENDBLK"),
+            ])
+        let d = try DXF.read(text: RawDXF.file([blocks]))
+        #expect(d.entities.isEmpty)
+        #expect(d.warnings == [.extrusionNotApplied(type: "ARC", count: 1)])
+    }
+
+    @Test("a linear dimension keeps a nil rotation when the world axis is still horizontal")
+    func dimensionRotationThroughMirror() throws {
+        var flat = DXF.Dimension(
+            kind: .linear, measurement: nil, textOverride: nil, textPosition: .init(0, 0),
+            defPoint: .init(0, 0), layer: "0", color: 256)
+        flat.carryRotation(through: DXF.ObjectPlane.mirror)
+        #expect(flat.rotation == nil)
+        flat.rotation = 30
+        flat.carryRotation(through: DXF.ObjectPlane.mirror)
+        #expect(ExtrusionTests.close(flat.rotation ?? 0, 150))
+        var aligned = flat
+        aligned.kind = .aligned
+        aligned.rotation = 30
+        aligned.carryRotation(through: DXF.ObjectPlane.mirror)
+        #expect(aligned.rotation == 30)
+    }
+
     @Test("a drawing with no tilted record has no warning")
     func quiet() throws {
         let d = try Self.read([RawDXF.line()])

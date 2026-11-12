@@ -24,12 +24,12 @@ extension DXF.Reader {
         }
     }
 
-    /// `entity` carried out of the object coordinate system of the record it was read from.
+    /// `entity` carried out of the object coordinate system of its record, which lies in `plane`.
     ///
     /// Only a `-z` normal changes anything; a tilted one is left as written, and counted by the
     /// caller.
-    func inWorld(_ entity: DXF.Entity, _ f: Fields) -> DXF.Entity {
-        guard objectPlane(f) == .down else { return entity }
+    func inWorld(_ entity: DXF.Entity, plane: DXF.ObjectPlane) -> DXF.Entity {
+        guard plane == .down else { return entity }
         let mirror = DXF.ObjectPlane.mirror
         switch entity {
         case .ellipse:
@@ -41,11 +41,7 @@ extension DXF.Reader {
             // from the OCS x axis, so the measuring direction in the world is turned round.
             d.textPosition = mirror.apply(d.textPosition)
             d.defPoint5 = d.defPoint5.map(mirror.apply)
-            if let rotation = d.rotation {
-                let (cs, sn) = ArcPieces.cosSin(degrees: rotation)
-                let v = mirror.applyVector(cs, sn)
-                d.rotation = atan2(v.y, v.x) * 180 / .pi
-            }
+            d.carryRotation(through: mirror)
             return .dimension(d)
         default:
             return entity.transformed(by: mirror) ?? entity
