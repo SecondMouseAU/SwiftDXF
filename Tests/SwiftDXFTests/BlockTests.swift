@@ -445,6 +445,22 @@ struct ExtrusionBlockTests {
         #expect(d.warnings.isEmpty)
     }
 
+    @Test("a tilted extrusion is expanded flat, and unmirrored even when its z is negative")
+    func tiltedNegative() throws {
+        var b = DXFBuilder()
+        b.blocks = [("B", (0, 0), [B.line((0, 0), (1, 0))])]
+        var insert = B.insert("B", at: (10, 0))
+        insert += [(210, "1.0"), (220, "0.0"), (230, "-1.0")]
+        b.entities = [insert]
+        let d = try DXF.read(text: b.text(), options: .init(expandBlocks: true))
+        if case .line(let a, let e, _, _) = d.entities[0] {
+            #expect(BlockTests.close(a, 10, 0) && BlockTests.close(e, 11, 0))
+        } else {
+            Issue.record("not a line")
+        }
+        #expect(d.warnings.contains(.unsupportedExtrusion(count: 1)))
+    }
+
     @Test("a tilted extrusion is reported")
     func tilted() throws {
         var b = DXFBuilder()

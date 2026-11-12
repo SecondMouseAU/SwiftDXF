@@ -52,6 +52,7 @@ def summarize(path):
     flipped_text = {e.dxf.handle for e in msp if e.dxftype() == "TEXT" and flipped(e)}
     flipped_dim = {e.dxf.handle for e in msp if e.dxftype() == "DIMENSION" and flipped(e)}
     flipped_ellipse = {e.dxf.handle for e in msp if e.dxftype() == "ELLIPSE" and flipped(e)}
+    flipped_arc = {e.dxf.handle for e in msp if e.dxftype() == "ARC" and flipped(e)}
     upright_all(msp)
 
     # Geometry digest: sum + count of every defining scalar (rounded), mirroring dxfdump exactly.
@@ -77,7 +78,15 @@ def summarize(path):
             add("CIRCLE", c.x, c.y, e.dxf.radius)
         elif t == "ARC":
             c = e.dxf.center
-            add("ARC", c.x, c.y, e.dxf.radius, e.dxf.start_angle, e.dxf.end_angle)
+            start, end = e.dxf.start_angle, e.dxf.end_angle
+            if e.dxf.handle in flipped_arc:
+                # upright gives 180 - angle; SwiftDXF starts the range in 0..<360 and, unless the
+                # arc is a full turn, ends it there too.
+                shift = math.floor(start / 360) * 360
+                start, end = start - shift, end - shift
+                if abs(end - start) < 360 - 1e-9:
+                    end -= math.floor(end / 360) * 360
+            add("ARC", c.x, c.y, e.dxf.radius, start, end)
         elif t == "ELLIPSE":
             c, m = e.dxf.center, e.dxf.major_axis
             start, end = e.dxf.start_param, e.dxf.end_param

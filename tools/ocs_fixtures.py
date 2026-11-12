@@ -34,7 +34,9 @@ def build(out_dir):
     msp.add_lwpolyline(
         [(0, 0, 0.5), (4, 0, 0), (4, 3, -0.25)], format="xyb",
         dxfattribs={"extrusion": (0, 0, -1), "elevation": 2})
-    msp.add_polyline2d([(1, 1, 0.5), (5, 1, 0), (5, 4, 0)], format="xyb", dxfattribs=DOWN)
+    msp.add_polyline2d(
+        [(1, 1, 0.5), (5, 1, 0), (5, 4, 0)], format="xyb",
+        dxfattribs={"extrusion": (0, 0, -1), "elevation": (0, 0, 3)})
     msp.add_ellipse((1, 2), (4, 0), 0.5, 0.3, 2.0, dxfattribs=DOWN)
     msp.add_text("note", height=2.5, rotation=30, dxfattribs={"insert": (5, 1), **DOWN})
 
@@ -52,6 +54,23 @@ def build(out_dir):
     msp.add_arc((3, 4, 1), 5, 20, 110)
     msp.add_lwpolyline([(0, 0), (4, 0), (4, 3)], dxfattribs={"elevation": 5})
     msp.add_arc((1, 1), 2, 0, 90, dxfattribs={"extrusion": (1, 0, 0)})
+
+    # An arc whose range wraps through 0, an ellipse edge and a spline edge, a rotated linear
+    # dimension and an angular one with a point in the OCS (group 16).
+    msp.add_arc((0, 0), 3, 300, 50, dxfattribs=DOWN)
+    hatch2 = msp.add_hatch(color=2, dxfattribs=DOWN)
+    edges2 = hatch2.paths.add_edge_path()
+    edges2.add_ellipse((6, 1), (3, 0), 0.5, 0, 180, ccw=True)
+    edges2.add_spline(
+        control_points=[(0, 0), (1, 2), (3, 2), (4, 0)], degree=3,
+        knot_values=[0, 0, 0, 0, 1, 1, 1, 1])
+    dim2 = msp.add_linear_dim(base=(3, 2), p1=(0, 0), p2=(4, 3), angle=30)
+    dim2.dimension.dxf.extrusion = (0, 0, -1)
+    dim2.dimension.dxf.text_midpoint = (1, 1, 0)
+    dim3 = msp.add_angular_dim_3p(base=(5, 5), center=(0, 0), p1=(4, 0), p2=(0, 4))
+    dim3.dimension.dxf.extrusion = (0, 0, -1)
+    dim3.dimension.dxf.defpoint5 = (-3, 2, 1)
+    dim3.dimension.dxf.text_midpoint = (-1, 2, 0)
 
     block = doc.blocks.new("FLIPPED")
     block.add_arc((1, 0), 1, 0, 90, dxfattribs=DOWN)
@@ -88,16 +107,23 @@ def ellipse_points(e, n=20):
 def reference(path):
     back = ezdxf.readfile(path)
     msp = back.modelspace()
-    out = {"text": [], "dimension": []}
-    # TEXT and DIMENSION are read before ezdxf turns the others upright.
+    out = {"text": [], "dimension": [], "polyline2d": []}
+    # TEXT, DIMENSION and the 2D polyline's points are read before ezdxf turns the others upright.
     for e in msp:
         if e.dxftype() == "TEXT":
             out["text"].append(world_text(e))
+        elif e.dxftype() == "POLYLINE":
+            out["polyline2d"].append([list(p) for p in e.points_in_wcs()])
         elif e.dxftype() == "DIMENSION":
             ocs = e.ocs()
-            out["dimension"].append(
-                {"textMidpoint": list(ocs.to_wcs(e.dxf.text_midpoint)),
-                 "extrusion": list(e.dxf.extrusion)})
+            row = {"textMidpoint": list(ocs.to_wcs(e.dxf.text_midpoint)),
+                   "measurement": e.get_measurement() if (e.dxf.dimtype & 15) in (0, 1, 3, 4)
+                   else None,
+                   "extrusion": list(e.dxf.extrusion)}
+            if e.dxf.hasattr("defpoint5"):
+                row["defpoint5"] = list(ocs.to_wcs(e.dxf.defpoint5))
+            row["defpoint2"] = list(e.dxf.defpoint2) if e.dxf.hasattr("defpoint2") else None
+            out["dimension"].append(row)
     for block in back.blocks:
         if block.name == "FLIPPED":
             upright_all(block)
@@ -136,6 +162,14 @@ def reference(path):
                             edges.append({"type": "arc", "center": list(ed.center),
                                           "radius": ed.radius, "start": ed.start_angle,
                                           "end": ed.end_angle, "ccw": bool(ed.ccw)})
+                        elif kind == "EllipseEdge":
+                            edges.append({"type": "ellipse", "center": list(ed.center),
+                                          "major": list(ed.major_axis), "ratio": ed.ratio,
+                                          "startParam": ed.start_param,
+                                          "endParam": ed.end_param, "ccw": bool(ed.ccw)})
+                        elif kind == "SplineEdge":
+                            edges.append({"type": "spline",
+                                          "control": [list(c) for c in ed.control_points]})
                     paths.append({"kind": "edges", "edges": edges})
             rows.append({"type": t, "paths": paths})
     out["modelSpace"] = rows

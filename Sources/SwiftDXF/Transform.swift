@@ -33,11 +33,7 @@ extension DXF {
             if ObjectPlane(extrusion: r.extrusion) == .down {
                 // The block is placed in an object coordinate system whose normal is -z, so its
                 // x axis maps to -x and z to -z in the world.
-                a = -a
-                c = -c
-                tx = -tx
-                zScale = -zScale
-                tz = -tz
+                self = ObjectPlane.mirror.composed(with: self)
             }
         }
 

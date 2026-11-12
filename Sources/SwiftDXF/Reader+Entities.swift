@@ -204,7 +204,11 @@ extension DXF.Reader {
 
         case "POLYLINE":
             // Old-style: a POLYLINE header followed by VERTEX entities and a terminating SEQEND.
-            let closed = (ints(70, fields) ?? 0) & 1 == 1
+            let flags = ints(70, fields) ?? 0
+            let closed = flags & 1 == 1
+            // A 2D polyline's elevation (group 30 of the header) is the z of every vertex, as in
+            // ezdxf; a 3D polyline, polygon mesh or polyface mesh has none.
+            let elevation = flags & (8 | 16 | 64) == 0 ? dbl(30, fields) : 0
             var verts: [DXF.PolyVertex] = []
             while j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "VERTEX" {
                 var m = j + 1
@@ -213,7 +217,9 @@ extension DXF.Reader {
                     vf.append(pairs[m])
                     m += 1
                 }
-                verts.append(DXF.PolyVertex(point(vf), bulge: dbl(42, vf, 0)))
+                var location = point(vf)
+                if elevation != 0 { location.z = elevation }
+                verts.append(DXF.PolyVertex(location, bulge: dbl(42, vf, 0)))
                 j = m
             }
             if j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "SEQEND" {

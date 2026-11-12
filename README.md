@@ -117,7 +117,8 @@ into `dwg.entities`:
   `skipped`.
 - `counts`, `bounds`, `identities` and `entityLineTypes` follow the expanded entities.
 
-`dwg.warnings` says what an expansion could not do: `missingBlock`, `blockCycle` (a block that
+`dwg.warnings` says what the reader could not do: at read time `extrusionNotApplied` (see
+*Extrusion*), and for an expansion `missingBlock`, `blockCycle` (a block that
 contains itself; the inner reference is dropped), `blockNestingTooDeep` (more than 32 levels),
 `unsupportedExtrusion` (an extrusion that is not along z, expanded as if it were),
 `expansionTruncated` (a file can multiply entities without bound, so expansion stops after about two
@@ -139,11 +140,11 @@ a CAD program holds, the OCS x axis is the world `-x`. The reader gives you worl
 
 | Entity | On a `-z` plane |
 |---|---|
-| `ARC`, `CIRCLE`, `LWPOLYLINE`, 2D `POLYLINE` | centre or vertices mirrored (x and z change sign), arc angles `180 - angle` and swapped, bulges change sign |
+| `ARC`, `CIRCLE`, `LWPOLYLINE`, 2D `POLYLINE` | centre or vertices mirrored (x and z change sign), arc angles `180 - angle` and swapped, bulges change sign. A 2D `POLYLINE`'s elevation (group 30) is the z of its vertices, as for `LWPOLYLINE` |
 | `ELLIPSE` | centre and axis are world coordinates already; the parameter range is reversed, so it still runs counter-clockwise |
 | `TEXT` | insertion point mirrored, rotation `180 - rotation` |
 | `HATCH` | boundary paths mirrored; a path that travelled an arc counter-clockwise now travels it clockwise |
-| `DIMENSION` | the text point (group 11) and the arc point (group 16); the other points are world coordinates already |
+| `DIMENSION` | the text point (group 11) and the arc point (group 16). The definition points are world coordinates already, and the rotation (group 50) is left as written, which gives the `computedMeasurement` that `ezdxf`'s `get_measurement()` gives |
 
 `MTEXT`, `POINT`, `SPLINE`, `LEADER` and a 3D polyline hold world coordinates and are never
 converted. An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
@@ -152,7 +153,8 @@ with `ezdxf.upright`, `ezdxf`'s own, on a drawing with one of each.
 A normal that is not along z cannot be held by a planar entity, so such an entity is read as written
 and counted: `dwg.warnings` has `.extrusionNotApplied(type:count:)` for each type, counting the
 model space and the blocks. The contour layer then sees the entity where the file wrote it, not where
-it is drawn. An `INSERT`'s extrusion is applied when the reference is expanded.
+it is drawn. An `INSERT`'s extrusion is applied when the reference is expanded; a tilted one is
+expanded flat, unmirrored, and reported as `unsupportedExtrusion`.
 
 ### Hatches, leaders, line types and layers
 

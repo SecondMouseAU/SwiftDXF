@@ -25,15 +25,16 @@ struct ExtrusionTests {
     }
 
     /// Entities in file order: ARC, CIRCLE, LWPOLYLINE, POLYLINE, ELLIPSE, TEXT, HATCH, DIMENSION
-    /// (all with an extrusion of -z), then an ARC and an LWPOLYLINE with the default extrusion and
-    /// an ARC with a tilted one.
+    /// (all with an extrusion of -z), then an ARC and an LWPOLYLINE with the default extrusion, an
+    /// ARC with a tilted one, and on a -z plane an ARC that wraps through 0, a HATCH with an ellipse
+    /// and a spline edge, a rotated linear DIMENSION and an angular one with a point in the OCS.
     @Test("the fixture reads the entities it was built from, in order")
     func order() throws {
         let kinds = try Self.fixture().entities.map(\.typeName)
         #expect(
             kinds == [
                 "ARC", "CIRCLE", "POLYLINE", "POLYLINE", "ELLIPSE", "TEXT", "HATCH", "DIMENSION",
-                "ARC", "POLYLINE", "ARC",
+                "ARC", "POLYLINE", "ARC", "ARC", "HATCH", "DIMENSION", "DIMENSION",
             ])
     }
 
@@ -70,9 +71,9 @@ struct ExtrusionTests {
             Issue.record("not a polyline")
             return
         }
-        // ezdxf: (-1, 1, -0.5), (-5, 1, 0), (-5, 4, 0).
-        #expect(Self.close(old[0].point, -1, 1) && Self.close(old[0].bulge, -0.5))
-        #expect(Self.close(old[1].point, -5, 1) && Self.close(old[2].point, -5, 4))
+        // ezdxf: (-1, 1, -3), (-5, 1, -3), (-5, 4, -3), the header's elevation 3 turned round.
+        #expect(Self.close(old[0].point, -1, 1, -3) && Self.close(old[0].bulge, -0.5))
+        #expect(Self.close(old[1].point, -5, 1, -3) && Self.close(old[2].point, -5, 4, -3))
     }
 
     @Test("an ellipse on a -z plane keeps its centre and axis and runs its parameter the other way")
@@ -133,9 +134,68 @@ struct ExtrusionTests {
             Issue.record("not a dimension")
             return
         }
-        // ezdxf: text point (2, 3, -0.5). The points 10, 13 and 14 are world coordinates.
+        // ezdxf: text point (2, 3, -0.5), measurement 4. The points 10, 13 and 14 are world
+        // coordinates.
         #expect(Self.close(m.textPosition, 2, 3, -0.5))
         #expect(Self.close(m.computedMeasurement ?? 0, 4))
+    }
+
+    @Test("a rotated linear dimension on a -z plane measures what ezdxf measures")
+    func rotatedDimension() throws {
+        let d = try Self.fixture()
+        guard case .dimension(let m) = d.entities[13] else {
+            Issue.record("not a dimension")
+            return
+        }
+        // ezdxf: text point (-1, 1, 0), get_measurement() 4.964101615137754 for p1 (0, 0),
+        // p2 (4, 3) and angle 30. A conversion of the rotation as well would give 1.964.
+        #expect(Self.close(m.textPosition, -1, 1))
+        #expect(Self.close(m.rotation ?? 0, 30))
+        #expect(Self.close(m.computedMeasurement ?? 0, 4.964101615137754))
+    }
+
+    @Test("an angular dimension on a -z plane moves its arc point as well as its text point")
+    func angularDimension() throws {
+        let d = try Self.fixture()
+        guard case .dimension(let m) = d.entities[14] else {
+            Issue.record("not a dimension")
+            return
+        }
+        // ezdxf: text point (1, 2, 0), arc point (3, 2, -1) from the OCS values (-1, 2, 0) and
+        // (-3, 2, 1). The first definition point (4, 0) is a world coordinate.
+        #expect(Self.close(m.textPosition, 1, 2))
+        #expect(Self.close(try #require(m.defPoint5), 3, 2, -1))
+        #expect(Self.close(try #require(m.defPoint3), 0, 4))
+    }
+
+    @Test("an arc whose range wraps through 0 is mirrored, keeping its sweep")
+    func wrappingArc() throws {
+        let d = try Self.fixture()
+        guard case .arc(let c, let r, let s, let e, _, _) = d.entities[11] else {
+            Issue.record("not an arc")
+            return
+        }
+        // ezdxf: 300 to 50 degrees becomes 130 to -120, which is 130 to 240.
+        #expect(Self.close(c, 0, 0) && Self.close(r, 3) && Self.close(s, 130) && Self.close(e, 240))
+    }
+
+    @Test("a hatch's ellipse and spline edges are mirrored")
+    func hatchEdges() throws {
+        let d = try Self.fixture()
+        guard case .hatch(let h) = d.entities[12], case .edges(let edges) = h.paths[0].geometry,
+            edges.count == 2,
+            case .ellipse(let c, let m, let ratio, let s, let e, let ccw) = edges[0],
+            case .spline(let spline) = edges[1]
+        else {
+            Issue.record("expected an ellipse edge and a spline edge")
+            return
+        }
+        // ezdxf: ellipse centre (-6, 1), major (-3, 0), ratio 0.5, parameter pi to 0 (that is,
+        // pi to 2 pi), clockwise; spline control points (-0, 0), (-1, 2), (-3, 2), (-4, 0).
+        #expect(c == DXF.Point2(-6, 1) && m == DXF.Point2(-3, 0) && Self.close(ratio, 0.5))
+        #expect(Self.close(s, .pi) && Self.close(e, 2 * .pi) && !ccw)
+        #expect(
+            spline.controlPoints.map { [$0.x, $0.y] } == [[0, 0], [-1, 2], [-3, 2], [-4, 0]])
     }
 
     @Test("a default extrusion leaves entities alone, but a polyline's elevation becomes its z")
@@ -322,6 +382,68 @@ struct ExtrusionPracticeTests {
                 .extrusionNotApplied(type: "ARC", count: 2),
                 .extrusionNotApplied(type: "CIRCLE", count: 1),
             ])
+    }
+
+    /// The curve is read from `ezdxf`, which keeps the ratio of 2 and gives the range -1.2 to -0.3
+    /// on `+z` after `upright`: `(1 + 2 cos u, 2 + 4 sin u)`.
+    @Test("an ellipse with a ratio above 1 on a -z plane is the same curve ezdxf gives")
+    func ellipseRatioAboveOne() throws {
+        let ellipse = RawDXF.record(
+            "ELLIPSE",
+            [
+                (8, "0"), (10, "1.0"), (20, "2.0"), (30, "0.0"), (11, "2.0"), (21, "0.0"),
+                (31, "0.0"), (40, "2.0"), (41, "0.3"), (42, "1.2"),
+            ] + Self.down)
+        let d = try Self.read([ellipse])
+        guard case .ellipse(let c, let m, let ratio, let s, let e, _, _) = d.entities[0] else {
+            Issue.record("not an ellipse")
+            return
+        }
+        #expect(ratio <= 1)
+        let steps = 10
+        for k in 0...steps {
+            let u = -1.2 + 0.9 * Double(k) / Double(steps)
+            let t = s + (e - s) * Double(k) / Double(steps)
+            // The canonical ellipse: centre + major cos t + (major turned a quarter) ratio sin t.
+            let x = c.x + m.x * cos(t) - m.y * ratio * sin(t)
+            let y = c.y + m.y * cos(t) + m.x * ratio * sin(t)
+            #expect(abs(x - (1 + 2 * cos(u))) < 1e-9 && abs(y - (2 + 4 * sin(u))) < 1e-9)
+        }
+    }
+
+    @Test("every kind that is written in an OCS is counted when its plane is tilted")
+    func tiltedKinds() throws {
+        let tilted: [(Int, String)] = [(210, "0.0"), (220, "1.0"), (230, "0.0")]
+        let records = [
+            RawDXF.record(
+                "TEXT", [(8, "0"), (10, "1.0"), (20, "2.0"), (40, "1.0"), (1, "a")] + tilted),
+            RawDXF.record(
+                "ELLIPSE",
+                [(8, "0"), (10, "0.0"), (20, "0.0"), (11, "2.0"), (21, "0.0"), (40, "0.5")] + tilted
+            ),
+            RawDXF.record("HATCH", [(8, "0"), (2, "SOLID"), (70, "1"), (91, "0")] + tilted),
+            RawDXF.record(
+                "DIMENSION",
+                [(8, "0"), (70, "0"), (10, "0.0"), (20, "0.0"), (11, "1.0"), (21, "1.0")] + tilted),
+            RawDXF.record(
+                "LWPOLYLINE",
+                [(8, "0"), (90, "2"), (10, "0.0"), (20, "0.0"), (10, "1.0"), (20, "0.0")] + tilted),
+        ]
+        let d = try Self.read(records)
+        #expect(d.entities.count == 5)
+        #expect(
+            d.warnings == [
+                .extrusionNotApplied(type: "DIMENSION", count: 1),
+                .extrusionNotApplied(type: "ELLIPSE", count: 1),
+                .extrusionNotApplied(type: "HATCH", count: 1),
+                .extrusionNotApplied(type: "LWPOLYLINE", count: 1),
+                .extrusionNotApplied(type: "TEXT", count: 1),
+            ])
+        guard case .text(let p, _, _, _, _, _) = d.entities[0] else {
+            Issue.record("not text")
+            return
+        }
+        #expect(p == DXF.Point(1, 2, 0))
     }
 
     @Test("a drawing with no tilted record has no warning")
