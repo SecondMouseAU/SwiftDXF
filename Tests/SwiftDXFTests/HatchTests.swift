@@ -307,6 +307,25 @@ struct HatchTests {
         #expect(bounds.min.x == 0 && bounds.max.x >= 124)
     }
 
+    @Test("bounds reach a leader and a hatch that lie outside the other geometry")
+    func boundsReachHatchesAndLeaders() throws {
+        func bounds(_ records: [String]) throws -> (min: DXF.Point, max: DXF.Point) {
+            try #require(try DXF.read(text: RawDXF.entities(records)).bounds)
+        }
+        let line = RawDXF.line(from: (0, 0), to: (1, 1))
+        let leader = RawDXF.record(
+            "LEADER", (8, "0"), (76, "2"), (10, "0"), (20, "0"), (30, "0"), (10, "30"),
+            (20, "20"), (30, "0"))
+        let hatch = RawDXF.record(
+            "HATCH", (8, "0"), (2, "SOLID"), (70, "1"), (91, "1"), (92, "2"), (72, "0"),
+            (73, "1"), (93, "3"), (10, "50"), (20, "-5"), (10, "60"), (20, "-5"),
+            (10, "60"), (20, "40"), (97, "0"), (75, "0"), (76, "1"), (98, "0"))
+        let withLeader = try bounds([line, leader])
+        #expect(withLeader.max.x == 30 && withLeader.max.y == 20)
+        let withHatch = try bounds([line, hatch])
+        #expect(withHatch.max.x == 60 && withHatch.max.y == 40 && withHatch.min.y == -5)
+    }
+
     // MARK: Malformed input and R12 style records
 
     @Test("a hatch with wrong counts or missing groups never traps")

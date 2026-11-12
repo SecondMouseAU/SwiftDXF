@@ -301,6 +301,19 @@ struct DimensionTests {
         #expect(DXF.DimensionText("\\\\5").typedNumbers == [5])
     }
 
+    @Test("unicode escapes and percent symbols are text, not typed numbers")
+    func symbolEscapes() {
+        #expect(DXF.DimensionText("45\\U+00B0").typedNumbers == [45])
+        #expect(DXF.DimensionText("<>\\U+00B1 0.1").typedNumbers == [0.1])
+        #expect(DXF.DimensionText("\\U+00D8<>").typedNumbers.isEmpty)
+        #expect(DXF.DimensionText("\\U+00D8<>").parts.contains(.measurement))
+        #expect(DXF.DimensionText("45%%d").typedNumbers == [45])
+        #expect(DXF.DimensionText("%%c20").typedNumbers == [20])
+        #expect(DXF.DimensionText("5%%176").typedNumbers == [5])
+        #expect(DXF.DimensionText("%%p0.05").typedNumbers == [0.05])
+        #expect(DXF.DimensionText("100%").typedNumbers == [100])
+    }
+
     @Test("a dimension exposes its text parts")
     func dimensionText() throws {
         let dims = Self.dimensions(try Self.fixture())

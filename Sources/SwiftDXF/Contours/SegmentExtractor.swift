@@ -159,6 +159,12 @@ struct SegmentExtractor {
             segments.append(contentsOf: pieces)
             return
         }
+        // Past a million samples the tolerance is out of reach for an ellipse this large.
+        let firstStep = (8 * (fitTolerance / 4) / a).squareRoot()
+        guard (sweep / firstStep).rounded(.up) <= 1_000_000 else {
+            degenerate += 1
+            return
+        }
         let b = a * ratio
         let (ct, st) = (cos(tilt), sin(tilt))
         func at(_ t: Double) -> DXF.Point2 {

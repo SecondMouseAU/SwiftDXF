@@ -1,14 +1,12 @@
 extension DXF.Drawing {
     /// The layer record called `name`, compared case-insensitively.
     public func layer(named name: String) -> DXF.Layer? {
-        let key = name.lowercased()
-        return layers.first { $0.name.lowercased() == key }
+        layers.first(named: name)
     }
 
     /// The line type record called `name`, compared case-insensitively.
     public func lineType(named name: String) -> DXF.LineType? {
-        let key = name.lowercased()
-        return lineTypes.first { $0.name.lowercased() == key }
+        lineTypes.first(named: name)
     }
 
     /// The line type name written on the entity at `index` (group 6), or `nil` when it has none.

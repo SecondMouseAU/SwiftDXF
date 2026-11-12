@@ -1,3 +1,5 @@
+import Foundation
+
 extension DXF {
     /// The text of a dimension, split into what it shows.
     ///
@@ -75,12 +77,30 @@ extension DXF {
                     flush()
                     parts.append(.measurement)
                     i += 2
+                } else if c == "%", i + 2 < chars.count, chars[i + 1] == "%" {
+                    // `%%d`, `%%c`, `%%p` and `%%176`: AutoCAD symbols, not numbers.
+                    var end = i + 3
+                    if chars[i + 2].isASCII, chars[i + 2].isNumber {
+                        while end < i + 5, end < chars.count, chars[end].isASCII,
+                            chars[end].isNumber
+                        {
+                            end += 1
+                        }
+                    }
+                    buffer.append(contentsOf: chars[i..<end])
+                    i = end
                 } else if c == "\\", i + 1 < chars.count {
                     let code = chars[i + 1]
                     if code == "P" {
                         flush()
                         parts.append(.lineBreak)
                         i += 2
+                    } else if code == "U", i + 2 < chars.count, chars[i + 2] == "+" {
+                        // `\U+00B0`: a unicode escape, whose hex digits are not typed numbers.
+                        var end = i + 3
+                        while end < i + 7, end < chars.count, chars[end].isHexDigit { end += 1 }
+                        buffer.append(contentsOf: chars[i..<end])
+                        i = end
                     } else if Self.takesArguments.contains(code),
                         let end = chars[(i + 2)...].firstIndex(of: ";")
                     {

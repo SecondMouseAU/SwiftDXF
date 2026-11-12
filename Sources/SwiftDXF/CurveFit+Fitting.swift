@@ -12,11 +12,12 @@ extension DXF.Entity {
     /// A spline that is exactly a straight line or a circular arc comes back as that line or arc
     /// (``DXF/CurveFit/isExact``); so does an ellipse with equal axes. Anything else is sampled
     /// and covered greedily by the longest line or arc that stays within the tolerance, the same
-    /// fit ``DXF/Drawing/contours(_:)`` makes. Never traps: degenerate input gives no pieces.
+    /// fit ``DXF/Drawing/contours(_:)`` makes. Never traps: degenerate input gives no pieces, and
+    /// neither does an ellipse so large that the tolerance would need over a million samples.
     ///
     /// - Parameters:
     ///   - tolerance: The largest distance a piece may stray from the curve, in drawing units.
-    ///     Anything below `1e-9` is raised to it.
+    ///     Anything below `1e-9`, or not finite, becomes `1e-9`.
     ///   - source: The identity to stamp on the fit and on each piece, usually
     ///     ``DXF/Drawing/identity(ofEntityAt:)``.
     /// - Returns: The fit, or `nil` when the entity is not a spline or an ellipse.

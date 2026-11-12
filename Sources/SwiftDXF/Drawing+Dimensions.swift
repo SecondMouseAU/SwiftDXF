@@ -4,8 +4,7 @@ extension DXF.Drawing {
     ///
     /// A variable neither states is `nil`. ``dimensionDefaults`` holds the header's values.
     public func styleVariables(of dimension: DXF.Dimension) -> DXF.DimensionStyle.Variables {
-        let name = (dimension.styleName ?? "Standard").lowercased()
-        let record = dimensionStyles.first { $0.name.lowercased() == name }
+        let record = dimensionStyles.first(named: dimension.styleName ?? "Standard")
         return dimension.styleOverrides.filling(from: record?.variables ?? .init())
     }
 

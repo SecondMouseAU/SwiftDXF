@@ -264,6 +264,8 @@ entities actually read.
   `.skippedEntities` before. The deviation in `.fittedCurves` is now measured against the exact
   curve, so it can be larger than before, when it was not always a true bound. A spline that is
   exactly a line or arc is emitted as that line or arc.
+- **`bounds` and `counts.total` include hatches and leaders**, so the extents of a drawing whose
+  `HATCH` lies outside its other geometry grow.
 - **`Drawing`, `Block` and the table records** gain stored properties, all defaulted in `init`.
 
 ## Contours
@@ -323,8 +325,10 @@ How it works:
   greedily by the longest line or arc that stays within half of it. Each fit is checked against the
   exact curve at extra points between the samples and sampled finer if it strays beyond
   `fitTolerance`. `result.maxFitDeviation` is the larger of the fit's own bound and the measured
-  deviation, and does not exceed `fitTolerance`; the tests measure the true deviation against the
-  exact curve. The same fit is available for one entity, see *Fitting one curve*.
+  deviation: at most `fitTolerance` for a smooth curve, and the number to compare with it (see
+  *Fitting one curve*). The tests measure the true deviation against the exact curve. An ellipse
+  so large that `fitTolerance` would need over a million samples is dropped as degenerate. The same
+  fit is available for one entity.
 - **Warnings** (`result.warnings`): `unitlessAssumed`, `unknownUnitCode`, `skippedEntities`,
   `blockReferencesNotExpanded`, `ignoredText`, `ignoredDimensions`, `ignoredPoints`,
   `ignoredHatches`, `ignoredLeaders`, `fittedCurves`, `openChains`, `degenerateGeometry`,

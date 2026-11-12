@@ -244,17 +244,22 @@ struct CurveFitTests {
         }
     }
 
-    @Test("an ellipse too large to square or to sample is dropped or capped, never trapped on")
+    @Test("an ellipse too large for the tolerance gives no pieces and does not trap")
     func hugeEllipse() throws {
-        // An axis whose square overflows is dropped; one that needs more samples than an Int
-        // holds is capped.
-        for axis in [1e300, 1e155, 4e34] {
+        // 1e300 and 1e155 overflow when squared; 4e34 would need more samples than an Int holds.
+        for axis in [1e300, 1e155, 4e34, 1e12] {
             let huge = DXF.Entity.ellipse(
                 center: .init(0, 0), majorAxis: .init(axis, 0), ratio: 0.5, startParam: 0,
                 endParam: 2 * .pi, layer: "0", color: 256)
             let fit = try #require(huge.fitted(tolerance: 0.01))
-            #expect(fit.deviation.isFinite)
+            #expect(fit.pieces.isEmpty && fit.deviation == 0 && !fit.isExact)
         }
+        // A large ellipse that is within reach still fits.
+        let large = DXF.Entity.ellipse(
+            center: .init(0, 0), majorAxis: .init(1e5, 0), ratio: 0.5, startParam: 0,
+            endParam: 2 * .pi, layer: "0", color: 256)
+        let fit = try #require(large.fitted(tolerance: 0.01))
+        #expect(!fit.pieces.isEmpty && fit.deviation <= 0.01)
     }
 
     // MARK: The contour layer agrees
