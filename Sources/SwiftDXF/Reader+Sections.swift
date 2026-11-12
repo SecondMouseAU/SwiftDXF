@@ -33,15 +33,10 @@ extension DXF.Reader {
                 k += 1
                 continue
             }
-            var fields: [(code: Int, value: String)] = []
-            var j = k + 1
-            while j < pairs.count && pairs[j].code != 0 {
-                fields.append(pairs[j])
-                j += 1
-            }
+            let (fields, j) = recordFields(after: k)
             let index = out.count
             let name = (first(2, fields) ?? first(3, fields)).map(trimmed) ?? ""
-            let run = readEntities(from: j, stopAt: ["ENDBLK", "ENDSEC", "EOF"]) {
+            let run = readEntities(from: j, stopAt: ["ENDBLK", "BLOCK", "ENDSEC", "EOF"]) {
                 "BLOCKS:\(index)/\($0)"
             }
             out.append(

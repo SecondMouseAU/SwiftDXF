@@ -258,12 +258,18 @@ extension DXF.Spline.Curve {
         flattenWithParameters(tolerance: tolerance).map(\.point)
     }
 
+    /// The knots inside the parameter domain, without repeats.
+    var distinctKnots: [Double] {
+        var out: [Double] = []
+        for k in knots where k >= domain.lowerBound && k <= domain.upperBound {
+            if out.last.map({ k > $0 }) ?? true { out.append(k) }
+        }
+        return out
+    }
+
     /// The flattened points, each with the curve parameter it was evaluated at.
     func flattenWithParameters(tolerance: Double) -> [(t: Double, point: DXF.Point)] {
-        var distinct: [Double] = []
-        for k in knots where k >= domain.lowerBound && k <= domain.upperBound {
-            if distinct.last.map({ k > $0 }) ?? true { distinct.append(k) }
-        }
+        let distinct = distinctKnots
         var out = [point(at: domain.lowerBound)]
         var times = [domain.lowerBound]
         for (a, b) in zip(distinct, distinct.dropFirst()) {

@@ -1,7 +1,8 @@
 import Foundation
 
-/// ASCII-DXF tokeniser + model-space entity parser. DXF is a flat stream of *group code* / *value*
-/// line pairs; this walks the `ENTITIES` section and dispatches each `0`-tagged entity.
+/// ASCII-DXF tokeniser + parser. DXF is a flat stream of *group code* / *value* line pairs; this
+/// walks the `ENTITIES` section and dispatches each `0`-tagged entity, and reads `BLOCKS` and the
+/// `LAYER`, `LTYPE` and `DIMSTYLE` tables.
 extension DXF {
     struct Reader {
         /// (group code, raw value) pairs, in file order. `\r` already stripped from values.

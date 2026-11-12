@@ -10,8 +10,10 @@ timestamp: 2026-10-24
 # SwiftDXF
 
 A small, dependency-free **native-Swift reader for ASCII DXF**: AutoCAD's *Drawing Interchange
-Format*, that lifts model-space 2D geometry (lines, arcs, circles, polylines, text, …) from the
-`ENTITIES` section into a neutral, `Sendable` value model. A contour layer
+Format*, that lifts model-space 2D geometry (lines, arcs, circles, polylines, text, dimensions,
+splines, hatches, leaders) from the `ENTITIES` section into a neutral, `Sendable` value model, each
+entity with a stable identity (its handle, else its position), plus block definitions and the layer,
+line type and dimension style tables. A contour layer
 (`drawing.contours(_:)`) turns it into closed loops, islands and holes, with units and curve
 fitting; a **`dxfdump`** CLI shows both. Clean-room,
 MIT-licensed, and validated bit-for-bit against the `ezdxf` reference reader.

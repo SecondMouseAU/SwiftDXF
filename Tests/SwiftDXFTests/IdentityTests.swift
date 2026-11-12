@@ -61,13 +61,30 @@ struct IdentityTests {
         #expect(outline.identity.locator.hasPrefix("TABLES:LAYER:"))
     }
 
-    @Test("reading the same file twice gives the same identities")
-    func readingTwiceIsStable() throws {
-        let a = try Self.fixture()
-        let b = try Self.fixture()
-        #expect(a.identities == b.identities)
-        #expect(a.blocks.map(\.identity) == b.blocks.map(\.identity))
-        #expect(a.layers.map(\.identity) == b.layers.map(\.identity))
+    @Test("records added after an entity leave its identity unchanged")
+    func appendingLeavesEarlierIdentities() throws {
+        let head = [RawDXF.line(), RawDXF.record("SOLID", (8, "0")), RawDXF.line(handle: "B2")]
+        let short = try DXF.read(text: RawDXF.entities(head))
+        let long = try DXF.read(
+            text: RawDXF.entities(head + [RawDXF.line(), RawDXF.line(handle: "C3")]))
+        #expect(long.identities.count == 4)
+        #expect(Array(long.identities.prefix(short.identities.count)) == short.identities)
+    }
+
+    @Test("a block with no ENDBLK ends where the next BLOCK starts")
+    func blockWithoutEndblk() throws {
+        let text = RawDXF.file([
+            RawDXF.section(
+                "BLOCKS",
+                [
+                    RawDXF.record("BLOCK", (2, "A"), (5, "A0")), RawDXF.line(handle: "A1"),
+                    RawDXF.record("BLOCK", (2, "B"), (5, "B0")), RawDXF.line(handle: "B1"),
+                    RawDXF.record("ENDBLK"),
+                ])
+        ])
+        let dwg = try DXF.read(text: text)
+        #expect(dwg.blocks.map(\.name) == ["A", "B"])
+        #expect(dwg.blocks.map { $0.entities.count } == [1, 1])
     }
 
     @Test("a file without handles names each entity by section and position")
@@ -93,6 +110,13 @@ struct IdentityTests {
         dwg.entities.removeFirst()
         #expect(dwg.identity(ofEntityAt: 0).id == "ENTITIES:0")
         #expect(dwg.lineTypeName(ofEntityAt: 0) == nil)
+
+        // Same length, different order: the handles must not follow the old positions.
+        var swapped = try DXF.read(text: RawDXF.entities([dashed, RawDXF.line(handle: "A2")]))
+        swapped.entities.swapAt(0, 1)
+        #expect(swapped.identities.isEmpty && swapped.entityLineTypes.isEmpty)
+        #expect(swapped.identity(ofEntityAt: 0).id == "ENTITIES:0")
+        #expect(swapped.lineTypeName(ofEntityAt: 0) == nil)
     }
 
     @Test("a handle is kept as the file writes it, trimmed")

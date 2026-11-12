@@ -28,10 +28,7 @@ enum SplineRecognition {
 
     /// Points along the curve: every knot span is sampled, so a span cannot hide a bulge.
     private static func samples(_ curve: DXF.Spline.Curve) -> [DXF.Point] {
-        var knots: [Double] = []
-        for k in curve.knots where k >= curve.domain.lowerBound && k <= curve.domain.upperBound {
-            if knots.last.map({ k > $0 }) ?? true { knots.append(k) }
-        }
+        let knots = curve.distinctKnots
         let perSpan = knots.count > 257 ? 2 : 8
         var out: [DXF.Point] = []
         for (a, b) in zip(knots, knots.dropFirst()) {

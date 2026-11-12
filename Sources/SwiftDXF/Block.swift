@@ -9,7 +9,14 @@ extension DXF {
         public var identity: Identity
         /// The block's base point (group 10), `0, 0, 0` when absent.
         public var basePoint: Point
-        public var entities: [Entity]
+        /// Changing this clears ``identities`` and ``entityLineTypes``, which would no longer line
+        /// up.
+        public var entities: [Entity] {
+            didSet {
+                identities = []
+                entityLineTypes = []
+            }
+        }
         /// One identity per entry in ``entities``, in the same order.
         public var identities: [Identity]
         /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.

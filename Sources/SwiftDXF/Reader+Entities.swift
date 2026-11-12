@@ -54,12 +54,7 @@ extension DXF.Reader {
             if terminators.contains(type) { break }
 
             // Collect this entity's fields up to the next 0-tag.
-            var j = i + 1
-            var fields: [(code: Int, value: String)] = []
-            while j < pairs.count && pairs[j].code != 0 {
-                fields.append(pairs[j])
-                j += 1
-            }
+            var (fields, j) = recordFields(after: i)
 
             if let entity = readEntity(type: type, fields: fields, next: &j) {
                 run.entities.append(entity)
@@ -79,6 +74,17 @@ extension DXF.Reader {
         }
         run.end = i
         return run
+    }
+
+    /// The pairs after the `0` tag at `tag`, up to the next `0` tag, and the index that stops at.
+    func recordFields(after tag: Int) -> (fields: [(code: Int, value: String)], end: Int) {
+        var end = tag + 1
+        var fields: [(code: Int, value: String)] = []
+        while end < pairs.count && pairs[end].code != 0 {
+            fields.append(pairs[end])
+            end += 1
+        }
+        return (fields, end)
     }
 
     /// The handle in group `code` (5 for most records, 105 for a dimension style), or `nil`.

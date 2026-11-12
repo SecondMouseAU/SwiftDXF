@@ -307,6 +307,33 @@ struct HatchTests {
         #expect(bounds.min.x == 0 && bounds.max.x >= 124)
     }
 
+    @Test("a rational spline edge keeps its weights, and a spline leader is flagged")
+    func rationalEdgeAndSplineLeader() throws {
+        let hatch = RawDXF.record(
+            "HATCH", (8, "0"), (2, "SOLID"), (70, "1"), (91, "1"), (92, "0"), (93, "1"),
+            (72, "4"), (94, "2"), (73, "1"), (74, "0"), (95, "6"), (96, "3"),
+            (40, "0"), (40, "0"), (40, "0"), (40, "1"), (40, "1"), (40, "1"),
+            (10, "1"), (20, "0"), (42, "1"), (10, "1"), (20, "1"), (42, "0.7071067811865476"),
+            (10, "0"), (20, "1"), (42, "1"), (97, "0"), (75, "0"), (76, "1"), (98, "0"))
+        let leader = RawDXF.record(
+            "LEADER", (8, "0"), (72, "1"), (76, "2"), (10, "0"), (20, "0"), (30, "0"),
+            (10, "5"), (20, "5"), (30, "0"))
+        let dwg = try DXF.read(text: RawDXF.entities([hatch, leader]))
+        guard case .edges(let edges)? = Self.hatches(dwg).first?.paths.first?.geometry,
+            case .spline(let spline)? = edges.first
+        else {
+            Issue.record("the path is not a spline edge")
+            return
+        }
+        #expect(spline.degree == 2 && spline.knots == [0, 0, 0, 1, 1, 1])
+        #expect(spline.controlPoints.count == 3 && spline.weights.count == 3)
+        #expect(abs(spline.weights[1] - 0.7071067811865476) < 1e-12)
+        let leaders = dwg.entities.compactMap { entity -> DXF.Leader? in
+            if case .leader(let l) = entity { return l } else { return nil }
+        }
+        #expect(leaders.count == 1 && leaders[0].isSpline && leaders[0].vertices.count == 2)
+    }
+
     @Test("bounds reach a leader and a hatch that lie outside the other geometry")
     func boundsReachHatchesAndLeaders() throws {
         func bounds(_ records: [String]) throws -> (min: DXF.Point, max: DXF.Point) {
@@ -356,10 +383,14 @@ struct HatchTests {
             "HATCH", (8, "0"), (2, "SOLID"), (70, "1"), (91, "1"), (92, "2"), (72, "0"),
             (73, "1"), (93, "2"), (10, "0.0"), (20, "0.0"), (10, "4.0"), (20, "0.0"),
             (97, "0"), (98, "1"), (10, "7.0"), (20, "7.0"))
-        let dwg = try DXF.read(text: RawDXF.entities([empty, two]))
+        // No group 93 at all: the path owns nothing, and the seed point is not its vertex.
+        let unnumbered = RawDXF.record(
+            "HATCH", (8, "0"), (2, "SOLID"), (70, "1"), (91, "1"), (92, "2"), (72, "0"),
+            (73, "1"), (97, "0"), (75, "0"), (76, "1"), (98, "1"), (10, "7.0"), (20, "7.0"))
+        let dwg = try DXF.read(text: RawDXF.entities([empty, two, unnumbered]))
         let found = Self.hatches(dwg)
-        #expect(found.count == 2)
-        for (hatch, count) in zip(found, [0, 2]) {
+        #expect(found.count == 3)
+        for (hatch, count) in zip(found, [0, 2, 0]) {
             guard case .polyline(let vertices, _) = hatch.paths.first?.geometry else {
                 Issue.record("the path is not a polyline")
                 continue

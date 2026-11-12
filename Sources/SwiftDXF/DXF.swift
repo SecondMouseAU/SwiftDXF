@@ -94,7 +94,16 @@ public enum DXF {
     public struct Drawing: Sendable {
         /// `$ACADVER` header value (e.g. `AC1009` for R12), or `""` if the header was absent.
         public var version: String
-        public var entities: [Entity]
+        /// The modelled entities of model space.
+        ///
+        /// Changing this clears ``identities`` and ``entityLineTypes``, which would no longer line
+        /// up. Set them again afterwards when they still do.
+        public var entities: [Entity] {
+            didSet {
+                identities = []
+                entityLineTypes = []
+            }
+        }
         /// Per-type entity counts, for verification against reference tools (ezdxf, IxMilia.Dxf).
         public var counts: Counts
         /// `$INSUNITS` header code (0 = unitless, 1 = inches, 2 = feet, 4 = mm, 5 = cm, 6 = m, …),
@@ -113,13 +122,12 @@ public enum DXF {
         public var skippedByLayer: [String: [String: Int]]
         /// One ``Identity`` per entry in ``entities``, in the same order.
         ///
-        /// Code that edits ``entities`` must edit this alongside it. A drawing built by hand, or
-        /// one whose ``entities`` changed length, has no usable identities: ``identity(ofEntityAt:)``
-        /// then names each entity by its position.
+        /// Empty for a drawing built by hand and after any change to ``entities``;
+        /// ``identity(ofEntityAt:)`` then names each entity by its position.
         public var identities: [Identity]
         /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
         ///
-        /// Parallel to ``entities`` like ``identities``; ignored when the lengths differ. Use
+        /// Parallel to ``entities`` like ``identities``, and cleared with it. Use
         /// ``effectiveLineType(ofEntityAt:)`` for the line type an entity is drawn with.
         public var entityLineTypes: [String?]
         /// The block definitions of the `BLOCKS` section.
@@ -166,7 +174,8 @@ public enum DXF {
         ///
         /// Reading a file gives every entity an identity, so this is the entity's handle when the
         /// file has one and its position in the file otherwise. For a drawing assembled by hand
-        /// it is the position in ``entities``.
+        /// it is the position in ``entities``. A position outside ``entities`` gets a locator too,
+        /// so the result is always a usable key; check the index first if it may be out of range.
         public func identity(ofEntityAt index: Int) -> Identity {
             if identities.count == entities.count, identities.indices.contains(index) {
                 return identities[index]

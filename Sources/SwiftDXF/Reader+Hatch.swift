@@ -9,14 +9,6 @@ extension DXF.Reader {
             paths: boundaryPaths(f), layer: layer(f), color: color(f))
     }
 
-    func leader(_ f: Fields) -> DXF.Leader {
-        DXF.Leader(
-            vertices: splinePoints(10, f), hasArrowhead: (ints(71, f) ?? 1) != 0,
-            isSpline: ints(72, f) == 1, annotationHandle: handle(f, code: 340),
-            styleName: first(3, f).map(trimmed).flatMap { $0.isEmpty ? nil : $0 },
-            layer: layer(f), color: color(f))
-    }
-
     // MARK: boundary paths
 
     /// The boundary paths that follow group 91 (the path count).
@@ -62,7 +54,7 @@ extension DXF.Reader {
         var limit = Int.max
         while i < f.count, f[i].code != 10 {
             if f[i].code == 73 { closed = integer(f, i) != 0 }
-            if f[i].code == 92 { break }
+            if f[i].code == 92 || f[i].code == 97 { break }
             if f[i].code == 93 {
                 limit = max(0, integer(f, i))
                 // No vertices: stop here, so the scan cannot run on into the seed points.

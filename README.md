@@ -83,9 +83,10 @@ Blocks and tables carry identities too:
 
 `INSERT` references are still not expanded ([#5](https://github.com/SecondMouseAU/SwiftDXF/issues/5)).
 
-`identities` and `entityLineTypes` run parallel to `entities`: code that edits `entities` has to
-edit them too. When their length no longer matches, `identity(ofEntityAt:)` names each entity by
-its position and `lineTypeName(ofEntityAt:)` returns `nil`, rather than hand back a stale entry.
+`identities` and `entityLineTypes` run parallel to `entities`, so changing `entities` clears
+them: `identity(ofEntityAt:)` then names each entity by its position and
+`lineTypeName(ofEntityAt:)` returns `nil`, rather than hand back a stale entry. Set them again
+afterwards if they still line up. A position outside `entities` gets a locator too.
 
 ### Hatches, leaders, line types and layers
 
@@ -367,6 +368,8 @@ Across an 11-file corpus (~62,000 entities, mixed R12 drawings incl. Jw_cad expo
 matches `ezdxf` **exactly**: every entity count and every coordinate scalar, to the bit. The
 `Tests/SwiftDXFTests/CorpusOracleTests.swift` suite pins those ezdxf-derived counts as a regression
 gate (skipped when the corpus is absent; point `DXF_CORPUS` at a folder of `.dxf` files to run).
+The single-curve fit has a second gate: point `DXF_SPLINE_FILE` at a drawing with splines to check
+every spline in it fits within 0.001 and chains into the contour layer's regions.
 
 ## Install
 

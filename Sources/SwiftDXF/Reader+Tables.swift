@@ -28,12 +28,7 @@ extension DXF.Reader {
             }
             let type = trimmed(pairs[k].value)
             if type == "ENDTAB" || type == "ENDSEC" || type == "EOF" { break }
-            var fields: [(code: Int, value: String)] = []
-            var j = k + 1
-            while j < pairs.count && pairs[j].code != 0 {
-                fields.append(pairs[j])
-                j += 1
-            }
+            let (fields, j) = recordFields(after: k)
             if type == name { out.append((fields, out.count)) }
             k = j
         }
