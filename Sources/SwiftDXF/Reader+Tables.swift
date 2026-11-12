@@ -53,14 +53,24 @@ extension DXF.Reader {
     }
 
     func layers() -> [DXF.Layer] {
-        tableRecords("LAYER").map {
-            DXF.Layer(name: name($0), identity: identity($0, table: "LAYER"))
+        tableRecords("LAYER").map { record in
+            let f = record.fields
+            let colour = ints(62, f) ?? 7
+            let flags = ints(70, f) ?? 0
+            return DXF.Layer(
+                name: name(record), identity: identity(record, table: "LAYER"),
+                color: abs(colour), lineTypeName: first(6, f).map(trimmed) ?? "Continuous",
+                isOff: colour < 0, isFrozen: flags & 1 != 0, isLocked: flags & 4 != 0)
         }
     }
 
     func lineTypes() -> [DXF.LineType] {
-        tableRecords("LTYPE").map {
-            DXF.LineType(name: name($0), identity: identity($0, table: "LTYPE"))
+        tableRecords("LTYPE").map { record in
+            let f = record.fields
+            return DXF.LineType(
+                name: name(record), identity: identity(record, table: "LTYPE"),
+                description: first(3, f).map(trimmed) ?? "", pattern: allDbl(49, f),
+                patternLength: dbl(40, f))
         }
     }
 

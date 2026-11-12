@@ -215,13 +215,13 @@ struct ContourFixtureTests {
         #expect(all.shapes.count == 2)
         #expect(all.warnings.contains(.ignoredText(count: 1)))
         #expect(all.warnings.contains(.blockReferencesNotExpanded(count: 1)))
-        #expect(all.warnings.contains(.skippedEntities(type: "HATCH", count: 1)))
+        #expect(all.warnings.contains(.ignoredHatches(count: 1)))
 
         let cut = dwg.contours(.init(layers: ["cut"]))
         #expect(cut.shapes.count == 1)
         #expect(near(cut.area, 100))
         #expect(cut.shapes.first?.outer.layers == ["CUT"])
-        #expect(cut.warnings == [.skippedEntities(type: "HATCH", count: 1)])
+        #expect(cut.warnings == [.ignoredHatches(count: 1)])
 
         let guides = dwg.contours(.init(layers: ["GUIDES"]))
         #expect(guides.shapes.count == 1)
@@ -230,6 +230,6 @@ struct ContourFixtureTests {
 
         let without = dwg.contours(.init(excludedLayers: ["GUIDES", "NOTES"]))
         #expect(without.shapes.count == 1)
-        #expect(without.warnings == [.skippedEntities(type: "HATCH", count: 1)])
+        #expect(without.warnings == [.ignoredHatches(count: 1)])
     }
 }

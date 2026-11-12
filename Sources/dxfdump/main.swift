@@ -21,7 +21,8 @@ func summary(for path: String) -> [String: Any] {
             "counts": [
                 "LINE": c.line, "CIRCLE": c.circle, "ARC": c.arc, "ELLIPSE": c.ellipse,
                 "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline,
-                "DIMENSION": c.dimension, "SPLINE": c.spline, "total": c.total,
+                "DIMENSION": c.dimension, "SPLINE": c.spline, "HATCH": c.hatch, "LEADER": c.leader,
+                "total": c.total,
             ],
             "skipped": dwg.skipped,
             "skippedByLayer": dwg.skippedByLayer,
@@ -69,6 +70,27 @@ func summary(for path: String) -> [String: Any] {
             case .spline(let s):
                 for p in s.controlPoints { add("SPLINE", p.x, p.y) }
                 for p in s.fitPoints { add("SPLINE", p.x, p.y) }
+            case .leader(let l):
+                for p in l.vertices { add("LEADER", p.x, p.y) }
+            case .hatch(let h):
+                for path in h.paths {
+                    switch path.geometry {
+                    case .polyline(let vertices, _):
+                        for v in vertices { add("HATCH", v.point.x, v.point.y, v.bulge) }
+                    case .edges(let edges):
+                        for edge in edges {
+                            switch edge {
+                            case .line(let a, let b): add("HATCH", a.x, a.y, b.x, b.y)
+                            case .arc(let c, let r, let s, let e, _):
+                                add("HATCH", c.x, c.y, r, s, e)
+                            case .ellipse(let c, let m, let ratio, _, _, _):
+                                add("HATCH", c.x, c.y, m.x, m.y, ratio)
+                            case .spline(let sp):
+                                for p in sp.controlPoints { add("HATCH", p.x, p.y) }
+                            }
+                        }
+                    }
+                }
             }
         }
         obj["geom"] = ["sum": sum, "scalars": n]

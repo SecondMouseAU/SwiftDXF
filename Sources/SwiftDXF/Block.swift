@@ -12,16 +12,19 @@ extension DXF {
         public var entities: [Entity]
         /// One identity per entry in ``entities``, in the same order.
         public var identities: [Identity]
+        /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
+        public var entityLineTypes: [String?]
 
         public init(
             name: String, identity: Identity, basePoint: Point = .init(0, 0, 0),
-            entities: [Entity] = [], identities: [Identity] = []
+            entities: [Entity] = [], identities: [Identity] = [], entityLineTypes: [String?] = []
         ) {
             self.name = name
             self.identity = identity
             self.basePoint = basePoint
             self.entities = entities
             self.identities = identities
+            self.entityLineTypes = entityLineTypes
         }
 
         /// The block's handle (group 5), or `nil` when the file has none.

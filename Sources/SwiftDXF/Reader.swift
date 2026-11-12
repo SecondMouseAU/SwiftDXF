@@ -143,6 +143,7 @@ extension DXF {
             let run = readEntities(from: start, stopAt: ["ENDSEC", "EOF"]) { "ENTITIES:\($0)" }
             dwg.entities = run.entities
             dwg.identities = run.identities
+            dwg.entityLineTypes = run.lineTypes
             dwg.counts = run.counts
             dwg.skipped = run.skipped
             dwg.skippedByLayer = run.skippedByLayer

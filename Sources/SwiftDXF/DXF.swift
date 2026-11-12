@@ -72,6 +72,10 @@ public enum DXF {
         case dimension(Dimension)
         /// `SPLINE`: NURBS control data as stored in the file; see ``Spline``.
         case spline(Spline)
+        /// `HATCH`: the filled regions and their boundaries; see ``Hatch``.
+        case hatch(Hatch)
+        /// `LEADER`: the line from an annotation to the feature it refers to; see ``Leader``.
+        case leader(Leader)
     }
 
     /// Base `DIMENSION` type, decoded from group 70's low 4 bits (`raw & 15`).
@@ -191,6 +195,10 @@ public enum DXF {
         /// A drawing built by hand may leave this empty; ``identity(ofEntityAt:)`` then names
         /// each entity by its position.
         public var identities: [Identity]
+        /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
+        ///
+        /// Use ``effectiveLineType(ofEntityAt:)`` for the line type an entity is drawn with.
+        public var entityLineTypes: [String?]
         /// The block definitions of the `BLOCKS` section.
         public var blocks: [Block]
         /// The records of the `LAYER` table.
@@ -204,7 +212,8 @@ public enum DXF {
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
             insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil,
             skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:],
-            identities: [Identity] = [], blocks: [Block] = [], layers: [Layer] = [],
+            identities: [Identity] = [], entityLineTypes: [String?] = [], blocks: [Block] = [],
+            layers: [Layer] = [],
             lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = []
         ) {
             self.version = version
@@ -216,6 +225,7 @@ public enum DXF {
             self.skipped = skipped
             self.skippedByLayer = skippedByLayer
             self.identities = identities
+            self.entityLineTypes = entityLineTypes
             self.blocks = blocks
             self.layers = layers
             self.lineTypes = lineTypes
@@ -234,11 +244,12 @@ public enum DXF {
 
         public struct Counts: Sendable, Equatable {
             public var line = 0, circle = 0, arc = 0, ellipse = 0, point = 0, text = 0, polyline = 0
-            public var dimension = 0, spline = 0
+            public var dimension = 0, spline = 0, hatch = 0, leader = 0
             public init() {}
             /// Total modelled entities.
             public var total: Int {
-                line + circle + arc + ellipse + point + text + polyline + dimension + spline
+                line + circle + arc + ellipse + point + text + polyline + dimension + spline + hatch
+                    + leader
             }
         }
 
@@ -288,6 +299,10 @@ public enum DXF {
                 case .spline(let s):
                     // The control polygon bounds a spline with positive weights.
                     for p in s.controlPoints.isEmpty ? s.fitPoints : s.controlPoints { acc(p) }
+                case .hatch(let h):
+                    for p in h.extentPoints { acc(p) }
+                case .leader(let l):
+                    for p in l.vertices { acc(p) }
                 }
             }
             return any ? (lo, hi) : nil

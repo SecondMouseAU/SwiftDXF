@@ -12,6 +12,8 @@ extension DXF.Contour {
         case ignoredText(count: Int)
         case ignoredDimensions(count: Int)
         case ignoredPoints(count: Int)
+        case ignoredHatches(count: Int)
+        case ignoredLeaders(count: Int)
         /// Ellipses and splines replaced by lines and arcs, with the largest measured deviation
         /// from the true curve (an upper bound), in millimetres.
         case fittedCurves(count: Int, maxDeviation: Double)
@@ -36,6 +38,8 @@ extension DXF.Contour {
             case .ignoredText(let n): return "\(n) text entities ignored"
             case .ignoredDimensions(let n): return "\(n) dimensions ignored"
             case .ignoredPoints(let n): return "\(n) points ignored"
+            case .ignoredHatches(let n): return "\(n) hatches ignored"
+            case .ignoredLeaders(let n): return "\(n) leaders ignored"
             case .fittedCurves(let n, let d): return "\(n) curves fitted, deviation <= \(d) mm"
             case .openChains(let n, let l): return "\(n) open chains (\(l) mm) did not close"
             case .degenerateGeometry(let n): return "\(n) degenerate or repeated pieces dropped"

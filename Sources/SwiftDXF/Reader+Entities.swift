@@ -13,6 +13,8 @@ extension DXF.Drawing.Counts {
         case .polyline: polyline += 1
         case .dimension: dimension += 1
         case .spline: spline += 1
+        case .hatch: hatch += 1
+        case .leader: leader += 1
         }
     }
 }
@@ -23,6 +25,8 @@ extension DXF.Reader {
         var entities: [DXF.Entity] = []
         /// One identity per entry in `entities`.
         var identities: [DXF.Identity] = []
+        /// One line type name (group 6) per entry in `entities`, `nil` when the entity has none.
+        var lineTypes: [String?] = []
         var counts = DXF.Drawing.Counts()
         var skipped: [String: Int] = [:]
         var skippedByLayer: [String: [String: Int]] = [:]
@@ -61,6 +65,8 @@ extension DXF.Reader {
                 run.entities.append(entity)
                 run.identities.append(
                     DXF.Identity(handle: handle(fields), locator: locator(position)))
+                run.lineTypes.append(
+                    first(6, fields).map(trimmed).flatMap { $0.isEmpty ? nil : $0 })
                 run.counts.record(entity)
                 position += 1
             } else if type != "VERTEX" && type != "SEQEND" {
@@ -191,6 +197,12 @@ extension DXF.Reader {
                     knots: allDbl(40, fields), weights: allDbl(41, fields),
                     fitPoints: splinePoints(11, fields),
                     layer: layer(fields), color: color(fields)))
+
+        case "HATCH":
+            return .hatch(hatch(fields))
+
+        case "LEADER":
+            return .leader(leader(fields))
 
         default:
             return nil

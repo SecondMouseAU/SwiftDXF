@@ -93,6 +93,28 @@ def summarize(path):
                 add("SPLINE", p[0], p[1])
             for p in e.fit_points:
                 add("SPLINE", p[0], p[1])
+        elif t == "LEADER":
+            for v in e.vertices:
+                add("LEADER", v[0], v[1])
+        elif t == "HATCH":
+            for boundary in e.paths:
+                if type(boundary).__name__ == "PolylinePath":
+                    for v in boundary.vertices:
+                        add("HATCH", v[0], v[1], v[2])
+                    continue
+                for edge in boundary.edges:
+                    kind = type(edge).__name__
+                    if kind == "LineEdge":
+                        add("HATCH", edge.start[0], edge.start[1], edge.end[0], edge.end[1])
+                    elif kind == "ArcEdge":
+                        add("HATCH", edge.center[0], edge.center[1], edge.radius,
+                            edge.start_angle, edge.end_angle)
+                    elif kind == "EllipseEdge":
+                        add("HATCH", edge.center[0], edge.center[1], edge.major_axis[0],
+                            edge.major_axis[1], edge.ratio)
+                    elif kind == "SplineEdge":
+                        for p in edge.control_points:
+                            add("HATCH", p[0], p[1])
     counts = {
         "LINE": raw.get("LINE", 0),
         "CIRCLE": raw.get("CIRCLE", 0),
@@ -103,10 +125,12 @@ def summarize(path):
         "POLYLINE": raw.get("LWPOLYLINE", 0) + raw.get("POLYLINE", 0),
         "DIMENSION": raw.get("DIMENSION", 0),
         "SPLINE": raw.get("SPLINE", 0),
+        "HATCH": raw.get("HATCH", 0),
+        "LEADER": raw.get("LEADER", 0),
     }
     counts["total"] = sum(counts.values())
     modelled = {"LINE", "CIRCLE", "ARC", "ELLIPSE", "POINT", "TEXT", "MTEXT", "LWPOLYLINE",
-                "POLYLINE", "DIMENSION", "SPLINE"}
+                "POLYLINE", "DIMENSION", "SPLINE", "HATCH", "LEADER"}
     skipped = {k: v for k, v in sorted(raw.items()) if k not in modelled}
     skipped_by_layer = {}
     for e in msp:
