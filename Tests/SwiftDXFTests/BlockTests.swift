@@ -138,6 +138,23 @@ struct BlockTests {
         }
     }
 
+    @Test("a rotated arc keeps both angles in 0..<360, and a full circle stays a full turn")
+    func rotatedArcAngles() throws {
+        var b = DXFBuilder()
+        b.blocks = [("B", (0, 0), [B.arc((0, 0), 1, 300, 50), B.arc((0, 0), 2, 0, 360)])]
+        b.entities = [B.insert("B", at: (0, 0), rotation: 90)]
+        let d = try Self.read(b)
+        guard case .arc(_, _, let s, let e, _, _) = d.entities[0],
+            case .arc(_, _, let fullStart, let fullEnd, _, _) = d.entities[1]
+        else {
+            Issue.record("expected two arcs")
+            return
+        }
+        // 300 to 50 turned by 90 is 30 to 140, not 30 to -220.
+        #expect(abs(s - 30) < 1e-9 && abs(e - 140) < 1e-9)
+        #expect(abs(fullEnd - fullStart - 360) < 1e-9)
+    }
+
     @Test("a non-uniform scale turns a circle into an ellipse")
     func nonUniformCircle() throws {
         var b = DXFBuilder()

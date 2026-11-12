@@ -187,6 +187,8 @@ def summarize(path):
             continue
         try:
             # ezdxf's own measurement: geometry with no style scale, as SwiftDXF's computedMeasurement.
+            # It differs for a rotated linear dimension on a -z plane, where it passes the world
+            # definition points through the OCS (see tools/ocs_fixtures.py).
             kind = e.dxf.dimtype & 15
             m = e.get_measurement() if kind in (0, 1, 3, 4) else None
             dimensions.append(float(m) if m is not None else None)

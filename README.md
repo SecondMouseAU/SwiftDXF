@@ -144,10 +144,10 @@ a CAD program holds, the OCS x axis is the world `-x`. The reader gives you worl
 | `ELLIPSE` | centre and axis are world coordinates already; the parameter range is reversed, so it still runs counter-clockwise |
 | `TEXT` | insertion point mirrored, rotation `180 - rotation` |
 | `HATCH` | boundary paths mirrored; a path that travelled an arc counter-clockwise now travels it clockwise |
-| `DIMENSION` | the text point (group 11) and the arc point (group 16). The definition points are world coordinates already, and the rotation (group 50) is left as written, which gives the `computedMeasurement` that `ezdxf`'s `get_measurement()` gives |
+| `DIMENSION` | the text point (group 11) and the arc point (group 16), and the rotation (group 50), an angle in the OCS, becomes `180 - rotation`. The definition points are world coordinates already |
 
 `MTEXT`, `POINT`, `SPLINE`, `LEADER` and a 3D polyline hold world coordinates and are never
-converted. An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
+converted (an `MTEXT`'s rotation is read as written). An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
 with `ezdxf.upright`, `ezdxf`'s own, on a drawing with one of each.
 
 A normal that is not along z cannot be held by a planar entity, so such an entity is read as written

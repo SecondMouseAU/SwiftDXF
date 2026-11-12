@@ -140,18 +140,22 @@ struct ExtrusionTests {
         #expect(Self.close(m.computedMeasurement ?? 0, 4))
     }
 
-    @Test("a rotated linear dimension on a -z plane measures what ezdxf measures")
+    @Test("a rotated linear dimension on a -z plane measures what it was drawn to measure")
     func rotatedDimension() throws {
         let d = try Self.fixture()
         guard case .dimension(let m) = d.entities[13] else {
             Issue.record("not a dimension")
             return
         }
-        // ezdxf: text point (-1, 1, 0), get_measurement() 4.964101615137754 for p1 (0, 0),
-        // p2 (4, 3) and angle 30. A conversion of the rotation as well would give 1.964.
-        #expect(Self.close(m.textPosition, -1, 1))
-        #expect(Self.close(m.rotation ?? 0, 30))
-        #expect(Self.close(m.computedMeasurement ?? 0, 4.964101615137754))
+        // ezdxf rendered this in a flipped UCS (x to the world -x, z to -z): points (0, 0) and
+        // (4, 3) at 30 degrees measure 4.964101615137754. The file holds the second point as
+        // (-4, 3) in the world, the angle 30 in the OCS, and the text point (-2.0335, 1.4420).
+        #expect(Self.close(m.defPoint2 ?? .init(9, 9), 0, 0))
+        #expect(Self.close(m.defPoint3 ?? .init(9, 9), -4, 3))
+        #expect(Self.close(m.textPosition, -2.0334936490538906, 1.4419872981077808))
+        // The OCS angle 30 is the world direction 150. Leaving it as written would measure 1.964.
+        #expect(Self.close(m.rotation ?? 0, 150, tolerance: 1e-6))
+        #expect(Self.close(m.computedMeasurement ?? 0, 4.964101615137754, tolerance: 1e-6))
     }
 
     @Test("an angular dimension on a -z plane moves its arc point as well as its text point")
@@ -162,9 +166,10 @@ struct ExtrusionTests {
             return
         }
         // ezdxf: text point (1, 2, 0), arc point (3, 2, -1) from the OCS values (-1, 2, 0) and
-        // (-3, 2, 1). The first definition point (4, 0) is a world coordinate.
+        // (-3, 2, 1). The definition points (4, 0) and (0, 4) are world coordinates.
         #expect(Self.close(m.textPosition, 1, 2))
         #expect(Self.close(try #require(m.defPoint5), 3, 2, -1))
+        #expect(Self.close(try #require(m.defPoint2), 4, 0))
         #expect(Self.close(try #require(m.defPoint3), 0, 4))
     }
 

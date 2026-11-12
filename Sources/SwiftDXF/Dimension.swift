@@ -65,6 +65,9 @@ extension DXF {
         ///
         /// `nil` when absent, which means horizontal. For a linear dimension this is what says
         /// whether it measures horizontally, vertically or at another angle.
+        ///
+        /// The file gives the angle from the x axis of the dimension's own coordinate system; on a
+        /// `-z` plane that axis is the world `-x`, and this is the world direction, `180 - angle`.
         public var rotation: Double?
         /// Oblique angle of the extension lines, in degrees (group 52), or `nil` when absent.
         public var obliqueAngle: Double?

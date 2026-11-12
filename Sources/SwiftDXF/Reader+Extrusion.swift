@@ -1,9 +1,14 @@
 import Foundation
 
 extension DXF.Reader {
+    /// The extrusion direction of the record (groups 210, 220, 230), `(0, 0, 1)` when absent.
+    func extrusion(_ f: Fields) -> DXF.Point {
+        DXF.Point(dbl(210, f, 0), dbl(220, f, 0), dbl(230, f, 1))
+    }
+
     /// The plane the record's object coordinate system lies in.
     func objectPlane(_ f: Fields) -> DXF.ObjectPlane {
-        DXF.ObjectPlane(extrusion: DXF.Point(dbl(210, f, 0), dbl(220, f, 0), dbl(230, f, 1)))
+        DXF.ObjectPlane(extrusion: extrusion(f))
     }
 
     /// Whether a record of `type` is written in its object coordinate system (OCS).
@@ -28,13 +33,19 @@ extension DXF.Reader {
         let mirror = DXF.ObjectPlane.mirror
         switch entity {
         case .ellipse:
-            // The centre and the axis are already in the world; see `ellipseRange`.
+            // The centre and the axis are already in the world; see `mirroredEllipseRange`.
             return entity
         case .dimension(var d):
-            // Only the text point (group 11) and the arc point (group 16) are in the OCS; the
-            // definition points are world coordinates.
+            // The text point (group 11), the arc point (group 16) and the rotation (group 50) are
+            // in the OCS; the definition points are world coordinates. The rotation is an angle
+            // from the OCS x axis, so the measuring direction in the world is turned round.
             d.textPosition = mirror.apply(d.textPosition)
             d.defPoint5 = d.defPoint5.map(mirror.apply)
+            if let rotation = d.rotation {
+                let (cs, sn) = ArcPieces.cosSin(degrees: rotation)
+                let v = mirror.applyVector(cs, sn)
+                d.rotation = atan2(v.y, v.x) * 180 / .pi
+            }
             return .dimension(d)
         default:
             return entity.transformed(by: mirror) ?? entity

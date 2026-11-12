@@ -19,7 +19,7 @@ import os
 import sys
 
 import ezdxf
-from ezdxf.math import Vec3
+from ezdxf.math import UCS, Vec3
 from ezdxf.upright import upright_all
 
 DOWN = {"extrusion": (0, 0, -1)}
@@ -64,9 +64,10 @@ def build(out_dir):
     edges2.add_spline(
         control_points=[(0, 0), (1, 2), (3, 2), (4, 0)], degree=3,
         knot_values=[0, 0, 0, 0, 1, 1, 1, 1])
+    # Rendered in a flipped UCS: the definition points are written in the world, the angle in the
+    # OCS, and the extrusion is -z.
     dim2 = msp.add_linear_dim(base=(3, 2), p1=(0, 0), p2=(4, 3), angle=30)
-    dim2.dimension.dxf.extrusion = (0, 0, -1)
-    dim2.dimension.dxf.text_midpoint = (1, 1, 0)
+    dim2.render(ucs=UCS(ux=(-1, 0, 0), uz=(0, 0, -1)))
     dim3 = msp.add_angular_dim_3p(base=(5, 5), center=(0, 0), p1=(4, 0), p2=(0, 4))
     dim3.dimension.dxf.extrusion = (0, 0, -1)
     dim3.dimension.dxf.defpoint5 = (-3, 2, 1)
@@ -105,9 +106,14 @@ def ellipse_points(e, n=20):
 
 
 def reference(path):
+    # The distance of the rotated dimension's points (0, 0) and (4, 3) along 30 degrees, in the
+    # flipped UCS it was drawn in. ezdxf's own get_measurement() gives a different number for a
+    # file with a -z extrusion, because it passes the world definition points through the OCS.
+    measure = abs(4 * math.cos(math.radians(30)) + 3 * math.sin(math.radians(30)))
+
     back = ezdxf.readfile(path)
     msp = back.modelspace()
-    out = {"text": [], "dimension": [], "polyline2d": []}
+    out = {"text": [], "dimension": [], "polyline2d": [], "rotatedDimensionMeasurement": measure}
     # TEXT, DIMENSION and the 2D polyline's points are read before ezdxf turns the others upright.
     for e in msp:
         if e.dxftype() == "TEXT":
@@ -117,12 +123,12 @@ def reference(path):
         elif e.dxftype() == "DIMENSION":
             ocs = e.ocs()
             row = {"textMidpoint": list(ocs.to_wcs(e.dxf.text_midpoint)),
-                   "measurement": e.get_measurement() if (e.dxf.dimtype & 15) in (0, 1, 3, 4)
-                   else None,
+                   "angle": e.dxf.angle if e.dxf.hasattr("angle") else None,
+                   "defpoint2": list(e.dxf.defpoint2) if e.dxf.hasattr("defpoint2") else None,
+                   "defpoint3": list(e.dxf.defpoint3) if e.dxf.hasattr("defpoint3") else None,
                    "extrusion": list(e.dxf.extrusion)}
             if e.dxf.hasattr("defpoint5"):
                 row["defpoint5"] = list(ocs.to_wcs(e.dxf.defpoint5))
-            row["defpoint2"] = list(e.dxf.defpoint2) if e.dxf.hasattr("defpoint2") else None
             out["dimension"].append(row)
     for block in back.blocks:
         if block.name == "FLIPPED":
