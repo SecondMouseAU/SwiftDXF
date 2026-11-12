@@ -186,11 +186,26 @@ public enum DXF {
         public var skipped: [String: Int]
         /// The same skipped entities broken down by layer: type name, then layer name, then count.
         public var skippedByLayer: [String: [String: Int]]
+        /// One ``Identity`` per entry in ``entities``, in the same order.
+        ///
+        /// A drawing built by hand may leave this empty; ``identity(ofEntityAt:)`` then names
+        /// each entity by its position.
+        public var identities: [Identity]
+        /// The block definitions of the `BLOCKS` section.
+        public var blocks: [Block]
+        /// The records of the `LAYER` table.
+        public var layers: [Layer]
+        /// The records of the `LTYPE` table.
+        public var lineTypes: [LineType]
+        /// The records of the `DIMSTYLE` table.
+        public var dimensionStyles: [DimensionStyle]
 
         public init(
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
             insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil,
-            skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:]
+            skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:],
+            identities: [Identity] = [], blocks: [Block] = [], layers: [Layer] = [],
+            lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = []
         ) {
             self.version = version
             self.entities = entities
@@ -200,6 +215,21 @@ public enum DXF {
             self.extMax = extMax
             self.skipped = skipped
             self.skippedByLayer = skippedByLayer
+            self.identities = identities
+            self.blocks = blocks
+            self.layers = layers
+            self.lineTypes = lineTypes
+            self.dimensionStyles = dimensionStyles
+        }
+
+        /// The identity of the entity at `index` in ``entities``.
+        ///
+        /// Reading a file gives every entity an identity, so this is the entity's handle when the
+        /// file has one and its position in the file otherwise. For a drawing assembled by hand
+        /// it is the position in ``entities``.
+        public func identity(ofEntityAt index: Int) -> Identity {
+            if identities.indices.contains(index) { return identities[index] }
+            return Identity(locator: "ENTITIES:\(index)")
         }
 
         public struct Counts: Sendable, Equatable {

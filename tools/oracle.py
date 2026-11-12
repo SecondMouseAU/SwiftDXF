@@ -117,7 +117,9 @@ def summarize(path):
         layer = (e.dxf.layer if e.dxf.hasattr("layer") else "0").strip(SWIFT_WHITESPACES)
         layers[layer] = layers.get(layer, 0) + 1
     skipped_by_layer = {t: dict(sorted(v.items())) for t, v in sorted(skipped_by_layer.items())}
+    handles = [e.dxf.handle for e in msp if e.dxftype() in modelled]
     return {
+        "handles": handles,
         "skipped": skipped,
         "skippedByLayer": skipped_by_layer,
         "file": os.path.basename(path),

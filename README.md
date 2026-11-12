@@ -49,6 +49,37 @@ An empty `skipped` means nothing in `ENTITIES` was dropped. `dxfdump` prints the
 stderr and includes both dictionaries in its JSON. The counts match `ezdxf`'s per-type counts for
 every type SwiftDXF does not model.
 
+### Identity
+
+```swift
+let dwg = try DXF.read(contentsOf: url)
+for (i, entity) in dwg.entities.enumerated() {
+    let id = dwg.identity(ofEntityAt: i)
+    id.handle    // "3A": the DXF handle (group 5) as the file writes it, or nil
+    id.locator   // "ENTITIES:4": section and position, always present
+    id.id        // the handle when there is one, otherwise the locator
+}
+```
+
+`dwg.identities` holds one `DXF.Identity` per entry in `dwg.entities`, in the same order. Reading the
+same file twice gives the same identities, and the handles are the ones `ezdxf` reports, so an
+entity can be named in a ledger and found again in the original file or in another program.
+
+The locator counts **every** record in its section, including the ones SwiftDXF skips, so an
+entity keeps its locator when a later release starts reading another type. A file with no handles
+(some R12 files) is still fully identified by its locators. An old-style `POLYLINE` is one record:
+its handle and position are the header's, not its `VERTEX` records'.
+
+Blocks and tables carry identities too:
+
+| Property | Holds |
+|---|---|
+| `dwg.blocks` | each `BLOCKS` definition: `name`, `handle`, `basePoint`, and its own `entities` with `identities` (locators read `BLOCKS:<block>/<n>`) |
+| `dwg.layers`, `dwg.lineTypes` | the `LAYER` and `LTYPE` records: `name` and `handle` |
+| `dwg.dimensionStyles` | the `DIMSTYLE` records: `name` and `handle` (group 105) |
+
+`INSERT` references are still not expanded ([#5](https://github.com/SecondMouseAU/SwiftDXF/issues/5)).
+
 ### Splines
 
 ```swift

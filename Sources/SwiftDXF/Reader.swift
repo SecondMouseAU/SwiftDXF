@@ -29,44 +29,44 @@ extension DXF {
 
         // MARK: field accessors (over one entity's tag bag)
 
-        private func first(_ code: Int, _ f: [(code: Int, value: String)]) -> String? {
+        func first(_ code: Int, _ f: [(code: Int, value: String)]) -> String? {
             f.first { $0.code == code }?.value
         }
-        private func dbl(_ code: Int, _ f: [(code: Int, value: String)], _ fallback: Double = 0)
+        func dbl(_ code: Int, _ f: [(code: Int, value: String)], _ fallback: Double = 0)
             -> Double
         {
             guard let s = first(code, f) else { return fallback }
             return Double(s.trimmingCharacters(in: .whitespaces)) ?? fallback
         }
-        private func ints(_ code: Int, _ f: [(code: Int, value: String)]) -> Int? {
+        func ints(_ code: Int, _ f: [(code: Int, value: String)]) -> Int? {
             guard let s = first(code, f) else { return nil }
             return Int(s.trimmingCharacters(in: .whitespaces))
         }
-        private func dblOpt(_ code: Int, _ f: [(code: Int, value: String)]) -> Double? {
+        func dblOpt(_ code: Int, _ f: [(code: Int, value: String)]) -> Double? {
             guard let s = first(code, f) else { return nil }
             return Double(s.trimmingCharacters(in: .whitespaces))
         }
         /// A point whose base group code (and `+10`/`+20` for y/z) may be entirely absent, e.g.
         /// DIMENSION's per-type definition points (13/14/15/16). `nil`, not a zero point, when unset.
-        private func pointOpt(_ base: Int, _ f: [(code: Int, value: String)]) -> Point? {
+        func pointOpt(_ base: Int, _ f: [(code: Int, value: String)]) -> Point? {
             guard first(base, f) != nil else { return nil }
             return Point(dbl(base, f), dbl(base + 10, f), dbl(base + 20, f))
         }
-        private func allDbl(_ code: Int, _ f: [(code: Int, value: String)]) -> [Double] {
+        func allDbl(_ code: Int, _ f: [(code: Int, value: String)]) -> [Double] {
             f.compactMap {
                 $0.code == code ? Double($0.value.trimmingCharacters(in: .whitespaces)) : nil
             }
         }
-        private func layer(_ f: [(code: Int, value: String)]) -> String {
+        func layer(_ f: [(code: Int, value: String)]) -> String {
             first(8, f).map { $0.trimmingCharacters(in: .whitespaces) } ?? "0"
         }
         /// AutoCAD Color Index (group 62); 256 = BYLAYER when absent.
-        private func color(_ f: [(code: Int, value: String)]) -> Int { ints(62, f) ?? 256 }
-        private func point(_ f: [(code: Int, value: String)]) -> Point {
+        func color(_ f: [(code: Int, value: String)]) -> Int { ints(62, f) ?? 256 }
+        func point(_ f: [(code: Int, value: String)]) -> Point {
             Point(dbl(10, f), dbl(20, f), dbl(30, f))
         }
         /// LWPOLYLINE vertices in field order: each `10` opens a vertex, `20` is its y, `42` its bulge.
-        private func lwVertices(_ f: [(code: Int, value: String)]) -> [PolyVertex] {
+        func lwVertices(_ f: [(code: Int, value: String)]) -> [PolyVertex] {
             var verts: [PolyVertex] = []
             var x: Double?
             var y: Double = 0
@@ -94,7 +94,7 @@ extension DXF {
 
         /// SPLINE points for base code 10 (control) or 11 (fit): each base-code tag opens a point,
         /// the `+10`/`+20` tags that follow fill its y and z.
-        private func splinePoints(_ base: Int, _ f: [(code: Int, value: String)]) -> [Point] {
+        func splinePoints(_ base: Int, _ f: [(code: Int, value: String)]) -> [Point] {
             var pts: [Point] = []
             var cur: Point?
             for (code, value) in f {
@@ -134,168 +134,23 @@ extension DXF {
             if mn.contains(where: { $0.code == 10 }) { dwg.extMin = point(mn) }
             let mx = headerVar("$EXTMAX")
             if mx.contains(where: { $0.code == 10 }) { dwg.extMax = point(mx) }
-            guard let start = entitiesStart() else { return dwg }  // valid DXF, just no model space
+            dwg.layers = layers()
+            dwg.lineTypes = lineTypes()
+            dwg.dimensionStyles = dimensionStyles()
+            dwg.blocks = blocks()
+            guard let start = sectionStart("ENTITIES") else { return dwg }  // no model space
 
-            var i = start
-            while i < pairs.count {
-                let p = pairs[i]
-                guard p.code == 0 else {
-                    i += 1
-                    continue
-                }
-                let type = trimmed(p.value)
-                if type == "ENDSEC" || type == "EOF" { break }
-
-                // Collect this entity's fields up to the next 0-tag.
-                var j = i + 1
-                var fields: [(code: Int, value: String)] = []
-                while j < pairs.count && pairs[j].code != 0 {
-                    fields.append(pairs[j])
-                    j += 1
-                }
-
-                switch type {
-                case "LINE":
-                    let a = point(fields)
-                    let b = Point(dbl(11, fields), dbl(21, fields), dbl(31, fields))
-                    dwg.entities.append(
-                        .line(a: a, b: b, layer: layer(fields), color: color(fields)))
-                    dwg.counts.line += 1
-
-                case "CIRCLE":
-                    dwg.entities.append(
-                        .circle(
-                            center: point(fields), radius: dbl(40, fields),
-                            layer: layer(fields), color: color(fields)))
-                    dwg.counts.circle += 1
-
-                case "ARC":
-                    dwg.entities.append(
-                        .arc(
-                            center: point(fields), radius: dbl(40, fields),
-                            startDeg: dbl(50, fields), endDeg: dbl(51, fields),
-                            layer: layer(fields), color: color(fields)))
-                    dwg.counts.arc += 1
-
-                case "ELLIPSE":
-                    var major = Point(dbl(11, fields), dbl(21, fields), dbl(31, fields))
-                    var ratio = dbl(40, fields, 1)
-                    var startP = dbl(41, fields, 0)
-                    var endP = dbl(42, fields, 2 * .pi)
-                    // The DXF spec requires ratio = minor/major ≤ 1. Some writers emit ratio > 1
-                    // (a swapped major axis). Normalise to the canonical form: rotate the major axis
-                    // +90° and scale by ratio, invert the ratio, shift the params by −π/2, so the curve
-                    // is unchanged but downstream consumers (e.g. OCCT's Geom_Ellipse, which demands
-                    // majorRadius ≥ minorRadius) get a valid axis. Matches ezdxf's normalisation.
-                    if ratio > 1 {
-                        major = Point(-major.y * ratio, major.x * ratio, major.z)
-                        ratio = 1 / ratio
-                        func shift(_ a: Double) -> Double {
-                            let m = (a - .pi / 2).truncatingRemainder(dividingBy: 2 * .pi)
-                            return m < 0 ? m + 2 * .pi : m
-                        }
-                        startP = shift(startP)
-                        endP = shift(endP)
-                    }
-                    dwg.entities.append(
-                        .ellipse(
-                            center: point(fields), majorAxis: major,
-                            ratio: ratio, startParam: startP, endParam: endP,
-                            layer: layer(fields), color: color(fields)))
-                    dwg.counts.ellipse += 1
-
-                case "POINT":
-                    dwg.entities.append(
-                        .point(at: point(fields), layer: layer(fields), color: color(fields)))
-                    dwg.counts.point += 1
-
-                case "TEXT", "MTEXT":
-                    dwg.entities.append(
-                        .text(
-                            at: point(fields), height: dbl(40, fields, 0),
-                            rotationDeg: dbl(50, fields, 0), string: textValue(fields),
-                            layer: layer(fields), color: color(fields)))
-                    dwg.counts.text += 1
-
-                case "LWPOLYLINE":
-                    // Vertices interleave in order: 10 x, 20 y, optional 42 bulge; a new 10 starts the
-                    // next vertex. Walk in field order so each bulge binds to its own vertex.
-                    let closed = (ints(70, fields) ?? 0) & 1 == 1
-                    dwg.entities.append(
-                        .polyline(
-                            vertices: lwVertices(fields), closed: closed,
-                            layer: layer(fields), color: color(fields)))
-                    dwg.counts.polyline += 1
-
-                case "POLYLINE":
-                    // Old-style: a POLYLINE header followed by VERTEX entities and a terminating SEQEND.
-                    let closed = (ints(70, fields) ?? 0) & 1 == 1
-                    let lay = layer(fields)
-                    let col = color(fields)
-                    var verts: [PolyVertex] = []
-                    while j < pairs.count && pairs[j].code == 0
-                        && trimmed(pairs[j].value) == "VERTEX"
-                    {
-                        var m = j + 1
-                        var vf: [(code: Int, value: String)] = []
-                        while m < pairs.count && pairs[m].code != 0 {
-                            vf.append(pairs[m])
-                            m += 1
-                        }
-                        verts.append(PolyVertex(point(vf), bulge: dbl(42, vf, 0)))
-                        j = m
-                    }
-                    if j < pairs.count && pairs[j].code == 0 && trimmed(pairs[j].value) == "SEQEND"
-                    {
-                        var m = j + 1
-                        while m < pairs.count && pairs[m].code != 0 { m += 1 }
-                        j = m
-                    }
-                    dwg.entities.append(
-                        .polyline(vertices: verts, closed: closed, layer: lay, color: col))
-                    dwg.counts.polyline += 1
-
-                case "DIMENSION":
-                    let kind = DimensionType(group70: ints(70, fields) ?? 0)
-                    let textRaw = first(1, fields)
-                    let dim = Dimension(
-                        kind: kind,
-                        measurement: dblOpt(42, fields),
-                        textOverride: (textRaw?.isEmpty == false) ? textRaw : nil,
-                        textPosition: Point(dbl(11, fields), dbl(21, fields), dbl(31, fields)),
-                        defPoint: point(fields),
-                        defPoint2: pointOpt(13, fields), defPoint3: pointOpt(14, fields),
-                        defPoint4: pointOpt(15, fields), defPoint5: pointOpt(16, fields),
-                        layer: layer(fields), color: color(fields))
-                    dwg.entities.append(.dimension(dim))
-                    dwg.counts.dimension += 1
-
-                case "SPLINE":
-                    dwg.entities.append(
-                        .spline(
-                            Spline(
-                                degree: ints(71, fields) ?? 3, flags: ints(70, fields) ?? 0,
-                                controlPoints: splinePoints(10, fields),
-                                knots: allDbl(40, fields), weights: allDbl(41, fields),
-                                fitPoints: splinePoints(11, fields),
-                                layer: layer(fields), color: color(fields))))
-                    dwg.counts.spline += 1
-
-                case "VERTEX", "SEQEND":
-                    break  // POLYLINE children; consumed with their parent, ignored if stray
-
-                default:
-                    // Unmodelled entity (INSERT, HATCH, SOLID, …): skip, but record it.
-                    dwg.skipped[type, default: 0] += 1
-                    dwg.skippedByLayer[type, default: [:]][layer(fields), default: 0] += 1
-                }
-                i = j
-            }
+            let run = readEntities(from: start, stopAt: ["ENDSEC", "EOF"]) { "ENTITIES:\($0)" }
+            dwg.entities = run.entities
+            dwg.identities = run.identities
+            dwg.counts = run.counts
+            dwg.skipped = run.skipped
+            dwg.skippedByLayer = run.skippedByLayer
             return dwg
         }
 
         /// The value pairs of a HEADER variable (`9`/`$NAME`), up to the next `9` or section `0`.
-        private func headerVar(_ name: String) -> [(code: Int, value: String)] {
+        func headerVar(_ name: String) -> [(code: Int, value: String)] {
             guard let start = pairs.firstIndex(where: { $0.code == 9 && trimmed($0.value) == name })
             else { return [] }
             var out: [(code: Int, value: String)] = []
@@ -307,32 +162,18 @@ extension DXF {
             return out
         }
 
-        /// Index of the first pair *after* a `2`/`ENTITIES` tag inside a `SECTION`.
-        private func entitiesStart() -> Int? {
-            var k = 0
-            while k + 1 < pairs.count {
-                if pairs[k].code == 0, trimmed(pairs[k].value) == "SECTION",
-                    pairs[k + 1].code == 2, trimmed(pairs[k + 1].value) == "ENTITIES"
-                {
-                    return k + 2
-                }
-                k += 1
-            }
-            return nil
-        }
-
-        private func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+        func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
 
         /// Text payload for TEXT/MTEXT: concatenate MTEXT continuation groups (3) then the final
         /// group (1), and decode AutoCAD inline escapes.
-        private func textValue(_ f: [(code: Int, value: String)]) -> String {
+        func textValue(_ f: [(code: Int, value: String)]) -> String {
             let continued = f.filter { $0.code == 3 }.map(\.value).joined()
             let main = first(1, f) ?? ""
             return unescape(continued + main)
         }
 
         /// Decode the inline escapes that matter for plain text: `\U+XXXX` unicode, and `\P` newline.
-        private func unescape(_ s: String) -> String {
+        func unescape(_ s: String) -> String {
             guard s.contains("\\") else { return s }
             var out = ""
             var it = s.makeIterator()

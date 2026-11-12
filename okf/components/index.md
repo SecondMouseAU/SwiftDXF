@@ -4,7 +4,7 @@ title: Components index
 resource: https://github.com/SecondMouseAU/SwiftDXF
 tags: [index]
 description: Public modules / API surfaces exposed by SwiftDXF.
-timestamp: 2026-10-24
+timestamp: 2026-11-12
 ---
 
 # Components
@@ -14,6 +14,11 @@ timestamp: 2026-10-24
   (line, arc, circle, polyline, text, spline, …) with their layer. Unmodelled entity types
   are tallied in `Drawing.skipped` / `skippedByLayer`; `DXF.Spline.flattened(tolerance:)` turns a
   spline into polyline points.
+- **Identity** (`Identity.swift`, `Block.swift`, `Tables.swift`): `Drawing.identities` holds a
+  `DXF.Identity` (the file's handle plus a section-and-position locator) for each entity, index
+  aligned with `entities`; `Drawing.blocks`, `layers`, `lineTypes` and `dimensionStyles` carry the
+  records of `BLOCKS` and the tables with their handles. The reader that builds them is split into
+  `Reader+Entities.swift`, `Reader+Sections.swift` and `Reader+Tables.swift`.
 - **Contour layer** (in `SwiftDXF`, `Sources/SwiftDXF/Contours/`): `drawing.contours(_:)` returns a
   `DXF.Contour.Result` of `Shape`s (a counter-clockwise outer `Loop` plus clockwise hole `Loop`s),
   leftover open `Chain`s and `Warning`s, in millimetres. `Segment` is a line or arc as chord plus

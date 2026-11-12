@@ -26,6 +26,8 @@ func summary(for path: String) -> [String: Any] {
             "skipped": dwg.skipped,
             "skippedByLayer": dwg.skippedByLayer,
         ]
+        // One entry per entity, in order: the file's handle, or null when it has none.
+        obj["handles"] = dwg.identities.map { $0.handle ?? NSNull() as Any }
         if let b = dwg.bounds {
             obj["bounds"] = ["min": [b.min.x, b.min.y], "max": [b.max.x, b.max.y]]
         } else {
