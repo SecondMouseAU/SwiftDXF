@@ -176,18 +176,7 @@ extension DXF.Reader {
                 vertices: verts, closed: closed, layer: layer(fields), color: color(fields))
 
         case "DIMENSION":
-            let kind = DXF.DimensionType(group70: ints(70, fields) ?? 0)
-            let textRaw = first(1, fields)
-            return .dimension(
-                DXF.Dimension(
-                    kind: kind,
-                    measurement: dblOpt(42, fields),
-                    textOverride: (textRaw?.isEmpty == false) ? textRaw : nil,
-                    textPosition: DXF.Point(dbl(11, fields), dbl(21, fields), dbl(31, fields)),
-                    defPoint: point(fields),
-                    defPoint2: pointOpt(13, fields), defPoint3: pointOpt(14, fields),
-                    defPoint4: pointOpt(15, fields), defPoint5: pointOpt(16, fields),
-                    layer: layer(fields), color: color(fields)))
+            return .dimension(dimension(fields))
 
         case "SPLINE":
             return .spline(

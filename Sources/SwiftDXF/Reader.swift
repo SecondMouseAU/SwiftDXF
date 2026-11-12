@@ -137,6 +137,7 @@ extension DXF {
             dwg.layers = layers()
             dwg.lineTypes = lineTypes()
             dwg.dimensionStyles = dimensionStyles()
+            dwg.dimensionDefaults = headerStyleVariables()
             dwg.blocks = blocks()
             guard let start = sectionStart("ENTITIES") else { return dwg }  // no model space
 

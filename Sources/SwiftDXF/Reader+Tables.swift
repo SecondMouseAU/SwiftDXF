@@ -78,7 +78,8 @@ extension DXF.Reader {
     func dimensionStyles() -> [DXF.DimensionStyle] {
         tableRecords("DIMSTYLE").map {
             DXF.DimensionStyle(
-                name: name($0), identity: identity($0, table: "DIMSTYLE", handleCode: 105))
+                name: name($0), identity: identity($0, table: "DIMSTYLE", handleCode: 105),
+                variables: styleVariables($0.fields))
         }
     }
 }

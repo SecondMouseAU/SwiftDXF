@@ -31,7 +31,7 @@ The 2D entity set that dominates real-world drawings, from the `ENTITIES` (model
 | `POINT` | `.point(at, …)` |
 | `TEXT`, `MTEXT` | `.text(at, height, rotationDeg, string, …)` |
 | `LWPOLYLINE`, `POLYLINE`/`VERTEX` | `.polyline(vertices, closed, …)`: each vertex carries its **bulge** |
-| `DIMENSION` | `.dimension(Dimension)`: semantic measurement only, not the rendered arrow/text glyphs |
+| `DIMENSION` | `.dimension(Dimension)`: what it measures and how it is stated, not the rendered arrow/text glyphs |
 | `SPLINE` | `.spline(Spline)`: degree, flags, control points, knots, weights, fit points; flattens to a polyline |
 | `HATCH` | `.hatch(Hatch)`: pattern name, solid fill, and the boundary paths (polyline and edge types) |
 | `LEADER` | `.leader(Leader)`: vertices, arrowhead, and the handle of the annotation it points at |
@@ -127,6 +127,45 @@ dwg.isVisible(entityAt: i)                  // on a layer that is on and not fro
 `lineTypeName`, `isOff` (a negative colour), `isFrozen` and `isLocked`. A `LineType` carries
 `pattern` (positive dash, negative gap, zero dot), `patternLength` and `description`. A block's
 entities keep their line type names in `Block.entityLineTypes`.
+
+### Dimensions
+
+A `DIMENSION` says what it measures, and how the number is to be stated:
+
+```swift
+for case .dimension(let d) in dwg.entities {
+    d.measurement                         // the stored value (group 42); nil when absent, 0 or -1
+    d.computedMeasurement                 // the value the geometry gives, in drawing units
+    d.rotation, d.obliqueAngle            // groups 50 and 52, in degrees
+    dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale
+    let style = dwg.styleVariables(of: d)
+    style.decimalPlaces                   // DIMDEC: 1 if stated to one place, nil if unstated
+    style.suppressesTrailingZeros         // DIMZIN: "8.1" may be 8.100 with its zeros hidden
+    style.linearScale, style.unitSuffix   // DIMLFAC and DIMPOST
+    d.text.showsMeasurement               // does the text show the measured value?
+}
+```
+
+- **`measurement` is `nil`, not `-1`.** Many writers (every McMaster-Carr sheet checked) store
+  `-1` in group 42 and `<>` as the text. A value of zero or below reads as missing.
+- **`computedMeasurement`** is the same number for every consumer: for a linear dimension the
+  distance between the two extension-line origins along `rotation` (horizontal when absent), for an
+  aligned one the distance between them, for a radius or diameter the distance between its two
+  definition points. Angular and ordinate dimensions have none. It matches `ezdxf`'s
+  `Dimension.get_measurement()`, which also applies no scale. Group 50 absent means horizontal, as
+  the DXF default says, and agreed with the direction worked out from the dimension-line point on
+  every one of 339 real dimensions checked.
+- **Style variables** come from the entity's own overrides in its extended data (`ACAD` /
+  `DSTYLE`), then the `DIMSTYLE` record it names. A variable neither states is `nil`: SolidWorks
+  styles often leave `DIMDEC` out, and the reader does not guess it. The header's own current
+  values are in `dwg.dimensionDefaults` for a caller that wants them as a fallback; they belong to
+  whichever style was current when the file was saved, so they are not applied for you. A negative
+  `DIMLFAC` applies to paper space only and is ignored.
+- **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
+  and `\P` line breaks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)` and
+  `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a
+  limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces;
+  `isSuppressed` is the single space that hides the text.
 
 ### Splines
 

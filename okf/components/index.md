@@ -24,6 +24,13 @@ timestamp: 2026-11-12
   (polyline and edge types); `.leader` the vertices, arrowhead and annotation handle. `Layer` and
   `LineType` carry the table fields, and `Drawing.effectiveLineType(ofEntityAt:)` resolves BYLAYER
   and BYBLOCK. Read by `Reader+Hatch.swift` and `Reader+Tables.swift`.
+- **Dimensions** (`Dimension.swift`, `Dimension+Computed.swift`, `DimensionText.swift`,
+  `DimensionStyleVariables.swift`, `Drawing+Dimensions.swift`): `Dimension` carries the stored
+  `measurement` (nil when absent, zero or negative), `rotation`, `obliqueAngle`, `styleName` and the
+  `styleOverrides` read from the `DSTYLE` extended data. `computedMeasurement` is the geometric value
+  (linear, aligned, radius, diameter); `Drawing.styleVariables(of:)` resolves overrides over the
+  `DIMSTYLE` record, and `displayedMeasurement(of:)` applies `DIMLFAC`. `DimensionText` splits the
+  override into measurement, number, words and line-break parts. Read by `Reader+Dimension.swift`.
 - **Contour layer** (in `SwiftDXF`, `Sources/SwiftDXF/Contours/`): `drawing.contours(_:)` returns a
   `DXF.Contour.Result` of `Shape`s (a counter-clockwise outer `Loop` plus clockwise hole `Loop`s),
   leftover open `Chain`s and `Warning`s, in millimetres. `Segment` is a line or arc as chord plus

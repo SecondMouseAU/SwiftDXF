@@ -68,10 +68,13 @@ extension DXF {
     public struct DimensionStyle: Equatable, Sendable {
         public var name: String
         public var identity: Identity
+        /// The variables the record states: decimal places, zero suppression, scale and suffix.
+        public var variables: Variables
 
-        public init(name: String, identity: Identity) {
+        public init(name: String, identity: Identity, variables: Variables = .init()) {
             self.name = name
             self.identity = identity
+            self.variables = variables
         }
 
         /// The record's handle (group 105), or `nil` when the file has none.

@@ -67,6 +67,8 @@ func summary(for path: String) -> [String: Any] {
                 for p in [d.defPoint2, d.defPoint3, d.defPoint4, d.defPoint5] {
                     if let p { add("DIMENSION", p.x, p.y) }
                 }
+                if let r = d.rotation { add("DIMENSION", r) }
+                if let o = d.obliqueAngle { add("DIMENSION", o) }
             case .spline(let s):
                 for p in s.controlPoints { add("SPLINE", p.x, p.y) }
                 for p in s.fitPoints { add("SPLINE", p.x, p.y) }
@@ -92,6 +94,12 @@ func summary(for path: String) -> [String: Any] {
                     }
                 }
             }
+        }
+        // The geometric measurement of each DIMENSION in order (null where there is none), for
+        // diffing against ezdxf's Dimension.get_measurement().
+        obj["dimensions"] = dwg.entities.compactMap { e -> Any? in
+            guard case .dimension(let d) = e else { return nil }
+            return d.computedMeasurement ?? NSNull()
         }
         obj["geom"] = ["sum": sum, "scalars": n]
         obj["geomByType"] = byType.mapValues { ["sum": $0[0], "scalars": Int($0[1])] }
