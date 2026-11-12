@@ -91,8 +91,18 @@ extension DXF {
         /// Off by default: a title block then stays out of the entities, and `INSERT` stays in
         /// ``Drawing/skipped``.
         public var expandBlocks: Bool
+        /// Leave out entities flagged as paper space (group 67).
+        ///
+        /// This is what `ezdxf`'s `modelspace()` does.
+        ///
+        /// Off by default, which reads them into ``Drawing/entities`` as this reader always has;
+        /// ``Drawing/paperSpace`` counts them either way.
+        public var skipPaperSpace: Bool
 
-        public init(expandBlocks: Bool = false) { self.expandBlocks = expandBlocks }
+        public init(expandBlocks: Bool = false, skipPaperSpace: Bool = false) {
+            self.expandBlocks = expandBlocks
+            self.skipPaperSpace = skipPaperSpace
+        }
     }
 
     /// Something a reader did to a file that a consumer should not miss.

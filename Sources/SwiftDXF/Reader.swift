@@ -9,6 +9,8 @@ extension DXF {
         var version = ""
         /// Whether `INSERT` references are flattened into ``Drawing/entities``.
         var expandBlocks = false
+        /// Whether paper-space entities are left out of ``Drawing/entities``.
+        var skipPaperSpace = false
 
         init(_ text: String) {
             var out: [(Int, String)] = []
@@ -173,6 +175,14 @@ extension DXF {
                     j += 1
                 }
 
+                if section == "ENTITIES", ints(67, fields) == 1 {
+                    dwg.paperSpace[type, default: 0] += 1
+                    if skipPaperSpace {
+                        recordIndex += 1
+                        i = j
+                        continue
+                    }
+                }
                 let entitiesBefore = dwg.entities.count
                 recordExtras(type, fields, section: section, index: recordIndex, into: &dwg)
                 switch type {

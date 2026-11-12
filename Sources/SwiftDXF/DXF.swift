@@ -232,6 +232,10 @@ public enum DXF {
         public var leaders: [Leader]
         /// What a reader did that a consumer should not miss.
         public var warnings: [Warning]
+        /// Entities of the `ENTITIES` section flagged as paper space (group 67), by type.
+        ///
+        /// They are in ``entities`` unless ``ReadOptions/skipPaperSpace`` was set.
+        public var paperSpace: [String: Int]
 
         public init(
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
@@ -249,6 +253,7 @@ public enum DXF {
             hatches = []
             leaders = []
             warnings = []
+            paperSpace = [:]
             self.version = version
             self.entities = entities
             self.counts = counts
@@ -340,6 +345,7 @@ public enum DXF {
         if isBinary(data) { throw Error.binaryUnsupported }
         var r = Reader(decode(data))
         r.expandBlocks = options.expandBlocks
+        r.skipPaperSpace = options.skipPaperSpace
         return try r.parse()
     }
 
@@ -348,6 +354,7 @@ public enum DXF {
         guard !text.isEmpty else { throw Error.empty }
         var r = Reader(text)
         r.expandBlocks = options.expandBlocks
+        r.skipPaperSpace = options.skipPaperSpace
         return try r.parse()
     }
 

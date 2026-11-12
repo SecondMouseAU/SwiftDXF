@@ -488,3 +488,31 @@ struct ExtrusionBlockTests {
         #expect(d.warnings.contains(.unsupportedExtrusion(count: 1)))
     }
 }
+
+@Suite("Paper space")
+struct PaperSpaceTests {
+    typealias B = DXFBuilder
+
+    static func drawing() -> String {
+        var b = DXFBuilder()
+        var paper = B.line((0, 0), (5, 5), handle: "P1")
+        paper.insert((67, "1"), at: 1)
+        b.entities = [B.line((0, 0), (1, 1), handle: "M1"), paper]
+        return b.text()
+    }
+
+    @Test("paper-space entities are counted, and read unless asked to skip them")
+    func countedAndRead() throws {
+        let d = try DXF.read(text: Self.drawing())
+        #expect(d.paperSpace == ["LINE": 1])
+        #expect(d.entities.count == 2)
+    }
+
+    @Test("skipPaperSpace leaves them out and keeps the positions of the rest")
+    func skipped() throws {
+        let d = try DXF.read(text: Self.drawing(), options: .init(skipPaperSpace: true))
+        #expect(d.paperSpace == ["LINE": 1])
+        #expect(d.entities.count == 1)
+        #expect(d.identities.map(\.id) == ["#M1"])
+    }
+}

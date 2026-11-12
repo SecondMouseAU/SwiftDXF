@@ -157,6 +157,9 @@ entities actually read.
   like OCCT's `Geom_Ellipse` (which demands `majorRadius ≥ minorRadius`) get correct geometry. This
   matches `ezdxf`'s normalisation exactly.
 - **Binary DXF** is detected and rejected (`Error.binaryUnsupported`): convert to ASCII DXF first.
+- **Paper space.** Entities flagged group 67 are read into `entities` as they always were, and
+  counted in `drawing.paperSpace`; `ReadOptions(skipPaperSpace: true)` leaves them out, as
+  `ezdxf`'s `modelspace()` does. A layout title block otherwise lands in the entities.
 - **Model space.** `ENTITIES` is read as written; `BLOCKS` definitions are read into
   `Drawing.blocks` and expanded only when asked (see above). OCS extrusion of arcs, circles and
   polylines is not applied (SwiftDXF#21).
