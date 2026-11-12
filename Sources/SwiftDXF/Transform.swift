@@ -67,8 +67,9 @@ extension DXF {
             return l0
         }
 
-        /// The angle, in degrees, of the direction that makes `degrees` with the x axis before
-        /// this map, in `(-180, 180]`. A mirror turns the angle round rather than adding to it.
+        /// The angle of the direction that makes `degrees` with the x axis before this map.
+        ///
+        /// In degrees, in `(-180, 180]`. A mirror turns the angle round rather than adding to it.
         func directionAngle(degrees: Double) -> Double {
             let (cs, sn) = ArcPieces.cosSin(degrees: degrees)
             let v = applyVector(cs, sn)

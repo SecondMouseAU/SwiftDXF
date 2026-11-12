@@ -162,8 +162,9 @@ extension DXF.Entity {
 }
 
 extension DXF.Dimension {
-    /// Turns a linear dimension's ``rotation`` into the world direction `t` gives its measuring
-    /// axis. A horizontal axis stays `nil` when it was, whichever way it points.
+    /// Turns a linear dimension's ``rotation`` into the direction `t` gives its measuring axis.
+    ///
+    /// A horizontal axis stays `nil` when it was, whichever way it points.
     mutating func carryRotation(through t: DXF.Transform) {
         guard kind == .linear else { return }
         let angle = t.directionAngle(degrees: rotation ?? 0)
