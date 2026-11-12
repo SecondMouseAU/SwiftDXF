@@ -30,6 +30,20 @@ extension DXF {
             ty = -(b * base.x + d * base.y) + r.insertion.y + sn * ox + cs * oy
             zScale = r.scaleZ
             tz = r.insertion.z - r.scaleZ * base.z
+            if r.extrusion.z < 0 {
+                // The block is placed in an object coordinate system whose normal is -z, so its
+                // x axis maps to -x and z to -z in the world.
+                a = -a
+                c = -c
+                tx = -tx
+                zScale = -zScale
+                tz = -tz
+            }
+        }
+
+        /// Whether `extrusion` is a normal this planar map can honour: along z, either way.
+        static func supportsExtrusion(_ extrusion: Point) -> Bool {
+            abs(extrusion.x) < 1e-9 && abs(extrusion.y) < 1e-9
         }
 
         func apply(_ p: Point) -> Point {

@@ -22,14 +22,19 @@ extension DXF {
         public var color: Int
         /// The line type as written (group 6), or `nil` for by-layer.
         public var lineType: String?
+        /// The extrusion direction (groups 210, 220, 230), the normal of the plane the insertion
+        /// point and rotation are written in. `(0, 0, -1)` mirrors the block's x axis.
+        public var extrusion: Point
         public var identity: EntityIdentity
 
         public init(
             name: String, insertion: Point, scaleX: Double = 1, scaleY: Double = 1,
             scaleZ: Double = 1, rotation: Double = 0, columns: Int = 1, rows: Int = 1,
             columnSpacing: Double = 0, rowSpacing: Double = 0, layer: String = "0",
-            color: Int = 256, lineType: String? = nil, identity: EntityIdentity
+            color: Int = 256, lineType: String? = nil, extrusion: Point = Point(0, 0, 1),
+            identity: EntityIdentity
         ) {
+            self.extrusion = extrusion
             self.name = name
             self.insertion = insertion
             self.scaleX = scaleX
@@ -98,6 +103,9 @@ extension DXF {
         case blockCycle(name: String)
         /// Expansion stopped at the nesting limit.
         case blockNestingTooDeep(name: String)
+        /// References whose extrusion is not along z, which a planar drawing cannot carry; they
+        /// were expanded as if it were.
+        case unsupportedExtrusion(count: Int)
         /// Entities dropped by an expansion because a non-uniform scale cannot carry them
         /// exactly, by entity type.
         case notTransformed(type: String, count: Int)
@@ -108,6 +116,8 @@ extension DXF {
                 return "\(count) references to missing block \(name)"
             case .blockCycle(let name): return "block \(name) contains itself"
             case .blockNestingTooDeep(let name): return "block \(name) nests too deeply"
+            case .unsupportedExtrusion(let count):
+                return "\(count) references with an extrusion not along z were expanded flat"
             case .notTransformed(let type, let count):
                 return "\(count) \(type) entities not carried through a non-uniform scale"
             }

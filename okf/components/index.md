@@ -14,7 +14,10 @@ timestamp: 2026-10-24
   (line, arc, circle, polyline, text, spline, …) with their layer. `DXF.Dimension` carries
   rotation, style name and overrides, a computed measurement and `DimensionText` parts;
   `Drawing.identities` gives each entity its handle or position; `Drawing.dimensionStyles` is the
-  `DIMSTYLE` table. Unmodelled entity types
+  `DIMSTYLE` table. `ReadOptions(expandBlocks:)` flattens `INSERT`s (`BlockExpansion`,
+  `Transform`) into entities with provenance in `EntityIdentity.via`; `Drawing.blocks`,
+  `references`, `hatches`, `leaders`, `layers`, `lineTypeTable` and `warnings` carry the rest of
+  what real drawings hold. Unmodelled entity types
   are tallied in `Drawing.skipped` / `skippedByLayer`; `DXF.Spline.flattened(tolerance:)` turns a
   spline into polyline points.
 - **Contour layer** (in `SwiftDXF`, `Sources/SwiftDXF/Contours/`): `drawing.contours(_:)` returns a
@@ -25,5 +28,9 @@ timestamp: 2026-10-24
   (grid-hash endpoint merge, loop tracing), `ContourNesting` with `LoopIndex` (even-odd island
   nesting). Pure Swift and OCCT-free: OCCT consumers belong in OCCTSwiftIO. Known limits are in the
   README (no OCS/extrusion, no `INSERT` expansion).
+- **Curve fitting** (`Contours/FittedCurve.swift`): `drawing.fittedCurves(tolerance:)` turns each
+  spline and ellipse into lines and arcs within a tolerance, with its source entity and a
+  `.line` / `.arc` / `.curve` recognition, reusing `SegmentExtractor` and `CurveFitter`.
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
-  `--contours` prints the contour summary as JSON.
+  `--contours` prints the contour summary as JSON; `--dimensions`, `--expand` and `--fit TOL` print
+  dimension rows, the block-expanded digest and a curve-fit summary.

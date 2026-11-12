@@ -8,6 +8,7 @@ import SwiftDXF
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
 //   dxfdump --dimensions file.dxf [...]
 //   dxfdump --expand file.dxf [...]
+//   dxfdump --fit TOLERANCE file.dxf [...]
 //
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
@@ -203,7 +204,54 @@ func expandedSummary(for path: String) -> [String: Any] {
     }
 }
 
+/// Splines and ellipses fitted by lines and arcs: how many are lines or arcs, the worst deviation.
+func fitSummary(for path: String, tolerance: Double) -> [String: Any] {
+    let url = URL(fileURLWithPath: path)
+    do {
+        let dwg = try DXF.read(contentsOf: url)
+        let fits = dwg.fittedCurves(tolerance: tolerance)
+        var lines = 0
+        var arcs = 0
+        var curves = 0
+        var pieces = 0
+        var worst = 0.0
+        for f in fits {
+            pieces += f.segments.count
+            worst = max(worst, f.deviation)
+            switch f.recognized {
+            case .line: lines += 1
+            case .arc: arcs += 1
+            case .curve: curves += 1
+            }
+        }
+        let curveEntities = dwg.entities.filter {
+            switch $0 {
+            case .spline, .ellipse: return true
+            default: return false
+            }
+        }.count
+        return [
+            "file": url.lastPathComponent, "curveEntities": curveEntities, "fitted": fits.count,
+            "lines": lines, "arcs": arcs, "curves": curves, "pieces": pieces,
+            "maxDeviation": worst,
+        ]
+    } catch {
+        return ["file": url.lastPathComponent, "error": "\(error)"]
+    }
+}
+
 var arguments = Array(CommandLine.arguments.dropFirst())
+if let flag = arguments.firstIndex(of: "--fit"), flag + 1 < arguments.count,
+    let tolerance = Double(arguments[flag + 1])
+{
+    arguments.removeSubrange(flag...(flag + 1))
+    for path in arguments {
+        let data = try JSONSerialization.data(
+            withJSONObject: fitSummary(for: path, tolerance: tolerance), options: [.sortedKeys])
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
 if let flag = arguments.firstIndex(of: "--expand") {
     arguments.remove(at: flag)
     for path in arguments {

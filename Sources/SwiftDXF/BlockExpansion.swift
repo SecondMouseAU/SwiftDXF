@@ -17,6 +17,7 @@ extension DXF.Drawing {
         var cycles: [String] = []
         var tooDeep: [String] = []
         var dropped: [String: Int] = [:]
+        var tilted = 0
         let maxDepth = 32
 
         /// What entities inside a reference inherit from it.
@@ -68,6 +69,7 @@ extension DXF.Drawing {
                 tooDeep.append(ref.name)
                 return
             }
+            if !DXF.Transform.supportsExtrusion(ref.extrusion) { tilted += 1 }
             let own = inherited(by: ref, parent: parent)
             let arrayed = ref.columns * ref.rows > 1
             for row in 0..<ref.rows {
@@ -143,6 +145,7 @@ extension DXF.Drawing {
         for name in missing.keys.sorted() {
             warnings.append(.missingBlock(name: name, count: missing[name] ?? 0))
         }
+        if tilted > 0 { warnings.append(.unsupportedExtrusion(count: tilted)) }
         for name in cycles { warnings.append(.blockCycle(name: name)) }
         for name in tooDeep { warnings.append(.blockNestingTooDeep(name: name)) }
         for type in dropped.keys.sorted() {

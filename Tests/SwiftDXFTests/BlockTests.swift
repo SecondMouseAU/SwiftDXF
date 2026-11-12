@@ -455,3 +455,36 @@ struct DrawingTablesTests {
         }
     }
 }
+
+@Suite("Block references in a mirrored coordinate system")
+struct ExtrusionBlockTests {
+    typealias B = DXFBuilder
+
+    @Test("an extrusion of -z mirrors the block's x axis")
+    func mirroredOCS() throws {
+        var b = DXFBuilder()
+        b.blocks = [("B", (0, 0), [B.line((0, 0), (1, 0))])]
+        var insert = B.insert("B", at: (10, 0))
+        insert += [(210, "0.0"), (220, "0.0"), (230, "-1.0")]
+        b.entities = [insert]
+        let d = try DXF.read(text: b.text(), options: .init(expandBlocks: true))
+        if case .line(let a, let e, _, _) = d.entities[0] {
+            #expect(BlockTests.close(a, -10, 0) && BlockTests.close(e, -11, 0))
+        } else {
+            Issue.record("not a line")
+        }
+        #expect(d.references[0].extrusion == DXF.Point(0, 0, -1))
+        #expect(d.warnings.isEmpty)
+    }
+
+    @Test("a tilted extrusion is reported")
+    func tilted() throws {
+        var b = DXFBuilder()
+        b.blocks = [("B", (0, 0), [B.line((0, 0), (1, 0))])]
+        var insert = B.insert("B", at: (0, 0))
+        insert += [(210, "1.0"), (220, "0.0"), (230, "0.0")]
+        b.entities = [insert]
+        let d = try DXF.read(text: b.text(), options: .init(expandBlocks: true))
+        #expect(d.warnings.contains(.unsupportedExtrusion(count: 1)))
+    }
+}

@@ -27,7 +27,9 @@ extension DXF.Reader {
             scaleY: dbl(42, f, 1), scaleZ: dbl(43, f, 1), rotation: dbl(50, f),
             columns: max(ints(70, f) ?? 1, 1), rows: max(ints(71, f) ?? 1, 1),
             columnSpacing: dbl(44, f), rowSpacing: dbl(45, f), layer: layer(f), color: color(f),
-            lineType: nonEmpty(first(6, f)), identity: identity)
+            lineType: nonEmpty(first(6, f)),
+            extrusion: DXF.Point(dbl(210, f, 0), dbl(220, f, 0), dbl(230, f, 1)),
+            identity: identity)
     }
 
     func leader(_ f: [(code: Int, value: String)], identity: DXF.EntityIdentity) -> DXF.Leader {

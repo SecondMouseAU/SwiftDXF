@@ -70,6 +70,33 @@ note. Style fields the file does not carry (`decimals`, `suffix`, `linearScale`)
 guessed. Angular and ordinate dimensions have no computed value yet. `dxfdump --dimensions` prints
 one JSON row per dimension.
 
+### Blocks, hatches, leaders, layers and line types
+
+```swift
+let dwg = try DXF.read(contentsOf: url, options: .init(expandBlocks: true))
+dwg.references          // every INSERT of the ENTITIES section: block name, placement, array
+dwg.blocks["Title"]     // a block definition: base point, entities, nested references
+dwg.hatches             // boundary loops, pattern name, solid or not
+dwg.leaders             // vertices, arrowhead, annotation handle (look it up with index(ofHandle:))
+dwg.layers              // LAYER table: colour, line type, off, frozen, locked
+dwg.lineTypeTable       // LTYPE table: dash pattern
+dwg.lineTypeName(at: i) // entity i's line type, resolved through its layer when by-layer
+```
+
+With `expandBlocks: true` every reference is flattened into `entities`, `hatches` and `leaders`:
+nested blocks, scale, rotation, mirroring, an extrusion of `-z`, and the array form are carried
+through. A circle or arc under a non-uniform scale becomes an ellipse; a polyline with bulges
+under one is dropped and reported. An entity on layer `0` takes the reference's layer, and
+`BYBLOCK` colour and line type take the reference's. `identities[i].via` lists the references an
+entity came through (`blocks` their names), so a title block can be kept or dropped by name.
+`drawing.warnings` reports missing blocks, cycles, and anything a transform could not carry.
+
+Expansion is off by default: `INSERT` stays in `skipped` and the entities are exactly what they
+were. Hatches and leaders are always read, into `hatches` and `leaders`, and stay listed in
+`skipped` because they have no `Entity` case. Validated against ezdxf's own recursive flattening
+on the McMaster drawings and an external library of block-heavy drawings (per-type counts and a
+coordinate digest).
+
 ### Entity identity
 
 `dwg.identities[i]` identifies `dwg.entities[i]`: the DXF handle (group 5, upper case) when the
@@ -77,6 +104,20 @@ file has one, else the position as `ENTITIES[n]`, where `n` counts every record 
 modelled or skipped, so it does not move when a new entity type is modelled. A `POLYLINE` takes the
 identity of its header. `EntityIdentity.via` holds the references an entity was expanded from.
 Reading the same file twice gives the same identities.
+
+### Fitting splines and ellipses
+
+```swift
+for fit in dwg.fittedCurves(tolerance: 0.01) {   // drawing units
+    fit.entityIndex, fit.identity, fit.layer     // the entity the pieces came from
+    fit.segments                                 // DXF.Contour.Segment: lines and arcs, in order
+    fit.deviation                                // upper bound on the distance to the exact curve
+    fit.recognized                               // .line, .arc(center:radius:) or .curve
+}
+```
+
+A spline that is exactly a line or one circle comes out as one piece and is recognised as such.
+`Entity.fitted(tolerance:)` does one entity. `dxfdump --fit 0.01 file.dxf` summarises a file.
 
 ### Splines
 
@@ -116,8 +157,9 @@ entities actually read.
   like OCCT's `Geom_Ellipse` (which demands `majorRadius ≥ minorRadius`) get correct geometry. This
   matches `ezdxf`'s normalisation exactly.
 - **Binary DXF** is detected and rejected (`Error.binaryUnsupported`): convert to ASCII DXF first.
-- **Model space only.** Mirrors what `ezdxf`'s `modelspace()` iterates; `BLOCKS` definitions are not
-  expanded.
+- **Model space.** `ENTITIES` is read as written; `BLOCKS` definitions are read into
+  `Drawing.blocks` and expanded only when asked (see above). OCS extrusion of arcs, circles and
+  polylines is not applied (SwiftDXF#21).
 
 ## Contours
 
