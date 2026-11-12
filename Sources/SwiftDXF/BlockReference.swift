@@ -1,5 +1,3 @@
-import Foundation
-
 extension DXF {
     /// An `INSERT`: a placement of a named ``Block``, possibly as a rectangular array.
     public struct BlockReference: Equatable, Sendable {
@@ -25,16 +23,15 @@ extension DXF {
         /// The extrusion direction (groups 210, 220, 230), the normal of the plane the insertion
         /// point and rotation are written in. `(0, 0, -1)` mirrors the block's x axis.
         public var extrusion: Point
-        public var identity: EntityIdentity
+        public var identity: Identity
 
         public init(
             name: String, insertion: Point, scaleX: Double = 1, scaleY: Double = 1,
             scaleZ: Double = 1, rotation: Double = 0, columns: Int = 1, rows: Int = 1,
             columnSpacing: Double = 0, rowSpacing: Double = 0, layer: String = "0",
             color: Int = 256, lineType: String? = nil, extrusion: Point = Point(0, 0, 1),
-            identity: EntityIdentity
+            identity: Identity
         ) {
-            self.extrusion = extrusion
             self.name = name
             self.insertion = insertion
             self.scaleX = scaleX
@@ -48,45 +45,15 @@ extension DXF {
             self.layer = layer
             self.color = color
             self.lineType = lineType
+            self.extrusion = extrusion
             self.identity = identity
-        }
-    }
-
-    /// A named block definition from the `BLOCKS` section.
-    public struct Block: Sendable {
-        public var name: String
-        /// The block's base point (group 10), which lands on each reference's insertion point.
-        public var basePoint: Point
-        public var entities: [Entity]
-        /// One identity per entry of ``entities``.
-        public var identities: [EntityIdentity]
-        /// One line type name per entry of ``entities``, as written (`nil` is by-layer).
-        public var entityLineTypes: [String?]
-        public var hatches: [Hatch]
-        public var leaders: [Leader]
-        /// References to other blocks, expanded recursively with the block.
-        public var references: [BlockReference]
-        /// Entities of types with no entity form (such as `SOLID`) found in the block, by type
-        /// then layer.
-        public var skippedByLayer: [String: [String: Int]]
-
-        public init(name: String, basePoint: Point = Point(0, 0, 0)) {
-            self.name = name
-            self.basePoint = basePoint
-            entities = []
-            identities = []
-            entityLineTypes = []
-            hatches = []
-            leaders = []
-            references = []
-            skippedByLayer = [:]
         }
     }
 
     /// Settings for reading a DXF.
     public struct ReadOptions: Equatable, Sendable {
-        /// Flatten every top-level `INSERT` into ``Drawing/entities``, ``Drawing/hatches`` and
-        /// ``Drawing/leaders``, with the reference recorded in each identity's ``EntityIdentity/via``.
+        /// Flatten every top-level `INSERT` into ``Drawing/entities``, with the reference
+        /// recorded in each identity's ``Identity/via``.
         ///
         /// Off by default: a title block then stays out of the entities, and `INSERT` stays in
         /// ``Drawing/skipped``.
@@ -109,13 +76,16 @@ extension DXF {
     public enum Warning: Equatable, Sendable, CustomStringConvertible {
         /// A reference names a block the file does not define.
         case missingBlock(name: String, count: Int)
-        /// A block contains itself, directly or through other blocks; the inner reference was dropped.
+        /// A block contains itself, directly or through other blocks; the inner reference was
+        /// dropped.
         case blockCycle(name: String)
         /// Expansion stopped at the nesting limit.
         case blockNestingTooDeep(name: String)
         /// References whose extrusion is not along z, which a planar drawing cannot carry; they
         /// were expanded as if it were.
         case unsupportedExtrusion(count: Int)
+        /// Expansion stopped after about `limit` entities, so some references are not expanded.
+        case expansionTruncated(limit: Int)
         /// Entities dropped by an expansion because a non-uniform scale cannot carry them
         /// exactly, by entity type.
         case notTransformed(type: String, count: Int)
@@ -126,6 +96,8 @@ extension DXF {
                 return "\(count) references to missing block \(name)"
             case .blockCycle(let name): return "block \(name) contains itself"
             case .blockNestingTooDeep(let name): return "block \(name) nests too deeply"
+            case .expansionTruncated(let limit):
+                return "expansion stopped after about \(limit) entities"
             case .unsupportedExtrusion(let count):
                 return "\(count) references with an extrusion not along z were expanded flat"
             case .notTransformed(let type, let count):

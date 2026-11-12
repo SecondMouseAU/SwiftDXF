@@ -32,6 +32,8 @@ extension DXF.Drawing {
         var text = 0
         var dimensions = 0
         var points = 0
+        var hatches = 0
+        var leaders = 0
         for entity in entities {
             let layer = entity.layer
             guard included(layer) else { continue }
@@ -39,6 +41,8 @@ extension DXF.Drawing {
             case .text: text += 1
             case .dimension: dimensions += 1
             case .point: points += 1
+            case .hatch: hatches += 1
+            case .leader: leaders += 1
             default:
                 let index =
                     layerIndex[layer]
@@ -68,6 +72,8 @@ extension DXF.Drawing {
         if text > 0 { warnings.append(.ignoredText(count: text)) }
         if dimensions > 0 { warnings.append(.ignoredDimensions(count: dimensions)) }
         if points > 0 { warnings.append(.ignoredPoints(count: points)) }
+        if hatches > 0 { warnings.append(.ignoredHatches(count: hatches)) }
+        if leaders > 0 { warnings.append(.ignoredLeaders(count: leaders)) }
 
         let join = max(options.joinTolerance, 0)
         let chained = ContourChainer(tolerance: join).chain(extractor.segments)
@@ -135,6 +141,8 @@ extension DXF.Entity {
             return l
         case .dimension(let d): return d.layer
         case .spline(let s): return s.layer
+        case .hatch(let h): return h.layer
+        case .leader(let l): return l.layer
         }
     }
 }

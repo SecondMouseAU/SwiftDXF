@@ -27,6 +27,14 @@ extension DXF.Entity {
             s.layer = layer
             s.color = color
             return .spline(s)
+        case .hatch(var h):
+            h.layer = layer
+            h.color = color
+            return .hatch(h)
+        case .leader(var l):
+            l.layer = layer
+            l.color = color
+            return .leader(l)
         }
     }
 
@@ -39,11 +47,30 @@ extension DXF.Entity {
             return c
         case .dimension(let d): return d.color
         case .spline(let s): return s.color
+        case .hatch(let h): return h.color
+        case .leader(let l): return l.color
         }
     }
 
-    /// This entity carried through `t`, or `nil` when `t` cannot carry it exactly: a polyline
-    /// with bulges under a non-uniform scale.
+    /// The name of the DXF record type, as the reader reports skipped types.
+    var typeName: String {
+        switch self {
+        case .polyline: return "POLYLINE"
+        case .line: return "LINE"
+        case .circle: return "CIRCLE"
+        case .arc: return "ARC"
+        case .ellipse: return "ELLIPSE"
+        case .point: return "POINT"
+        case .text: return "TEXT"
+        case .dimension: return "DIMENSION"
+        case .spline: return "SPLINE"
+        case .hatch: return "HATCH"
+        case .leader: return "LEADER"
+        }
+    }
+
+    /// This entity carried through `t`, or `nil` when `t` cannot carry it exactly: a polyline or
+    /// hatch loop with bulges under a non-uniform scale.
     func transformed(by t: DXF.Transform) -> DXF.Entity? {
         let deg = 180 / Double.pi
         switch self {
@@ -91,12 +118,8 @@ extension DXF.Entity {
                 string: string, layer: l, color: c)
 
         case .polyline(let vertices, let closed, let l, let c):
-            let hasBulge = vertices.contains { abs($0.bulge) > 1e-12 }
-            if hasBulge && t.similarity == nil { return nil }
-            let out = vertices.map {
-                DXF.PolyVertex(t.apply($0.point), bulge: t.isMirrored ? -$0.bulge : $0.bulge)
-            }
-            return .polyline(vertices: out, closed: closed, layer: l, color: c)
+            guard let moved = t.apply(vertices) else { return nil }
+            return .polyline(vertices: moved, closed: closed, layer: l, color: c)
 
         case .spline(var s):
             s.controlPoints = s.controlPoints.map(t.apply)
@@ -110,9 +133,9 @@ extension DXF.Entity {
             d.defPoint3 = d.defPoint3.map(t.apply)
             d.defPoint4 = d.defPoint4.map(t.apply)
             d.defPoint5 = d.defPoint5.map(t.apply)
-            if let raw = d.rawMeasurement, raw > 0 {
-                d.rawMeasurement = t.similarity.map { raw * $0 }
-            }
+            // The stored value is a length: it scales with a uniform scale, and is dropped
+            // (the computed value still follows the points) when the scale is not uniform.
+            if let m = d.measurement { d.measurement = t.similarity.map { m * $0 } }
             if d.kind == .linear {
                 let (cs, sn) = ArcPieces.cosSin(degrees: d.rotation ?? 0)
                 let v = t.applyVector(cs, sn)
@@ -120,6 +143,13 @@ extension DXF.Entity {
                 if d.rotation != nil || abs(angle) > 1e-12 { d.rotation = angle }
             }
             return .dimension(d)
+
+        case .hatch(let h):
+            return h.transformed(by: t).map { .hatch($0) }
+
+        case .leader(var l):
+            l.vertices = l.vertices.map(t.apply)
+            return .leader(l)
         }
     }
 
@@ -134,83 +164,82 @@ extension DXF.Entity {
     }
 }
 
+extension DXF.Transform {
+    /// `vertices` carried through this map, or `nil` when a bulge cannot survive it: a bulge is
+    /// a circular arc, which a non-uniform scale turns into an ellipse.
+    fileprivate func apply(_ vertices: [DXF.PolyVertex]) -> [DXF.PolyVertex]? {
+        if vertices.contains(where: { abs($0.bulge) > 1e-12 }), similarity == nil { return nil }
+        return vertices.map {
+            DXF.PolyVertex(apply($0.point), bulge: isMirrored ? -$0.bulge : $0.bulge)
+        }
+    }
+}
+
 extension DXF.Hatch {
-    /// This hatch carried through `t`, or `nil` when `t` cannot carry a bulged polyline loop.
+    /// This hatch carried through `t`, or `nil` when `t` cannot carry a bulged polyline path.
     ///
-    /// Arc and ellipse edges come out counter-clockwise.
+    /// Arc and ellipse edges keep running counter-clockwise from start to end; a mirroring map
+    /// reverses which way the path travels them.
     func transformed(by t: DXF.Transform) -> DXF.Hatch? {
         var out = self
-        out.loops = []
-        let deg = 180 / Double.pi
-        for loop in loops {
-            switch loop.content {
+        out.paths = []
+        for path in paths {
+            switch path.geometry {
             case .polyline(let vertices, let closed):
-                if vertices.contains(where: { abs($0.bulge) > 1e-12 }) && t.similarity == nil {
-                    return nil
-                }
-                let moved = vertices.map {
-                    DXF.PolyVertex(t.apply($0.point), bulge: t.isMirrored ? -$0.bulge : $0.bulge)
-                }
-                out.loops.append(
-                    Loop(flags: loop.flags, content: .polyline(vertices: moved, closed: closed)))
+                guard let moved = t.apply(vertices) else { return nil }
+                out.paths.append(
+                    Path(flags: path.flags, geometry: .polyline(vertices: moved, closed: closed)))
             case .edges(let edges):
-                var moved: [Edge] = []
-                for edge in edges {
-                    switch edge {
-                    case .line(let a, let b):
-                        moved.append(.line(a: t.apply(a), b: t.apply(b)))
-                    case .arc(let center, let r, let s0, let e0, let ccw):
-                        let (s, e) = ccw ? (s0, e0) : (e0, s0)
-                        if let k = t.similarity {
-                            let phi = t.rotationDegrees
-                            let (a0, a1) = DXF.Transform.normalizedArc(
-                                t.isMirrored ? (phi - e, phi - s) : (s + phi, e + phi))
-                            moved.append(
-                                .arc(
-                                    center: t.apply(center), radius: r * k, startDeg: a0,
-                                    endDeg: a1, counterClockwise: true))
-                        } else {
-                            var end = e / deg
-                            if end <= s / deg { end += 2 * .pi }
-                            let q = t.ellipse(
-                                center: center, major: DXF.Point2(r, 0), ratio: 1, start: s / deg,
-                                end: end)
-                            moved.append(
-                                .ellipse(
-                                    center: q.center, majorAxis: q.major, ratio: q.ratio,
-                                    startDeg: q.start * deg, endDeg: q.end * deg,
-                                    counterClockwise: true))
-                        }
-                    case .ellipse(let center, let major, let ratio, let s0, let e0, let ccw):
-                        let (s, e) = ccw ? (s0, e0) : (e0, s0)
-                        var end = e / deg
-                        if end <= s / deg { end += 2 * .pi }
-                        let q = t.ellipse(
-                            center: center, major: major, ratio: ratio, start: s / deg, end: end)
-                        moved.append(
-                            .ellipse(
-                                center: q.center, majorAxis: q.major, ratio: q.ratio,
-                                startDeg: q.start * deg, endDeg: q.end * deg,
-                                counterClockwise: true))
-                    case .spline(let degree, let control, let knots, let weights):
-                        moved.append(
-                            .spline(
-                                degree: degree, controlPoints: control.map(t.apply), knots: knots,
-                                weights: weights))
-                    }
-                }
-                out.loops.append(Loop(flags: loop.flags, content: .edges(moved)))
+                out.paths.append(
+                    Path(flags: path.flags, geometry: .edges(edges.map { $0.transformed(by: t) })))
             }
         }
         return out
     }
+
+    private typealias Path = BoundaryPath
 }
 
-extension DXF.Leader {
-    /// This leader carried through `t`.
-    func transformed(by t: DXF.Transform) -> DXF.Leader {
-        var out = self
-        out.vertices = vertices.map(t.apply)
-        return out
+extension DXF.Hatch.Edge {
+    fileprivate func transformed(by t: DXF.Transform) -> DXF.Hatch.Edge {
+        let deg = 180 / Double.pi
+        switch self {
+        case .line(let a, let b):
+            return .line(start: t.apply(a), end: t.apply(b))
+
+        case .arc(let center, let r, let s, let e, let ccw):
+            let travel = t.isMirrored ? !ccw : ccw
+            if let k = t.similarity {
+                let phi = t.rotationDegrees
+                let (a0, a1) = DXF.Transform.normalizedArc(
+                    t.isMirrored ? (phi - e, phi - s) : (s + phi, e + phi))
+                return .arc(
+                    center: t.apply(center), radius: r * k, startDeg: a0, endDeg: a1,
+                    counterClockwise: travel)
+            }
+            let q = t.ellipse(
+                center: center, major: DXF.Point2(r, 0), ratio: 1, start: s / deg,
+                end: Self.sweepEnd(s / deg, e / deg))
+            return .ellipse(
+                center: q.center, majorAxis: q.major, ratio: q.ratio, startParam: q.start,
+                endParam: q.end, counterClockwise: travel)
+
+        case .ellipse(let center, let major, let ratio, let s, let e, let ccw):
+            let q = t.ellipse(
+                center: center, major: major, ratio: ratio, start: s, end: Self.sweepEnd(s, e))
+            return .ellipse(
+                center: q.center, majorAxis: q.major, ratio: q.ratio, startParam: q.start,
+                endParam: q.end, counterClockwise: t.isMirrored ? !ccw : ccw)
+
+        case .spline(var spline):
+            spline.controlPoints = spline.controlPoints.map(t.apply)
+            spline.fitPoints = spline.fitPoints.map(t.apply)
+            return .spline(spline)
+        }
+    }
+
+    /// `end` raised by a turn when it does not lie past `start`, so the range sweeps forward.
+    private static func sweepEnd(_ start: Double, _ end: Double) -> Double {
+        end <= start ? end + 2 * .pi : end
     }
 }

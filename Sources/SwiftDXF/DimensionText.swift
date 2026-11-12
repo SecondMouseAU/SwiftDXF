@@ -1,190 +1,153 @@
 import Foundation
 
 extension DXF {
-    /// The text of a `DIMENSION` split into what it says.
+    /// The text of a dimension, split into what it shows.
     ///
-    /// Real files carry a decorated default (`<> mm`), a label (`<>\PBore Size`), a limit
-    /// (`67 mm\P(max)`), a range (`40 - 60 mm\P(Adjustable)`) or a note. This keeps the parts
-    /// apart so no consumer has to parse the string again.
+    /// `<>` stands for the measured value. Real overrides seen on drawings: `<> mm` (the value with
+    /// a unit), `<>\PBore Size` (a label under it), `67 mm\P(max)` (a typed limit), `40 - 60 mm`
+    /// (a range) and `Length is representative` (a note).
     public struct DimensionText: Equatable, Sendable {
-        /// The override as stored (group 1), or `nil` when there is none.
+        public enum Part: Equatable, Sendable {
+            /// `<>`: the measured value.
+            case measurement
+            /// A number typed into the text, with the characters it was written with.
+            case number(Double, text: String)
+            /// Other text, as written. Formatting codes other than `\P` are left in, and the
+            /// numbers inside them are not read as typed numbers.
+            case words(String)
+            /// `\P`: a paragraph break.
+            case lineBreak
+        }
+
+        /// The override as stored (group 1), or `nil` when the dimension has none.
         public var raw: String?
-        /// Whether the measured value is shown: no override, or an override holding `<>`.
-        public var showsMeasurement: Bool
-        /// Whether the text is suppressed (a single space, the DXF convention).
-        public var isSuppressed: Bool
-        /// Text before the `<>` placeholder on its line.
-        public var prefix: String
-        /// Text after the `<>` placeholder, up to the end of its line, such as ` mm`.
-        public var suffix: String
-        /// The lines of the override, split at `\P` paragraph breaks.
-        public var lines: [String]
-        /// Numbers typed into the override, in order.
+        public var parts: [Part]
+
+        /// Splits `raw`, the text override of a dimension (`nil` or empty when there is none).
+        public init(_ raw: String?) {
+            self.raw = raw
+            self.parts = Self.split(raw ?? "")
+        }
+
+        /// `true` when the dimension shows its measured value: no override, or one containing `<>`.
+        public var showsMeasurement: Bool {
+            guard let raw, !raw.isEmpty else { return true }
+            return parts.contains(.measurement)
+        }
+
+        /// `true` for the single space AutoCAD uses to hide the dimension text.
+        public var isSuppressed: Bool { raw == " " }
+
+        /// The numbers typed into the text, in order.
         ///
-        /// Empty when ``showsMeasurement``.
-        public var typedNumbers: [Double]
-        /// The unit word typed with the number, lower case (`mm`, `in`), if any.
-        public var unit: String?
-        /// Qualifier words found: `max`, `min`, `adjustable`, `approx`, `ref`, `typ`, `nom`.
-        public var qualifiers: [String]
-        /// What is left of the text once the placeholder, numbers, units and qualifiers are
-        /// removed, with lines joined by a space.
-        public var words: String
-
-        /// The one typed value, when the text states exactly one number and no qualifier.
-        public var typedValue: Double? {
-            typedNumbers.count == 1 && qualifiers.isEmpty ? typedNumbers[0] : nil
-        }
-
-        /// Whether the text states a range such as `40 - 60 mm`.
-        public var isRange: Bool { typedNumbers.count >= 2 }
-
-        /// Whether the text states a limit or reference value: one number with a qualifier.
-        public var isLimit: Bool { typedNumbers.count == 1 && !qualifiers.isEmpty }
-
-        /// Whether the text is words only, with no value in it and no placeholder.
-        public var isNote: Bool {
-            !showsMeasurement && !isSuppressed && typedNumbers.isEmpty && !words.isEmpty
-        }
-
-        static let qualifierWords = ["max", "min", "adjustable", "approx", "ref", "typ", "nom"]
-        static let unitWords = ["mm", "cm", "m", "in", "inch", "ft"]
-
-        public init(_ override: String?) {
-            raw = override
-            guard let override, !override.isEmpty else {
-                showsMeasurement = true
-                isSuppressed = false
-                prefix = ""
-                suffix = ""
-                lines = []
-                typedNumbers = []
-                unit = nil
-                qualifiers = []
-                words = ""
-                return
+        /// A range such as `40 - 60` gives two.
+        public var typedNumbers: [Double] {
+            parts.compactMap {
+                if case .number(let value, _) = $0 { return value } else { return nil }
             }
-            isSuppressed = override == " "
-            let split = Self.lines(of: override)
-            lines = split
-            let placeholder = "<>"
-            showsMeasurement = override.contains(placeholder)
-            if let line = split.first(where: { $0.contains(placeholder) }),
-                let range = line.range(of: placeholder)
-            {
-                prefix = String(line[..<range.lowerBound]).trimmingCharacters(in: .whitespaces)
-                suffix = String(line[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-            } else {
-                prefix = ""
-                suffix = ""
-            }
-
-            var numbers: [Double] = []
-            var unitFound: String?
-            var found: [String] = []
-            var left: [String] = []
-            for line in split {
-                let cleaned = line.replacingOccurrences(of: placeholder, with: " ")
-                var lineWords: [String] = []
-                for token in Self.tokens(of: cleaned) {
-                    switch token {
-                    case .number(let value):
-                        if !showsMeasurement { numbers.append(value) }
-                    case .word(let word):
-                        let lowered = word.lowercased()
-                        if Self.qualifierWords.contains(lowered) {
-                            if !found.contains(lowered) { found.append(lowered) }
-                        } else if Self.unitWords.contains(lowered) {
-                            if unitFound == nil { unitFound = lowered }
-                        } else {
-                            lineWords.append(word)
-                        }
-                    case .separator:
-                        break
-                    }
-                }
-                if !lineWords.isEmpty { left.append(lineWords.joined(separator: " ")) }
-            }
-            typedNumbers = numbers
-            unit = unitFound
-            qualifiers = found
-            words = isSuppressed ? "" : left.joined(separator: " ")
         }
 
-        private enum Token {
-            case number(Double)
-            case word(String)
-            case separator
-        }
-
-        /// Splits at the MTEXT paragraph break `\P` (either case) and at real newlines.
-        private static func lines(of text: String) -> [String] {
-            var out: [String] = []
-            var current = ""
-            var iterator = text.makeIterator()
-            var pending: Character?
-            while let c = pending ?? iterator.next() {
-                pending = nil
-                if c == "\\" {
-                    guard let n = iterator.next() else {
-                        current.append(c)
-                        break
-                    }
-                    if n == "P" || n == "p" {
-                        out.append(current)
-                        current = ""
-                    } else {
-                        pending = n
-                    }
-                } else if c == "\n" {
-                    out.append(current)
-                    current = ""
-                } else {
-                    current.append(c)
-                }
+        /// The text segments that are not numbers or `<>`, trimmed, in order.
+        public var words: [String] {
+            parts.compactMap {
+                guard case .words(let text) = $0 else { return nil }
+                let trimmed = text.trimmingCharacters(in: .whitespaces)
+                return trimmed.isEmpty ? nil : trimmed
             }
-            out.append(current)
-            return out.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         }
 
-        /// Numbers, words and separators.
-        ///
-        /// A `-` is a sign only when a digit follows it directly and it opens the text or follows
-        /// a space, so `40 - 60` is two numbers, not 40 and -60.
-        private static func tokens(of text: String) -> [Token] {
-            let chars = Array(text)
-            var out: [Token] = []
+        /// MTEXT codes written `\X...;`: alignment, colour, font, height, oblique, stack,
+        /// tracking, width and paragraph properties.
+        private static let takesArguments: Set<Character> = [
+            "A", "C", "c", "F", "f", "H", "Q", "S", "T", "W", "p",
+        ]
+
+        private static func split(_ raw: String) -> [Part] {
+            let chars = Array(raw)
+            var parts: [Part] = []
+            var buffer = ""
+            func flush() {
+                if !buffer.isEmpty { parts.append(.words(buffer)) }
+                buffer = ""
+            }
             var i = 0
             while i < chars.count {
                 let c = chars[i]
-                let startsNumber =
-                    c.isASCII && c.isNumber
-                    || (c == "." && i + 1 < chars.count && chars[i + 1].isNumber)
-                let signed =
-                    c == "-" && i + 1 < chars.count && chars[i + 1].isASCII && chars[i + 1].isNumber
-                    && (i == 0 || chars[i - 1] == " ")
-                if startsNumber || signed {
-                    var j = i + 1
-                    var seenDot = c == "."
-                    while j < chars.count,
-                        chars[j].isASCII && chars[j].isNumber || (chars[j] == "." && !seenDot)
-                    {
-                        if chars[j] == "." { seenDot = true }
-                        j += 1
+                if c == "<", i + 1 < chars.count, chars[i + 1] == ">" {
+                    flush()
+                    parts.append(.measurement)
+                    i += 2
+                } else if c == "%", i + 2 < chars.count, chars[i + 1] == "%" {
+                    // `%%d`, `%%c`, `%%p` and `%%176`: AutoCAD symbols, not numbers.
+                    var end = i + 3
+                    if chars[i + 2].isASCII, chars[i + 2].isNumber {
+                        while end < i + 5, end < chars.count, chars[end].isASCII,
+                            chars[end].isNumber
+                        {
+                            end += 1
+                        }
                     }
-                    if let value = Double(String(chars[i..<j])) { out.append(.number(value)) }
-                    i = j
-                } else if c.isLetter {
-                    var j = i + 1
-                    while j < chars.count, chars[j].isLetter || chars[j] == "'" { j += 1 }
-                    out.append(.word(String(chars[i..<j])))
-                    i = j
+                    buffer.append(contentsOf: chars[i..<end])
+                    i = end
+                } else if c == "\\", i + 1 < chars.count {
+                    let code = chars[i + 1]
+                    if code == "P" {
+                        flush()
+                        parts.append(.lineBreak)
+                        i += 2
+                    } else if code == "U", i + 2 < chars.count, chars[i + 2] == "+" {
+                        // `\U+00B0`: a unicode escape, whose hex digits are not typed numbers.
+                        var end = i + 3
+                        while end < i + 7, end < chars.count, chars[end].isHexDigit { end += 1 }
+                        buffer.append(contentsOf: chars[i..<end])
+                        i = end
+                    } else if Self.takesArguments.contains(code),
+                        let end = chars[(i + 2)...].firstIndex(of: ";")
+                    {
+                        // Colour, font, height, stack and the like: its digits are not typed.
+                        buffer.append(contentsOf: chars[i...end])
+                        i = end + 1
+                    } else if code == "\\" || code == "{" || code == "}" || code.isLetter {
+                        buffer.append(c)
+                        buffer.append(code)
+                        i += 2
+                    } else {
+                        buffer.append(c)
+                        i += 1
+                    }
+                } else if let end = numberEnd(chars, from: i) {
+                    flush()
+                    let text = String(chars[i..<end])
+                    if let value = Double(text) { parts.append(.number(value, text: text)) }
+                    i = end
                 } else {
-                    out.append(.separator)
+                    buffer.append(c)
                     i += 1
                 }
             }
-            return out
+            flush()
+            return parts
+        }
+
+        /// The index just past a number starting at `start`, or `nil` when none starts there.
+        ///
+        /// A sign counts only at the start of the text or after a space, so `40 - 60` and `40-60`
+        /// are two numbers.
+        private static func numberEnd(_ chars: [Character], from start: Int) -> Int? {
+            var i = start
+            if chars[i] == "-" || chars[i] == "+" {
+                guard start == 0 || chars[start - 1] == " " else { return nil }
+                i += 1
+            }
+            let digitsStart = i
+            while i < chars.count, chars[i].isASCII, chars[i].isNumber { i += 1 }
+            if i < chars.count, chars[i] == ".", i + 1 < chars.count, chars[i + 1].isASCII,
+                chars[i + 1].isNumber
+            {
+                i += 1
+                while i < chars.count, chars[i].isASCII, chars[i].isNumber { i += 1 }
+            }
+            return i > digitsStart ? i : nil
         }
     }
 }

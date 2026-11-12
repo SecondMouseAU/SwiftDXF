@@ -1,118 +1,75 @@
-import Foundation
-
 extension DXF {
-    /// A `HATCH`: the closed regions it fills and its pattern, not the individual hatch lines.
+    /// A `HATCH`: which regions are filled, and the boundaries that enclose them.
+    ///
+    /// Only the boundary and the fill kind are read, not the individual hatch lines. On a section
+    /// view a hatched region is cut material.
     public struct Hatch: Equatable, Sendable {
-        /// The pattern name (group 2), such as `SOLID` or `ANSI31`.
+        /// The pattern name (group 2), for example `SOLID` or `ANSI31`.
         public var patternName: String
-        /// Whether the fill is solid (group 70).
+        /// `true` for a solid fill (group 70).
         public var isSolid: Bool
-        /// Whether the hatch follows its boundary objects (group 71).
-        public var isAssociative: Bool
-        public var loops: [Loop]
+        public var paths: [BoundaryPath]
         public var layer: String
         public var color: Int
-        /// The line type as written (group 6), or `nil` for by-layer.
-        public var lineType: String?
-        public var identity: EntityIdentity
 
         public init(
-            patternName: String, isSolid: Bool, isAssociative: Bool = false, loops: [Loop] = [],
-            layer: String = "0", color: Int = 256, lineType: String? = nil,
-            identity: EntityIdentity
+            patternName: String, isSolid: Bool, paths: [BoundaryPath] = [], layer: String = "0",
+            color: Int = 256
         ) {
             self.patternName = patternName
             self.isSolid = isSolid
-            self.isAssociative = isAssociative
-            self.loops = loops
+            self.paths = paths
             self.layer = layer
             self.color = color
-            self.lineType = lineType
-            self.identity = identity
         }
 
-        /// One boundary path.
-        public struct Loop: Equatable, Sendable {
+        /// One closed boundary loop of a hatch.
+        public struct BoundaryPath: Equatable, Sendable {
             /// The path type flags (group 92).
             public var flags: Int
-            public var content: Content
+            public var geometry: Geometry
 
-            public init(flags: Int, content: Content) {
+            public init(flags: Int, geometry: Geometry) {
                 self.flags = flags
-                self.content = content
+                self.geometry = geometry
             }
 
-            /// Flag bit 1: an external boundary.
+            /// Flag bit 1: the outer boundary.
+            ///
+            /// A path without it is an inner loop, an island or a hole.
             public var isExternal: Bool { flags & 1 != 0 }
-            /// Flag bit 16: the outermost boundary.
+            /// Flag bit 4: the path was derived from other objects.
+            public var isDerived: Bool { flags & 4 != 0 }
+            /// Flag bit 16: an outermost island boundary.
             public var isOutermost: Bool { flags & 16 != 0 }
         }
 
-        /// A boundary path is either a polyline or a chain of edges.
-        public enum Content: Equatable, Sendable {
+        /// How a boundary path is written in the file.
+        public enum Geometry: Equatable, Sendable {
+            /// A polyline path: vertices with bulges, so arcs are exact.
             case polyline(vertices: [PolyVertex], closed: Bool)
+            /// An edge path: a chain of lines, arcs, ellipse arcs and splines.
             case edges([Edge])
         }
 
-        /// One edge of a boundary path.
+        /// One edge of an edge-type boundary path.
         ///
-        /// Angles are in degrees, as the file stores them.
+        /// Angles and parameters run counter-clockwise from start to end. DXF stores a clockwise
+        /// edge as the complementary angles (`360 - angle`); the reader converts them, as
+        /// `ezdxf` does, and keeps `counterClockwise` to say which way the path travels the edge.
         public enum Edge: Equatable, Sendable {
-            case line(a: Point2, b: Point2)
-            /// Sweeps from start to end counter-clockwise, or clockwise when `counterClockwise`
-            /// is false.
+            case line(start: Point2, end: Point2)
+            /// A circular arc, angles in degrees.
             case arc(
                 center: Point2, radius: Double, startDeg: Double, endDeg: Double,
                 counterClockwise: Bool)
-            /// `majorAxis` is relative to `center`; `startDeg`/`endDeg` are the parameter range.
+            /// An elliptical arc. `majorAxis` is relative to `center`; the parameters are radians
+            /// (`0...2 pi` for a full ellipse), as for the ``DXF/Entity/ellipse(center:majorAxis:ratio:startParam:endParam:layer:color:)`` entity.
             case ellipse(
-                center: Point2, majorAxis: Point2, ratio: Double, startDeg: Double,
-                endDeg: Double, counterClockwise: Bool)
-            case spline(degree: Int, controlPoints: [Point2], knots: [Double], weights: [Double])
-        }
-    }
-
-    /// A `LEADER`: the arrow from a note or dimension to the feature it refers to.
-    public struct Leader: Equatable, Sendable {
-        public var vertices: [Point]
-        /// Whether an arrowhead is drawn at the first vertex (group 71).
-        public var hasArrowhead: Bool
-        /// Whether the path is a spline rather than straight segments (group 72).
-        public var isSpline: Bool
-        public var annotation: Annotation
-        /// The handle of the annotation entity (group 340), to look up in ``Drawing/identities``.
-        public var annotationHandle: String?
-        /// The dimension style name (group 3).
-        public var styleName: String?
-        public var layer: String
-        public var color: Int
-        /// The line type as written (group 6), or `nil` for by-layer.
-        public var lineType: String?
-        public var identity: EntityIdentity
-
-        public enum Annotation: Equatable, Sendable {
-            case text
-            case tolerance
-            case blockReference
-            case none
-        }
-
-        public init(
-            vertices: [Point], hasArrowhead: Bool = true, isSpline: Bool = false,
-            annotation: Annotation = .none, annotationHandle: String? = nil,
-            styleName: String? = nil, layer: String = "0", color: Int = 256,
-            lineType: String? = nil, identity: EntityIdentity
-        ) {
-            self.vertices = vertices
-            self.hasArrowhead = hasArrowhead
-            self.isSpline = isSpline
-            self.annotation = annotation
-            self.annotationHandle = annotationHandle
-            self.styleName = styleName
-            self.layer = layer
-            self.color = color
-            self.lineType = lineType
-            self.identity = identity
+                center: Point2, majorAxis: Point2, ratio: Double, startParam: Double,
+                endParam: Double, counterClockwise: Bool)
+            /// A spline edge, in the drawing plane.
+            case spline(Spline)
         }
     }
 }

@@ -1,119 +1,80 @@
 import Foundation
 
 extension DXF.Reader {
-    /// The record handle (group 5), trimmed and upper case, or `nil` when absent or empty.
-    func handle(_ fields: [(code: Int, value: String)]) -> String? {
-        nonEmpty(first(5, fields)).map { $0.uppercased() }
-    }
+    /// One record of a table, with its fields and its position in the table.
+    typealias TableRecord = (fields: [(code: Int, value: String)], index: Int)
 
-    /// The trimmed string, or `nil` when it is absent or empty.
-    func nonEmpty(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let t = trimmed(value)
-        return t.isEmpty ? nil : t
-    }
-
-    /// The records of a named `TABLES` table: each `0`-tagged record of `type` with its fields.
-    func tableRecords(_ type: String) -> [[(code: Int, value: String)]] {
-        var out: [[(code: Int, value: String)]] = []
+    /// The records of the `TABLES`-section table called `name` (`LAYER`, `LTYPE`, …), in file order.
+    func tableRecords(_ name: String) -> [TableRecord] {
         var k = 0
-        var inTables = false
-        while k < pairs.count {
-            let p = pairs[k]
-            if p.code == 0, trimmed(p.value) == "SECTION", k + 1 < pairs.count,
-                pairs[k + 1].code == 2
+        while k + 1 < pairs.count {
+            if pairs[k].code == 0, trimmed(pairs[k].value) == "TABLE",
+                pairs[k + 1].code == 2, trimmed(pairs[k + 1].value) == name
             {
-                inTables = trimmed(pairs[k + 1].value) == "TABLES"
-                k += 2
-                continue
-            }
-            if p.code == 0, trimmed(p.value) == "ENDSEC" { inTables = false }
-            if inTables, p.code == 0, trimmed(p.value) == type {
-                var fields: [(code: Int, value: String)] = []
-                var m = k + 1
-                while m < pairs.count, pairs[m].code != 0 {
-                    fields.append(pairs[m])
-                    m += 1
-                }
-                out.append(fields)
-                k = m
-                continue
+                return records(of: name, from: k + 2)
             }
             k += 1
         }
-        return out
+        return []
     }
 
-    /// The `DIMSTYLE` table by style name.
-    ///
-    /// Fields a style does not carry stay `nil`.
-    func dimensionStyles() -> [String: DXF.DimensionStyle] {
-        var out: [String: DXF.DimensionStyle] = [:]
-        for fields in tableRecords("DIMSTYLE") {
-            guard let name = nonEmpty(first(2, fields)) else { continue }
-            out[name] = DXF.DimensionStyle(
-                name: name, decimals: ints(271, fields), suffix: nonEmpty(first(3, fields)),
-                linearScale: dblOpt(144, fields))
-        }
-        return out
-    }
-
-    /// The `DSTYLE` overrides in an entity's extended data.
-    ///
-    /// They follow `1001 ACAD`, `1000 DSTYLE`, `1002 {` as pairs of a `1070` variable number and
-    /// its value, up to `1002 }`.
-    func styleOverrides(_ fields: [(code: Int, value: String)]) -> DXF.DimensionStyle.Overrides {
-        var out = DXF.DimensionStyle.Overrides()
-        guard
-            let start = fields.indices.first(where: {
-                fields[$0].code == 1000 && trimmed(fields[$0].value) == "DSTYLE"
-            })
-        else { return out }
-        var k = start + 1
-        if k < fields.count, fields[k].code == 1002, trimmed(fields[k].value) == "{" { k += 1 }
-        while k + 1 < fields.count {
-            if fields[k].code == 1002 { break }
-            guard fields[k].code == 1070, let variable = Int(trimmed(fields[k].value)) else {
+    private func records(of name: String, from start: Int) -> [TableRecord] {
+        var out: [TableRecord] = []
+        var k = start
+        while k < pairs.count {
+            guard pairs[k].code == 0 else {
                 k += 1
                 continue
             }
-            let value = fields[k + 1].value
-            switch variable {
-            case 271: out.decimals = Int(trimmed(value))
-            case 3: out.suffix = nonEmpty(value)
-            case 144: out.linearScale = Double(trimmed(value))
-            default: break
-            }
-            k += 2
-        }
-        return out
-    }
-}
-
-extension DXF.Reader {
-    /// The `LAYER` table by layer name.
-    func layerTable() -> [String: DXF.Layer] {
-        var out: [String: DXF.Layer] = [:]
-        for fields in tableRecords("LAYER") {
-            guard let name = nonEmpty(first(2, fields)) else { continue }
-            let color = ints(62, fields) ?? 7
-            let flags = ints(70, fields) ?? 0
-            out[name] = DXF.Layer(
-                name: name, color: abs(color), isOff: color < 0, isFrozen: flags & 1 != 0,
-                isLocked: flags & 4 != 0, lineType: nonEmpty(first(6, fields)) ?? "Continuous")
+            let type = trimmed(pairs[k].value)
+            if type == "ENDTAB" || type == "ENDSEC" || type == "EOF" { break }
+            let (fields, j) = recordFields(after: k)
+            if type == name { out.append((fields, out.count)) }
+            k = j
         }
         return out
     }
 
-    /// The `LTYPE` table by line type name.
-    func lineTypeTable() -> [String: DXF.LineType] {
-        var out: [String: DXF.LineType] = [:]
-        for fields in tableRecords("LTYPE") {
-            guard let name = nonEmpty(first(2, fields)) else { continue }
-            out[name] = DXF.LineType(
-                name: name, description: nonEmpty(first(3, fields)) ?? "",
-                pattern: allDbl(49, fields), patternLength: dbl(40, fields))
+    private func identity(
+        _ record: TableRecord, table: String, handleCode: Int = 5
+    ) -> DXF.Identity {
+        DXF.Identity(
+            handle: handle(record.fields, code: handleCode),
+            locator: "TABLES:\(table):\(record.index)")
+    }
+
+    private func name(_ record: TableRecord) -> String {
+        first(2, record.fields).map(trimmed) ?? ""
+    }
+
+    func layers() -> [DXF.Layer] {
+        tableRecords("LAYER").map { record in
+            let f = record.fields
+            let colour = ints(62, f) ?? 7
+            let flags = ints(70, f) ?? 0
+            return DXF.Layer(
+                name: name(record), identity: identity(record, table: "LAYER"),
+                color: abs(colour), lineTypeName: first(6, f).map(trimmed) ?? "Continuous",
+                isOff: colour < 0, isFrozen: flags & 1 != 0, isLocked: flags & 4 != 0)
         }
-        return out
+    }
+
+    func lineTypes() -> [DXF.LineType] {
+        tableRecords("LTYPE").map { record in
+            let f = record.fields
+            return DXF.LineType(
+                name: name(record), identity: identity(record, table: "LTYPE"),
+                description: first(3, f).map(trimmed) ?? "", pattern: allDbl(49, f),
+                patternLength: dbl(40, f))
+        }
+    }
+
+    /// Dimension styles keep their handle in group 105, not 5.
+    func dimensionStyles() -> [DXF.DimensionStyle] {
+        tableRecords("DIMSTYLE").map {
+            DXF.DimensionStyle(
+                name: name($0), identity: identity($0, table: "DIMSTYLE", handleCode: 105),
+                variables: styleVariables($0.fields))
+        }
     }
 }

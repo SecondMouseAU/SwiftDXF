@@ -6,17 +6,20 @@ import SwiftDXF
 //
 //   dxfdump file1.dxf [file2.dxf ...]
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
-//   dxfdump --dimensions file.dxf [...]
-//   dxfdump --expand file.dxf [...]
-//   dxfdump --fit TOLERANCE file.dxf [...]
+//   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
 //
+// --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
+// entities flagged as paper space. Both work with the digest and with --contours.
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
+
+/// How the files are read, set by `--expand` and `--skip-paper-space`.
+var readOptions = DXF.ReadOptions()
 
 func summary(for path: String) -> [String: Any] {
     let url = URL(fileURLWithPath: path)
     do {
-        let dwg = try DXF.read(contentsOf: url)
+        let dwg = try DXF.read(contentsOf: url, options: readOptions)
         let c = dwg.counts
         var obj: [String: Any] = [
             "file": url.lastPathComponent,
@@ -24,11 +27,17 @@ func summary(for path: String) -> [String: Any] {
             "counts": [
                 "LINE": c.line, "CIRCLE": c.circle, "ARC": c.arc, "ELLIPSE": c.ellipse,
                 "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline,
-                "DIMENSION": c.dimension, "SPLINE": c.spline, "total": c.total,
+                "DIMENSION": c.dimension, "SPLINE": c.spline, "HATCH": c.hatch, "LEADER": c.leader,
+                "total": c.total,
             ],
             "skipped": dwg.skipped,
             "skippedByLayer": dwg.skippedByLayer,
+            "references": dwg.references.count,
+            "paperSpace": dwg.paperSpace,
+            "warnings": dwg.warnings.map { "\($0)" },
         ]
+        // One entry per entity, in order: the file's handle, or null when it has none.
+        obj["handles"] = dwg.identities.map { $0.handle ?? NSNull() as Any }
         if let b = dwg.bounds {
             obj["bounds"] = ["min": [b.min.x, b.min.y], "max": [b.max.x, b.max.y]]
         } else {
@@ -63,14 +72,43 @@ func summary(for path: String) -> [String: Any] {
                 for v in verts { add("POLYLINE", v.point.x, v.point.y) }
             case .dimension(let d):
                 add("DIMENSION", d.textPosition.x, d.textPosition.y, d.defPoint.x, d.defPoint.y)
-                if let m = d.rawMeasurement { add("DIMENSION", m) }
+                if let m = d.measurement { add("DIMENSION", m) }
                 for p in [d.defPoint2, d.defPoint3, d.defPoint4, d.defPoint5] {
                     if let p { add("DIMENSION", p.x, p.y) }
                 }
+                if let r = d.rotation { add("DIMENSION", r) }
+                if let o = d.obliqueAngle { add("DIMENSION", o) }
             case .spline(let s):
                 for p in s.controlPoints { add("SPLINE", p.x, p.y) }
                 for p in s.fitPoints { add("SPLINE", p.x, p.y) }
+            case .leader(let l):
+                for p in l.vertices { add("LEADER", p.x, p.y) }
+            case .hatch(let h):
+                for path in h.paths {
+                    switch path.geometry {
+                    case .polyline(let vertices, _):
+                        for v in vertices { add("HATCH", v.point.x, v.point.y, v.bulge) }
+                    case .edges(let edges):
+                        for edge in edges {
+                            switch edge {
+                            case .line(let a, let b): add("HATCH", a.x, a.y, b.x, b.y)
+                            case .arc(let c, let r, let s, let e, _):
+                                add("HATCH", c.x, c.y, r, s, e)
+                            case .ellipse(let c, let m, let ratio, _, _, _):
+                                add("HATCH", c.x, c.y, m.x, m.y, ratio)
+                            case .spline(let sp):
+                                for p in sp.controlPoints { add("HATCH", p.x, p.y) }
+                            }
+                        }
+                    }
+                }
             }
+        }
+        // The geometric measurement of each DIMENSION in order (null where there is none), for
+        // diffing against ezdxf's Dimension.get_measurement().
+        obj["dimensions"] = dwg.entities.compactMap { e -> Any? in
+            guard case .dimension(let d) = e else { return nil }
+            return d.computedMeasurement ?? NSNull()
         }
         obj["geom"] = ["sum": sum, "scalars": n]
         obj["geomByType"] = byType.mapValues { ["sum": $0[0], "scalars": Int($0[1])] }
@@ -99,7 +137,7 @@ func box(_ b: DXF.Box2) -> [String: [Double]] {
 func contourSummary(for path: String, options: DXF.Contour.Options) -> [String: Any] {
     let url = URL(fileURLWithPath: path)
     do {
-        let result = try DXF.read(contentsOf: url).contours(options)
+        let result = try DXF.read(contentsOf: url, options: readOptions).contours(options)
         func loop(_ l: DXF.Contour.Loop) -> [String: Any] {
             [
                 "segments": l.segments.count, "arcs": l.segments.filter { $0.isArc }.count,
@@ -130,145 +168,14 @@ func contourSummary(for path: String, options: DXF.Contour.Options) -> [String: 
     }
 }
 
-/// One JSON row per DIMENSION: identity, kind, stored and computed value, rotation, style, text.
-func dimensionRows(for path: String) -> [String: Any] {
-    let url = URL(fileURLWithPath: path)
-    do {
-        let dwg = try DXF.read(contentsOf: url)
-        var rows: [[String: Any]] = []
-        for (index, entity) in dwg.entities.enumerated() {
-            guard case .dimension(let d) = entity else { continue }
-            let style = dwg.style(of: d)
-            let text = d.text
-            rows.append([
-                "id": index < dwg.identities.count ? dwg.identities[index].id : "",
-                "kind": "\(d.kind)",
-                "stored": d.measurement as Any? ?? NSNull(),
-                "computed": d.computedMeasurement as Any? ?? NSNull(),
-                "rotation": d.rotation as Any? ?? NSNull(),
-                "oblique": d.obliqueAngle as Any? ?? NSNull(),
-                "style": d.styleName as Any? ?? NSNull(),
-                "decimals": style.decimals as Any? ?? NSNull(),
-                "suffix": style.suffix as Any? ?? NSNull(),
-                "text": d.textOverride as Any? ?? NSNull(),
-                "showsMeasurement": text.showsMeasurement,
-                "typedNumbers": text.typedNumbers,
-                "qualifiers": text.qualifiers,
-                "words": text.words,
-            ])
-        }
-        return [
-            "file": url.lastPathComponent, "insUnits": dwg.insUnits as Any? ?? NSNull(),
-            "dimensions": rows,
-        ]
-    } catch {
-        return ["file": url.lastPathComponent, "error": "\(error)"]
-    }
-}
-
-/// Per-type counts and a coordinate digest of the drawing with block references expanded.
-func expandedSummary(for path: String) -> [String: Any] {
-    let url = URL(fileURLWithPath: path)
-    do {
-        let dwg = try DXF.read(contentsOf: url, options: .init(expandBlocks: true))
-        var counts: [String: Int] = [:]
-        var lineSum = 0.0
-        var lineScalars = 0
-        var circleSum = 0.0
-        for e in dwg.entities {
-            switch e {
-            case .line(let a, let b, _, _):
-                counts["LINE", default: 0] += 1
-                lineSum += a.x + a.y + b.x + b.y
-                lineScalars += 4
-            case .circle(let c, let r, _, _):
-                counts["CIRCLE", default: 0] += 1
-                circleSum += c.x + c.y + r
-            case .arc: counts["ARC", default: 0] += 1
-            case .ellipse: counts["ELLIPSE", default: 0] += 1
-            case .point: counts["POINT", default: 0] += 1
-            case .text: counts["TEXT", default: 0] += 1
-            case .polyline: counts["POLYLINE", default: 0] += 1
-            case .dimension: counts["DIMENSION", default: 0] += 1
-            case .spline: counts["SPLINE", default: 0] += 1
-            }
-        }
-        return [
-            "file": url.lastPathComponent, "counts": counts, "lineSum": lineSum,
-            "lineScalars": lineScalars, "circleSum": circleSum, "hatches": dwg.hatches.count,
-            "leaders": dwg.leaders.count, "references": dwg.references.count,
-            "warnings": dwg.warnings.map { "\($0)" }, "skipped": dwg.skipped,
-        ]
-    } catch {
-        return ["file": url.lastPathComponent, "error": "\(error)"]
-    }
-}
-
-/// Splines and ellipses fitted by lines and arcs: how many are lines or arcs, the worst deviation.
-func fitSummary(for path: String, tolerance: Double) -> [String: Any] {
-    let url = URL(fileURLWithPath: path)
-    do {
-        let dwg = try DXF.read(contentsOf: url)
-        let fits = dwg.fittedCurves(tolerance: tolerance)
-        var lines = 0
-        var arcs = 0
-        var curves = 0
-        var pieces = 0
-        var worst = 0.0
-        for f in fits {
-            pieces += f.segments.count
-            worst = max(worst, f.deviation)
-            switch f.recognized {
-            case .line: lines += 1
-            case .arc: arcs += 1
-            case .curve: curves += 1
-            }
-        }
-        let curveEntities = dwg.entities.filter {
-            switch $0 {
-            case .spline, .ellipse: return true
-            default: return false
-            }
-        }.count
-        return [
-            "file": url.lastPathComponent, "curveEntities": curveEntities, "fitted": fits.count,
-            "lines": lines, "arcs": arcs, "curves": curves, "pieces": pieces,
-            "maxDeviation": worst,
-        ]
-    } catch {
-        return ["file": url.lastPathComponent, "error": "\(error)"]
-    }
-}
-
 var arguments = Array(CommandLine.arguments.dropFirst())
-if let flag = arguments.firstIndex(of: "--fit"), flag + 1 < arguments.count,
-    let tolerance = Double(arguments[flag + 1])
-{
-    arguments.removeSubrange(flag...(flag + 1))
-    for path in arguments {
-        let data = try JSONSerialization.data(
-            withJSONObject: fitSummary(for: path, tolerance: tolerance), options: [.sortedKeys])
-        print(String(decoding: data, as: UTF8.self))
-    }
-    exit(0)
-}
 if let flag = arguments.firstIndex(of: "--expand") {
     arguments.remove(at: flag)
-    for path in arguments {
-        let data = try JSONSerialization.data(
-            withJSONObject: expandedSummary(for: path), options: [.sortedKeys])
-        print(String(decoding: data, as: UTF8.self))
-    }
-    exit(0)
+    readOptions.expandBlocks = true
 }
-if let flag = arguments.firstIndex(of: "--dimensions") {
+if let flag = arguments.firstIndex(of: "--skip-paper-space") {
     arguments.remove(at: flag)
-    for path in arguments {
-        let data = try JSONSerialization.data(
-            withJSONObject: dimensionRows(for: path), options: [.sortedKeys])
-        print(String(decoding: data, as: UTF8.self))
-    }
-    exit(0)
+    readOptions.skipPaperSpace = true
 }
 var contourOptions: DXF.Contour.Options?
 if let flag = arguments.firstIndex(of: "--contours") {
@@ -299,7 +206,9 @@ if let flag = arguments.firstIndex(of: "--contours") {
 let paths = arguments
 guard !paths.isEmpty else {
     FileHandle.standardError.write(
-        Data("usage: dxfdump [--contours [--layers A,B] [--units inch|mm]] <file.dxf> [...]\n".utf8)
+        Data(
+            ("usage: dxfdump [--expand] [--skip-paper-space]"
+                + " [--contours [--layers A,B] [--units inch|mm]] <file.dxf> [...]\n").utf8)
     )
     exit(2)
 }
@@ -318,7 +227,9 @@ for path in paths {
     let data = try JSONSerialization.data(
         withJSONObject: summary(for: path), options: [.sortedKeys])
     print(String(decoding: data, as: UTF8.self))
-    if let dwg = try? DXF.read(contentsOf: URL(fileURLWithPath: path)), !dwg.skipped.isEmpty {
+    if let dwg = try? DXF.read(contentsOf: URL(fileURLWithPath: path), options: readOptions),
+        !dwg.skipped.isEmpty
+    {
         FileHandle.standardError.write(Data(skippedTable(dwg).utf8))
     }
 }
