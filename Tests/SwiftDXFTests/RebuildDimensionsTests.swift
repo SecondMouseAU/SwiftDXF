@@ -403,6 +403,21 @@ struct RebuildDimensionsTests {
         #expect(result.dimensions.isEmpty)
     }
 
+    @Test("a ruler or an axis, whose labels are positions, is not a chain of dimensions")
+    func rulerAndAxis() throws {
+        // Ticks every 20 units labelled 10 to 100: each label is explained by some number of
+        // intervals at the scale 0.5, but a dimension is between neighbouring ends.
+        var ruler: [Record] = [Self.line((0, 0), (200, 0))]
+        for k in 0...10 { ruler.append(Self.line((Double(k) * 20, 4), (Double(k) * 20, -2))) }
+        for k in 1...10 { ruler.append(Self.text("\(k * 10)", Double(k) * 20 - 4, 0.5)) }
+        #expect(try Self.rebuild(ruler).1.dimensions.isEmpty)
+        // An axis labelled 50 to 400 every 25 units, drawn the same way.
+        var axis: [Record] = [Self.line((0, 0), (200, 0))]
+        for k in 0...8 { axis.append(Self.line((Double(k) * 25, 4), (Double(k) * 25, -2))) }
+        for k in 1...8 { axis.append(Self.text("\(k * 50)", Double(k) * 25 - 4, 0.5)) }
+        #expect(try Self.rebuild(axis).1.dimensions.isEmpty)
+    }
+
     @Test("a numbered sequence beside lines is not a scale")
     func sequence() throws {
         // Ten equal spans numbered 1 to 10 fit the scale 1/45, which no drawing is at.
@@ -512,6 +527,28 @@ struct RebuildDimensionsTests {
         let result = dwg.rebuildingDimensions()
         #expect(result.dimensions.isEmpty && result.warnings.isEmpty && result.scales.isEmpty)
         for case .dimension(let dimension) in dwg.entities { #expect(dimension.rebuilt == nil) }
+        // The same with drawing around them: an outline, a note and a title, no dimension line.
+        var builder = DXFBuilder()
+        builder.entities = [
+            [
+                (0, "DIMENSION"), (8, "0"), (1, "<>"), (70, "0"), (10, "0"), (20, "5"), (30, "0"),
+                (11, "5"), (21, "5"), (31, "0"), (13, "0"), (23, "0"), (33, "0"), (14, "10"),
+                (24, "0"), (34, "0"),
+            ],
+            Self.line((0, 0), (10, 0)), Self.line((10, 0), (10, 8)), Self.line((10, 8), (0, 8)),
+            Self.line((0, 8), (0, 0)), Self.text("12 OFF", 30, 4), Self.text("DRAWING 2120", 2, 20),
+        ]
+        let around = try DXF.read(text: builder.text()).rebuildingDimensions()
+        #expect(around.dimensions.isEmpty && around.warnings.isEmpty)
+    }
+
+    @Test("rebuilding a drawing that already has the rebuilt dimensions adds none")
+    func rebuildingTwice() throws {
+        let (dwg, first) = try Self.rebuild(Self.chain(scale: 50, lengths: [20, 30, 15]))
+        let applied = first.applied(to: dwg)
+        let second = applied.rebuildingDimensions()
+        #expect(first.dimensions.count == 3)
+        #expect(second.dimensions.isEmpty && second.warnings.isEmpty)
     }
 
     @Test("the same text stored twice is one value, and both are in the pieces")

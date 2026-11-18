@@ -293,6 +293,10 @@ if let flag = arguments.firstIndex(of: "--contours") {
     }
     contourOptions = options
 }
+if !rebuild, arguments.contains("--scale") {
+    FileHandle.standardError.write(Data("--scale goes with --rebuild\n".utf8))
+    exit(2)
+}
 if [listTexts, contourOptions != nil, rebuild].filter({ $0 }).count > 1 {
     FileHandle.standardError.write(
         Data("--texts, --contours and --rebuild cannot be used together\n".utf8))

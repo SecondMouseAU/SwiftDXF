@@ -362,17 +362,18 @@ It starts from each text that states a number and works out the rest, like Swift
   around the text is fine). Its ends are where an extension line meets it, or a `POINT`, a small
   closed triangle (an arrowhead, whose tip is the end) or a small shape such as a dot or a tick
   lies on it. An extension line gives the exact place; a mark is used where there is none. A
-  dimension is a span of up to eight ends of the line (or the whole of it) that the line covers,
-  near the text. `Options(tolerance:)` is how far apart pieces may be and still meet, 3% of the
+  dimension is a span between two ends that the line covers, near the text, with at most two
+  other ends inside it (an arrowhead has a base) or the whole line. `Options(tolerance:)` is how far apart pieces may be and still meet, 3% of the
   text height by default; a length may be off by twice that at each end.
 - **Scale.** Every candidate span and reading implies a scale, the value over the length. The scale
   that explains the most texts is refined to the least-squares scale of the ones it explains, and
   made a round scale (80, 1/2) when it is within what the values can tell apart. Each layer group
   has its own, a group being the `0` of a Jw_cad layer `0-E` and otherwise the layer. Groups that
   differ are reported with `.scalesDisagree`, never averaged. A scale counts only when it is between
-  1/20 and 10,000 and explains at least three values and as many as it leaves, or two when they are
+  1/20 and 1,000,000 and explains at least three values and more than it leaves, or two when they are
   all the values of the group and the scale is round: a numbered sequence beside lines (the ports
-  of a panel, a scale bar, a border) is explained by some scale too, and is left unexplained. A
+  of a panel, a scale bar, a border) is explained by some scale too, and is usually left
+  unexplained: a dimension is between neighbouring ends, with at most two others inside it. A
   value votes only when it is ten units of its last place (`5` does not, `50` and `2.5` do): it
   can be explained once the scale is known. Of scales that explain as much, the one whose
   geometry is nearest its texts wins, then a reduction over an enlargement. `Options(scale:)`
@@ -382,13 +383,15 @@ It starts from each text that states a number and works out the rest, like Swift
   radius symbol before the number and a trailing `mm` are read; a tolerance stack is ignored.
   Angles, other units, texts with several numbers and numbers that are not read (`1.2.3`) are
   listed as not rebuilt, with the reason. Numbers a text assembler ran
-  together (`200 629`) are read as the values they are.
+  together (`200 629`) are read as the values they are, so a space as a thousands separator
+  (`1 600`) is read as two.
 - **Diameters and radii** come from the geometry, not the symbol: a line through the centre of a
   circle or arc that ends on it at both ends is a diameter, and one that ends on it at one end
   (from the centre, or along a leader) is a radius. The symbol is a check: `.symbolDisagrees` says
   where it does not bear the geometry out, and the geometry decides.
 - **Marked, and flagged.** Each dimension has `rebuilt` set. A value text that no dimension
-  explains, on a layer where one was rebuilt or beside a dimension line, is a
+  explains, on a layer where one was rebuilt or (an angle, or a value in another unit) beside a
+  dimension line, is a
   `.valueNotExplained` warning with its reason. A drawing with `DIMENSION` entities and no loose
   pieces gains nothing and warns of nothing.
 - **Pieces are on the layer of the text** unless `Options(pieceLayers: .any)`, and are read from

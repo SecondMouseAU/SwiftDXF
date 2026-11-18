@@ -10,8 +10,9 @@ extension DXF.DimensionRebuilder {
         return layer
     }
 
-    /// The scales a drawing may be at: from a twentieth to ten thousand times its values.
-    static let plausibleScales = 0.05...10_000.0
+    /// The scales a drawing may be at: from a twentieth to a million times its values (a drawing
+    /// in metres at 1:1000 with values in millimetres is a million).
+    static let plausibleScales = 0.05...1_000_000.0
 
     /// The reading of the text of `candidate` that its length explains at `scale`, if any.
     ///
@@ -31,14 +32,14 @@ extension DXF.DimensionRebuilder {
     }
 
     /// Whether a scale found for a group of `values` texts is credible: a plausible scale that
-    /// explains at least three of them and as many as it leaves, or two when it is a round scale
+    /// explains at least three of them and more than it leaves, or two when it is a round scale
     /// and nothing in the group disagrees.
     ///
     /// A numbered sequence beside lines (the ports of a panel, a scale bar, the references of a
     /// border) is explained by some scale too; these checks leave it unexplained.
     func accepts(_ found: (scale: Double, supporting: Int), of values: Int) -> Bool {
         guard Self.plausibleScales.contains(found.scale), found.supporting >= 2,
-            found.supporting >= values - found.supporting
+            found.supporting > values - found.supporting
         else { return false }
         let round =
             found.scale >= 1

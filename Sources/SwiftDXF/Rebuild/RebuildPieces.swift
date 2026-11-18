@@ -63,7 +63,7 @@ extension DXF {
             var long: [Int] = []
             private static let largest = 1024
 
-            init(cell: Double) { self.cell = max(cell, 1e-6) }
+            init(cell: Double) { self.cell = cell > 0 && cell.isFinite ? cell : 1 }
 
             /// A cell index for `value`, bounded so that a huge value cannot overflow.
             private static func index(_ value: Double) -> Int {
@@ -110,11 +110,17 @@ extension DXF {
         init(_ drawing: Drawing, tolerance requested: Double?) {
             var heights: [Double] = []
             var rawTexts: [(Int, Text)] = []
+            // The values of dimensions already rebuilt are not rebuilt again.
+            var rebuiltPieces = Set<Identity>()
+            for case .dimension(let dimension) in drawing.entities {
+                if let rebuilt = dimension.rebuilt { rebuiltPieces.formUnion(rebuilt.pieces) }
+            }
             for (index, entity) in drawing.entities.enumerated() {
                 guard
                     case .text(let at, let height, let rotation, let string, let layer, let color) =
                         entity, height > 0, height.isFinite, Self.usable(at.x, at.y, rotation)
                 else { continue }
+                guard !rebuiltPieces.contains(drawing.identity(ofEntityAt: index)) else { continue }
                 let content = drawing.textContent(ofEntityAt: index)
                 let radians = rotation * .pi / 180
                 let direction = Point2(cos(radians), sin(radians))
@@ -173,7 +179,7 @@ extension DXF {
                 }
             }
 
-            segmentGrid = Grid(cell: max(10 * median, 1))
+            segmentGrid = Grid(cell: 10 * median)
             var small: [(entity: Int, box: Box2, layer: String)] = []
             for (index, entity) in drawing.entities.enumerated() {
                 switch entity {
@@ -319,7 +325,7 @@ extension DXF {
                 }
                 return i
             }
-            var grid = Grid(cell: max(markSize, 1e-3))
+            var grid = Grid(cell: markSize)
             for (i, item) in small.enumerated() { grid.insert(i, item.box) }
             for (i, item) in small.enumerated() {
                 let wide = Box2(

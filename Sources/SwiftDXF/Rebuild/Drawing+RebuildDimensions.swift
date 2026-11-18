@@ -7,7 +7,7 @@ extension DXF.Drawing {
     /// For each text that states a number, it finds the dimension line beside it and the ends of
     /// the span, or the circle or arc it dimensions, and infers the scale of each layer group from
     /// the values against the drawn lengths. A scale counts only when it is credible (see the
-    /// README: three values, or two that are all the group's and a round scale), and a group that
+    /// README: three values and more than it leaves, or two that are all the group's), and a group that
     /// disagrees with another is reported, not averaged. A diameter
     /// or radius is read from the geometry, not from its symbol; a symbol that disagrees is
     /// reported.
@@ -39,13 +39,20 @@ extension DXF {
 
         func run() -> DimensionRebuild {
             var candidates = [[RebuildCandidate]](repeating: [], count: pieces.texts.count)
-            // A text that cannot be rebuilt (an angle) is still listed when a line is beside it.
+            // An angle, or a value in another unit, is still listed when a line is beside it. Other
+            // texts that cannot be rebuilt (a part number such as `7021N13`) are only listed on
+            // the layer of a dimension.
             var beside = Set<Int>()
             for (ti, text) in pieces.texts.enumerated() {
-                if text.value.unsupported == nil {
+                switch text.value.unsupported {
+                case nil:
                     candidates[ti] = linearCandidates(ti) + radialCandidates(ti)
-                } else if !linearCandidates(ti).isEmpty || !radialCandidates(ti).isEmpty {
-                    beside.insert(ti)
+                case .angular?, .unit?:
+                    if !linearCandidates(ti).isEmpty || !radialCandidates(ti).isEmpty {
+                        beside.insert(ti)
+                    }
+                default:
+                    break
                 }
             }
 

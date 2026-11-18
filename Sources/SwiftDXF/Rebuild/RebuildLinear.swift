@@ -183,12 +183,14 @@ extension DXF.DimensionRebuilder {
         let tc = t(text.center)
         let offset = perp(text.center)
         var candidates: [DXF.RebuildCandidate] = []
-        // A span is up to eight ends of the line, or the whole of it, so that a line with
-        // hundreds of ends is not tried in every pair.
+        // A span has at most two other ends inside it (an arrowhead has a base), or is the whole
+        // line. A dimension is between neighbouring ends: a ruler labelled 10, 20, 30 is not
+        // explained by spans of one, two and three intervals, and a line with hundreds of ends
+        // is not tried in every pair.
         for i in merged.indices {
             if merged[i].t - tc > reach { break }
-            var others = Array((i + 1)..<max(min(i + 9, merged.count), i + 1))
-            if i == 0, merged.count > 9 { others.append(merged.count - 1) }
+            var others = Array((i + 1)..<max(min(i + 4, merged.count), i + 1))
+            if i == 0, merged.count > 4 { others.append(merged.count - 1) }
             for j in others {
                 let (from, to) = (merged[i].t, merged[j].t)
                 let length = to - from

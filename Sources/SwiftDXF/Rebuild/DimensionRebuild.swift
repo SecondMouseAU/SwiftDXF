@@ -9,7 +9,12 @@ extension DXF {
     /// together or at what scale they were drawn. The rebuild starts from each value text, finds
     /// the dimension line beside it and the ends it spans, and infers the scale from the values
     /// against the drawn lengths. It is an inference: every dimension says what it was built from,
-    /// and every value text it could not explain is a warning.
+    /// and a value text it could not explain is a warning when a dimension line is beside it or a
+    /// dimension was rebuilt on its layer.
+    ///
+    /// A linear dimension's ``Dimension/defPoint2`` and ``Dimension/defPoint3`` are the ends on its
+    /// dimension line, its arrow points, since loose pieces store no reference points; a diameter
+    /// or radius has its two definition points as a `DIMENSION` does.
     public struct DimensionRebuild: Sendable {
         /// The rebuilt dimensions, in the order of their value texts in the drawing.
         ///
