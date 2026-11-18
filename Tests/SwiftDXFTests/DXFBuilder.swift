@@ -75,6 +75,20 @@ struct DXFBuilder {
         return r
     }
 
+    /// A `TEXT` record whose group 1 is `string`, written as it is.
+    static func text(_ string: String, layer: String = "0") -> Record {
+        [
+            (0, "TEXT"), (8, layer), (10, "0.0"), (20, "0.0"), (30, "0.0"), (40, "2.5"),
+            (1, string),
+        ]
+    }
+
+    /// An `MTEXT` record: each of `continued` in a group 3, then `string` in group 1.
+    static func mtext(_ string: String, continued: [String] = [], layer: String = "0") -> Record {
+        [(0, "MTEXT"), (8, layer), (10, "0.0"), (20, "0.0"), (30, "0.0"), (40, "2.5")]
+            + continued.map { (3, $0) } + [(1, string)]
+    }
+
     static func circle(_ c: (Double, Double), _ radius: Double, layer: String = "0") -> Record {
         [(0, "CIRCLE"), (8, layer), (10, "\(c.0)"), (20, "\(c.1)"), (30, "0.0"), (40, "\(radius)")]
     }

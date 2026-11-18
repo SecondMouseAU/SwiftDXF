@@ -7,11 +7,14 @@ import SwiftDXF
 //   dxfdump file1.dxf [file2.dxf ...]
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
 //   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
+//   dxfdump --texts file.dxf [...]
 //
 // --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
 // entities flagged as paper space. Both work with the digest and with --contours.
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
+// --texts prints each TEXT and MTEXT string and each dimension's text override as it reads, with
+// its stacks, for diffing against tools/text_oracle.py.
 
 /// How the files are read, set by `--expand` and `--skip-paper-space`.
 var readOptions = DXF.ReadOptions()
@@ -168,6 +171,38 @@ func contourSummary(for path: String, options: DXF.Contour.Options) -> [String: 
     }
 }
 
+/// Each TEXT and MTEXT string of the file, and each dimension's text override, in entity order.
+func textSummary(for path: String) -> [String: Any] {
+    let url = URL(fileURLWithPath: path)
+    do {
+        let dwg = try DXF.read(contentsOf: url, options: readOptions)
+        func stacks(_ list: [DXF.StackedText]) -> [[String]] {
+            list.map { [$0.upper, $0.lower, "\($0.kind)"] }
+        }
+        var texts: [[String: Any]] = []
+        for (i, entity) in dwg.entities.enumerated() {
+            switch entity {
+            case .text:
+                guard let content = dwg.textContent(ofEntityAt: i) else { continue }
+                texts.append([
+                    "type": content.syntax == .mtext ? "MTEXT" : "TEXT", "plain": content.plain,
+                    "stacks": stacks(content.stacks),
+                ])
+            case .dimension(let d):
+                guard d.textOverride != nil else { continue }
+                texts.append([
+                    "type": "DIMENSION", "plain": d.text.plain, "stacks": stacks(d.text.stacks),
+                ])
+            default:
+                continue
+            }
+        }
+        return ["file": url.lastPathComponent, "texts": texts]
+    } catch {
+        return ["file": url.lastPathComponent, "error": "\(error)"]
+    }
+}
+
 var arguments = Array(CommandLine.arguments.dropFirst())
 if let flag = arguments.firstIndex(of: "--expand") {
     arguments.remove(at: flag)
@@ -176,6 +211,11 @@ if let flag = arguments.firstIndex(of: "--expand") {
 if let flag = arguments.firstIndex(of: "--skip-paper-space") {
     arguments.remove(at: flag)
     readOptions.skipPaperSpace = true
+}
+var listTexts = false
+if let flag = arguments.firstIndex(of: "--texts") {
+    arguments.remove(at: flag)
+    listTexts = true
 }
 var contourOptions: DXF.Contour.Options?
 if let flag = arguments.firstIndex(of: "--contours") {
@@ -208,9 +248,19 @@ guard !paths.isEmpty else {
     FileHandle.standardError.write(
         Data(
             ("usage: dxfdump [--expand] [--skip-paper-space]"
-                + " [--contours [--layers A,B] [--units inch|mm]] <file.dxf> [...]\n").utf8)
+                + " [--contours [--layers A,B] [--units inch|mm] | --texts] <file.dxf> [...]\n")
+                .utf8)
     )
     exit(2)
+}
+
+if listTexts {
+    for path in paths {
+        let data = try JSONSerialization.data(
+            withJSONObject: textSummary(for: path), options: [.sortedKeys, .withoutEscapingSlashes])
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
 }
 
 if let contourOptions {

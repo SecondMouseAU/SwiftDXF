@@ -27,6 +27,8 @@ extension DXF.Reader {
         var identities: [DXF.Identity] = []
         /// One line type name (group 6) per entry in `entities`, `nil` when the entity has none.
         var lineTypes: [String?] = []
+        /// One decoded string per entry in `entities`, `nil` when the entity is not text.
+        var textContents: [DXF.TextContent?] = []
         var counts = DXF.Drawing.Counts()
         var skipped: [String: Int] = [:]
         var skippedByLayer: [String: [String: Int]] = [:]
@@ -80,13 +82,17 @@ extension DXF.Reader {
             }
             // The plane of a record written in an OCS; the rest are in the world.
             let plane = usesObjectCoordinates(type, fields) ? objectPlane(fields) : .up
-            if let entity = readEntity(type: type, fields: fields, plane: plane, next: &j) {
+            let content = textContent(type: type, fields)
+            if let entity = readEntity(
+                type: type, fields: fields, plane: plane, text: content, next: &j)
+            {
                 if plane == .tilted { run.tilted[type, default: 0] += 1 }
                 run.entities.append(entity)
                 run.identities.append(
                     DXF.Identity(handle: handle(fields), locator: locator(position)))
                 run.lineTypes.append(
                     first(6, fields).map(trimmed).flatMap { $0.isEmpty ? nil : $0 })
+                run.textContents.append(content)
                 run.counts.record(entity)
                 position += 1
             } else if type != "VERTEX" && type != "SEQEND" {
@@ -124,22 +130,24 @@ extension DXF.Reader {
 
     /// One entity from its fields, in world coordinates, or `nil` for a type that is not modelled.
     ///
-    /// `next` is the index of the pair after the record, and moves forward when the record owns
-    /// following records (a `POLYLINE` owns its `VERTEX` run and the `SEQEND`).
+    /// `text` is the decoded string of a `TEXT` or `MTEXT` record. `next` is the index of the pair
+    /// after the record, and moves forward when the record owns following records (a `POLYLINE`
+    /// owns its `VERTEX` run and the `SEQEND`).
     private func readEntity(
         type: String, fields: [(code: Int, value: String)], plane: DXF.ObjectPlane,
-        next j: inout Int
+        text: DXF.TextContent?, next j: inout Int
     ) -> DXF.Entity? {
-        guard let entity = readRecord(type: type, fields: fields, plane: plane, next: &j)
+        guard
+            let entity = readRecord(type: type, fields: fields, plane: plane, text: text, next: &j)
         else { return nil }
         return inWorld(entity, plane: plane)
     }
 
     /// One entity from its fields as written, which for some types is in the object coordinate
-    /// system; see ``readEntity(type:fields:plane:next:)``.
+    /// system; see ``readEntity(type:fields:plane:text:next:)``.
     private func readRecord(
         type: String, fields: [(code: Int, value: String)], plane: DXF.ObjectPlane,
-        next j: inout Int
+        text: DXF.TextContent?, next j: inout Int
     ) -> DXF.Entity? {
         switch type {
         case "LINE":
@@ -194,7 +202,7 @@ extension DXF.Reader {
         case "TEXT", "MTEXT":
             return .text(
                 at: point(fields), height: dbl(40, fields, 0),
-                rotationDeg: dbl(50, fields, 0), string: textValue(fields),
+                rotationDeg: dbl(50, fields, 0), string: text?.plain ?? "",
                 layer: layer(fields), color: color(fields))
 
         case "LWPOLYLINE":

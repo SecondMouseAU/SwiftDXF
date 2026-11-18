@@ -314,6 +314,24 @@ struct DimensionTests {
         #expect(DXF.DimensionText("100%").typedNumbers == [100])
     }
 
+    @Test("formatting codes leave the words, and a stacked tolerance is a stack, not numbers")
+    func textCodes() {
+        let tolerance = DXF.DimensionText(#"<>{\H0.7x;\S+0.1^ -0.2;}"#)
+        let stack = DXF.StackedText(upper: "+0.1", lower: "-0.2", kind: .tolerance)
+        #expect(tolerance.parts == [.measurement, .stack(stack)])
+        #expect(tolerance.typedNumbers.isEmpty && tolerance.stacks == [stack])
+        #expect(tolerance.showsMeasurement && tolerance.plain == "<> +0.1/-0.2")
+        let font = DXF.DimensionText(#"{\fArial|b0|i0|c0|p34;<> mm}"#)
+        #expect(font.parts == [.measurement, .words(" mm")])
+        #expect(DXF.DimensionText("%%c<>").parts == [.words("⌀"), .measurement])
+        #expect(
+            DXF.DimensionText(#"<>\X(ref)"#).parts == [.measurement, .lineBreak, .words("(ref)")])
+        // The digits of a code kept as written are not typed numbers.
+        #expect(DXF.DimensionText(#"\M+18342 5"#).typedNumbers == [5])
+        // A sign after a line break belongs to the number.
+        #expect(DXF.DimensionText(#"<>\P-5"#).typedNumbers == [-5])
+    }
+
     @Test("a dimension exposes its text parts")
     func dimensionText() throws {
         let dims = Self.dimensions(try Self.fixture())
