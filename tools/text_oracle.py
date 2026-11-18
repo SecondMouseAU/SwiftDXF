@@ -8,7 +8,10 @@ and MTEXT entity, and each DIMENSION with a text override, in entity order, the 
 (`plain`) and its stacks (`[upper, lower, kind]`). The output of the two can be diffed line for
 line:
 
-    diff <(swift run dxfdump --texts f.dxf) <(python3 tools/text_oracle.py f.dxf)
+    diff <(swift run dxfdump --texts --skip-paper-space f.dxf) <(python3 tools/text_oracle.py f.dxf)
+
+`--skip-paper-space` because `modelspace()`, read here, leaves out the paper-space entities of the
+ENTITIES section.
 
 What is a code, what is text and what is stacked comes from ezdxf: `plain_text` for TEXT, the
 `MTextParser` tokens for MTEXT and dimension text. Four things are written SwiftDXF's way, as its

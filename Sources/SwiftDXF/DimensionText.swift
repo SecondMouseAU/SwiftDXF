@@ -16,8 +16,8 @@ extension DXF {
             /// formatting codes are removed. A code that is not understood is kept as written, and
             /// its digits are not read as typed numbers.
             case words(String)
-            /// `\P`: a paragraph break, or `\X`, the break between the text above and below the
-            /// dimension line.
+            /// A line break: `\P` (a paragraph), `\N` (a column), `^J`, or `\X` (the break between
+            /// the text above and below the dimension line).
             case lineBreak
             /// A `\S` stack, such as the tolerance `\S+0.1^ -0.2;`. Its numbers are not typed
             /// numbers.

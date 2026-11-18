@@ -258,7 +258,9 @@ for (i, entity) in dwg.entities.enumerated() {
 ```
 
 - **Special characters**, in both: `%%c` is `⌀` (the diameter sign, U+2300), `%%d` is `°`, `%%p`
-  is `±`, `%%%` is `%`, and `%%nnn` is the character with the number nnn, so `%%176` is `°`.
+  is `±`, `%%%` is `%`, and `%%nnn` is the Unicode character nnn up to 255, so `%%176` is `°`.
+  The drawing's code page is not consulted, so from 128 to 159, where Windows-1252 has the euro
+  sign and other letters, the code is kept as written.
   `%%u`, `%%o` and `%%k`, which switch underline, overline and strike-through, are dropped.
   `\U+XXXX` is the Unicode character. Of the caret notation of DXF strings, `^ ` is a caret, `^I` a
   tab and `^J` a line break.
@@ -276,8 +278,9 @@ for (i, entity) in dwg.entities.enumerated() {
 - **A backslash in `TEXT` is a character.** `TEXT` has no formatting codes, so a file path such as
   `C:\DRAWINGS\PLAN.DWG` stays whole.
 - **A code that is not understood is kept as written**: an unknown backslash code, `\M+nXXXX` (a
-  character of a multibyte code page), a `%%nnn` that names a control character, and a `\U+` escape
-  of half a surrogate pair.
+  character of a multibyte code page), and a `%%nnn` or `\U+XXXX` that names a control character,
+  a number above 255 or half a surrogate pair. A `\S` whose `;` is missing ends at the `}` of its
+  group, or at the end of the text.
 
 `dwg.textContents` is parallel to `entities` like `identities`, and is cleared when `entities`
 changes. A block's are in `Block.textContents`, and an expansion carries them through.
@@ -380,7 +383,8 @@ entities actually read.
   `Drawing` and `Block` gain `textContents`, defaulted in `init`.
 - **A backslash in `TEXT` stays.** A `\P` in a `TEXT` used to become a line break and every other
   backslash was dropped, which broke file paths. `\U+XXXX` is still decoded, and needs its four hex
-  digits. An MTEXT code that is not understood keeps its backslash.
+  digits; one that names a control character is kept as written. An MTEXT code that is not
+  understood keeps its backslash.
 - **`DimensionText.Part` has a new case**, `.stack`, so an exhaustive `switch` over the parts needs
   it. `.words` no longer holds formatting codes, `%%c` in it is `⌀`, and `\X` is a `.lineBreak`. A
   sign after a line break now belongs to the number that follows. `Dimension.textOverride` is
@@ -524,8 +528,12 @@ Text is checked with `tools/text_oracle.py`, which prints, from `ezdxf`, the sha
 and with its stacks.
 
 ```bash
-diff <(swift run dxfdump --texts drawing.dxf) <(python3 tools/text_oracle.py drawing.dxf)
+diff <(swift run dxfdump --texts --skip-paper-space drawing.dxf) \
+    <(python3 tools/text_oracle.py drawing.dxf)
 ```
+
+`--skip-paper-space` leaves out what `ezdxf`'s `modelspace()` leaves out; `--expand` would add the
+texts of blocks, which the oracle does not list.
 
 The oracle writes `%%c` as `⌀`, a stack as `upper/lower` after a space, `\~` as a no-break space and
 `\X` as a line break, as SwiftDXF does, so the diff shows only where the two read a string
@@ -540,8 +548,10 @@ below. They read a string differently in these cases, on purpose:
 - `%%u`, `%%o` and `%%k` are dropped in `MTEXT` as in `TEXT`; `ezdxf` keeps them in `MTEXT`.
 - In a stack, `%%` codes are decoded and a `^` without its space still divides (`ezdxf` reads `^-`
   as a control character). A `\S` with no divider is read as text, where `ezdxf` gives a stack with
-  an empty lower part.
-- `\M+nXXXX` and an unpaired `\U+D800` are kept as written; `ezdxf` decodes them. A `%%` or a
+  an empty lower part, and one without its `;` ends with its group, where `ezdxf` runs it on to the
+  end of the text.
+- `\M+nXXXX`, and a `\U+XXXX` of a control character or of half a surrogate pair, are kept as
+  written; `ezdxf` decodes them. A `%%` or a
   backslash at the very end is kept; `ezdxf` drops it.
 
 ## Install

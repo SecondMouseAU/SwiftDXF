@@ -49,10 +49,10 @@ struct TextContentTests {
         #expect(Self.text("100%%%").plain == "100%")
         #expect(Self.text("%%uunder%%u, %%oover%%o, %%kstruck%%k").plain == "under, over, struck")
         #expect(Self.mtext("%%d%%P%%U").plain == "°±")
-        // Not a code, or the number of a character that cannot be shown: kept as written.
+        // Not a code, or the number of a control character or of none up to 255: kept as written.
         #expect(Self.text("10% of %%x").plain == "10% of %%x")
         #expect(Self.text("a%%").plain == "a%%")
-        #expect(Self.text("%%010").plain == "%%010")
+        #expect(Self.text("%%010 %%128 %%256").plain == "%%010 %%128 %%256")
     }
 
     @Test("MTEXT: a fit tolerance is a stack, and the plain text reads the value and tolerance")
@@ -111,6 +111,12 @@ struct TextContentTests {
         let flat = Self.mtext(#"a\Sbc;d"#)
         #expect(flat.stacks.isEmpty && flat.plain == "abcd")
         #expect(Self.mtext(#"\S1^ 2;\S3^ 4;"#).plain == "1/2 3/4")
+        // A space already there is not doubled.
+        #expect(Self.mtext(#"36 \S+0,011^ -0,005;"#).plain == "36 +0,011/-0,005")
+        // A stack whose `;` is missing ends with its group.
+        let grouped = Self.mtext(#"{\S1/2}mm"#)
+        #expect(grouped.stacks == [.init(upper: "1", lower: "2", kind: .fraction)])
+        #expect(grouped.plain == "1/2mm")
     }
 
     @Test("in TEXT a backslash is a character, so a file path stays whole")
@@ -133,7 +139,7 @@ struct TextContentTests {
     func unknownCodes() {
         #expect(Self.mtext(#"a\zb"#).plain == #"a\zb"#)
         #expect(Self.mtext(#"\M+18342"#).plain == #"\M+18342"#)
-        #expect(Self.text(#"\U+D800"#).plain == #"\U+D800"#)
+        #expect(Self.text(#"\U+D800 \U+000A"#).plain == #"\U+D800 \U+000A"#)
         #expect(Self.mtext(#"end\"#).plain == #"end\"#)
     }
 
@@ -173,6 +179,7 @@ struct TextContentTests {
         #expect(DXF.StackedText.number("+0,011") == 0.011)
         #expect(DXF.StackedText.number(" -0.005 ") == -0.005)
         #expect(DXF.StackedText.number("0") == 0)
+        #expect(DXF.StackedText.number("\u{2212}0,2") == -0.2)
         for text in ["", "+", "1,2,3", "H7", "5-", "1.5mm", "1e3", "inf"] {
             #expect(DXF.StackedText.number(text) == nil, "\(text)")
         }

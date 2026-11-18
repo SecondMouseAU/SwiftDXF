@@ -14,7 +14,8 @@ import SwiftDXF
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
 // --texts prints each TEXT and MTEXT string and each dimension's text override as it reads, with
-// its stacks, for diffing against tools/text_oracle.py.
+// its stacks, for diffing against tools/text_oracle.py (with --skip-paper-space, as ezdxf's
+// modelspace() reads). It cannot be combined with --contours.
 
 /// How the files are read, set by `--expand` and `--skip-paper-space`.
 var readOptions = DXF.ReadOptions()
@@ -242,6 +243,10 @@ if let flag = arguments.firstIndex(of: "--contours") {
         arguments.removeSubrange(i...(i + 1))
     }
     contourOptions = options
+}
+if listTexts, contourOptions != nil {
+    FileHandle.standardError.write(Data("--texts and --contours cannot be used together\n".utf8))
+    exit(2)
 }
 let paths = arguments
 guard !paths.isEmpty else {

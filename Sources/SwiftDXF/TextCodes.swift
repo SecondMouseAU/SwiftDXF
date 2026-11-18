@@ -92,8 +92,8 @@ extension DXF {
 
             /// The special character that starts at `k`, and how many scalars it takes, or `nil`
             /// when none starts there: `%%c`, `%%d`, `%%p`, `%%%`, `%%nnn`, the underline and
-            /// overline toggles `%%u`, `%%o` and `%%k`, `\U+XXXX`, `\M+nXXXX` (kept as written), and
-            /// the control characters `^ ` (a caret), `^I` (a tab) and `^J` (a line break).
+            /// overline toggles `%%u`, `%%o` and `%%k`, `\U+XXXX`, `\M+nXXXX` (kept as written),
+            /// and the control characters `^ ` (a caret), `^I` (a tab) and `^J` (a line break).
             func special(at k: Int) -> (Piece, Int)? {
                 switch s[k] {
                 case "%":
@@ -126,7 +126,7 @@ extension DXF {
                     guard hex.allSatisfy(\.isHexDigit), let value = UInt32(hex, radix: 16) else {
                         return nil
                     }
-                    guard let scalar = Unicode.Scalar(value) else {
+                    guard let scalar = Unicode.Scalar(value), Self.canBeShown(scalar) else {
                         return (.code(string(k..<(k + 7))), 7)
                     }
                     return (.text(String(scalar)), 7)
@@ -135,16 +135,24 @@ extension DXF {
                 }
             }
 
-            /// `%%nnn`: the character with the number of up to three digits, when it is one that
-            /// can be shown; any other number is kept as written.
+            /// `%%nnn`: the character numbered by up to three digits, read as a Unicode code point
+            /// up to 255, when it can be shown; any other number is kept as written.
+            ///
+            /// The drawing's code page is not consulted, so from 128 to 159 this differs from
+            /// Windows-1252, which puts the euro sign at 128.
             func characterNumber(at k: Int) -> (Piece, Int)? {
                 var end = k + 2
                 while end < k + 5, let digit = at(end), ("0"..."9").contains(digit) { end += 1 }
                 guard end > k + 2 else { return nil }
-                guard let value = UInt32(string((k + 2)..<end)), let scalar = Unicode.Scalar(value),
-                    ![.control, .unassigned].contains(scalar.properties.generalCategory)
+                guard let value = UInt32(string((k + 2)..<end)), value <= 255,
+                    let scalar = Unicode.Scalar(value), Self.canBeShown(scalar)
                 else { return (.code(string(k..<end)), end - k) }
                 return (.text(String(scalar)), end - k)
+            }
+
+            /// Whether an escape may stand for `scalar`: anything but a control character.
+            static func canBeShown(_ scalar: Unicode.Scalar) -> Bool {
+                scalar.properties.generalCategory != .control
             }
 
             /// An MTEXT backslash code at `i`.
@@ -183,7 +191,8 @@ extension DXF {
                 }
             }
 
-            /// A `\S` stack at `i`, up to its `;` or the end of the text.
+            /// A `\S` stack at `i`, up to its `;`, or when that is missing up to the `}` that ends
+            /// its group or the end of the text.
             ///
             /// The first `^`, `/` or `#` divides the parts; a `^` may be written `^ `, with the
             /// space of the DXF caret notation. A backslash makes the next character part of the
@@ -202,6 +211,7 @@ extension DXF {
                         k += 1
                         break
                     }
+                    if c == "}" { break }
                     if divider == nil, c == "^" || c == "/" || c == "#" {
                         divider = c
                         k += (c == "^" && at(k + 1) == " ") ? 2 : 1

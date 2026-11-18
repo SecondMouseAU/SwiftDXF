@@ -3,10 +3,11 @@ import Foundation
 extension DXF {
     /// The string of a `TEXT` or `MTEXT` entity: as written, as it reads, and its stacked parts.
     ///
-    /// `%%c`, `%%d` and `%%p` become `⌀`, `°` and `±`, `%%nnn` the character with that number,
-    /// and `\U+XXXX` the Unicode character. In `MTEXT` the formatting codes (font, height, colour,
-    /// alignment and the like) and the grouping braces are removed, `\P` is a line break, and a
-    /// `\S` stack is kept as a ``StackedText``. A code that is not understood is kept as written.
+    /// `%%c`, `%%d` and `%%p` become `⌀`, `°` and `±`, `%%nnn` the Unicode character with that
+    /// number up to 255, and `\U+XXXX` the Unicode character. In `MTEXT` the formatting codes
+    /// (font, height, colour, alignment and the like) and the grouping braces are removed, `\P` is
+    /// a line break, and a `\S` stack is kept as a ``StackedText``. A code that is not understood
+    /// is kept as written.
     public struct TextContent: Equatable, Sendable {
         /// Which codes a string holds.
         public enum Syntax: Equatable, Sendable {

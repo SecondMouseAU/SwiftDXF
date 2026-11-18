@@ -40,10 +40,11 @@ extension DXF {
         /// A part read as a number: an optional sign, digits, and a point or a comma as the
         /// decimal mark, with the spaces around it ignored.
         ///
-        /// `+0,011` is 0.011, `-0.005` is -0.005 and `0` is 0; empty text or anything else is
-        /// `nil`.
+        /// `+0,011` is 0.011, `-0.005` and `−0.005` (with the minus sign U+2212) are -0.005, and
+        /// `0` is 0; empty text or anything else is `nil`.
         public static func number(_ part: String) -> Double? {
             let text = part.trimmingCharacters(in: .whitespaces)
+                .replacingOccurrences(of: "\u{2212}", with: "-")
             // `Double` also reads `1e3`, `inf` and `0x10`, which are not deviations.
             guard text.allSatisfy({ $0.isASCII && ($0.isNumber || "+-.,".contains($0)) }) else {
                 return nil
