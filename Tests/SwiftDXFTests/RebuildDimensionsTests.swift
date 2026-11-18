@@ -588,6 +588,128 @@ struct RebuildDimensionsTests {
         #expect(added.rebuilt != nil && added.textOverride == "1000")
     }
 
+    // MARK: input that is not what it should be
+
+    @Test("pieces of one line that tilt either way by a hair are still one dimension line")
+    func tiltedPieces() throws {
+        for tilt in [1e-9, -1e-9, 1e-12, -1e-12] {
+            var records: [Record] = []
+            for x in [0.0, 20, 50, 65] { records.append(Self.line((x, 0), (x, -12))) }
+            records.append(Self.line((0, -10), (20, -10)))
+            records.append(Self.line((20, -10), (50, -10 - tilt * 30)))
+            records.append(Self.line((50, -10), (65, -10 + tilt * 15)))
+            for (x, string) in [(7.0, "1000"), (32.0, "1500"), (55.0, "750")] {
+                records.append(Self.text(string, x, -10.5))
+            }
+            let (_, result) = try Self.rebuild(records)
+            #expect(result.dimensions.count == 3, "tilt \(tilt)")
+        }
+    }
+
+    @Test("a tolerance or scale that is not a positive number is none, not a crash")
+    func invalidOptions() throws {
+        let records = Self.chain(scale: 50, lengths: [20, 30, 15])
+        for tolerance in [0.0, -1, .nan, .infinity, -.infinity] {
+            let (_, result) = try Self.rebuild(records, .init(tolerance: tolerance))
+            #expect(result.dimensions.count == 3, "tolerance \(tolerance)")
+        }
+        for scale in [0.0, -5, .nan, .infinity] {
+            let (_, result) = try Self.rebuild(records, .init(scale: scale))
+            #expect(result.dimensions.count == 3 && result.scales.first?.scale == 50)
+        }
+    }
+
+    @Test("pieces at absurd coordinates, and very long lines, do not stop the rest")
+    func absurdPieces() throws {
+        var records = Self.chain(scale: 50, lengths: [20, 30, 15])
+        records.append(Self.line((0, 0), (1e30, 1e30)))
+        records.append(Self.line((-1e300, 5), (1e300, 5)))
+        records.append(Self.point(1e30, -1e30))
+        records.append(Self.circle(1e30, 0, 1e30))
+        records.append(Self.text("500", 1e30, 0))
+        records.append(Self.line((0, 0), (1e5, 1e5)))
+        let start = Date()
+        let (_, result) = try Self.rebuild(records)
+        #expect(result.dimensions.count == 3)
+        #expect(Date().timeIntervalSince(start) < 20)
+    }
+
+    @Test("hundreds of values on one layer are rebuilt in reasonable time")
+    func manyValues() throws {
+        let start = Date()
+        let (_, result) = try Self.rebuild(
+            Self.chain(scale: 50, lengths: [Double](repeating: 10, count: 300)))
+        #expect(result.dimensions.count == 300)
+        #expect(Date().timeIntervalSince(start) < 30)
+    }
+
+    @Test("a value written in an MTEXT is read as one in a TEXT")
+    func mtextValue() throws {
+        let records = Self.chain(scale: 50, lengths: [20, 30, 15]).map { record -> Record in
+            guard record[0].1 == "TEXT" else { return record }
+            // An MTEXT is anchored at its top left, so the point is the TEXT's plus its height.
+            let x = record.first { $0.0 == 10 }!.1
+            let y = Double(record.first { $0.0 == 20 }!.1)! + 2.5
+            let layer = record.first { $0.0 == 8 }!.1
+            let string = record.first { $0.0 == 1 }!.1
+            return [
+                (0, "MTEXT"), (8, layer), (10, x), (20, "\(y)"), (30, "0"), (40, "2.5"),
+                (1, string),
+            ]
+        }
+        let (_, result) = try Self.rebuild(records)
+        #expect(result.dimensions.map(\.textOverride) == ["1000", "1500", "750"])
+    }
+
+    @Test("Jw_cad writes the angle of a vertical text as 5156.62, and the dimension is still found")
+    func jwcadRotation() throws {
+        var records = Self.chain(scale: 80, lengths: [20, 30], layer: "14")
+        records += [
+            Self.line((0, 100), (0, 120), layer: "14"), Self.line((0, 120), (0, 150), layer: "14"),
+            Self.line((-2, 100), (8, 100), layer: "14"),
+            Self.line((-2, 120), (8, 120), layer: "14"),
+            Self.line((-2, 150), (8, 150), layer: "14"),
+            Self.point(0, 100, layer: "14"), Self.point(0, 120, layer: "14"),
+            Self.point(0, 150, layer: "14"),
+            Self.text("1600", 1.0, 107.0, rotation: 5156.6203, layer: "14"),
+            Self.text("2400", 1.0, 131.0, rotation: 5156.6203, layer: "14"),
+        ]
+        let (_, result) = try Self.rebuild(records)
+        #expect(result.dimensions.count == 4 && result.warnings.isEmpty)
+        #expect(result.scales == [.init(group: "14", scale: 80, supporting: 4, contradicting: 0)])
+        let vertical = result.dimensions.filter { $0.rotation == 90 }
+        #expect(vertical.map(\.textOverride) == ["1600", "2400"])
+    }
+
+    @Test("European grouping is read, and a number that cannot be is listed")
+    func europeanNumbers() throws {
+        typealias Value = DXF.DimensionRebuild.Value
+        #expect(Value.read("1.234,5")?.readings == [.init(value: 1234.5, decimals: 1)])
+        #expect(Value.read("12.345,67")?.readings == [.init(value: 12345.67, decimals: 2)])
+        #expect(Value.read("1.234.567")?.readings == [.init(value: 1_234_567, decimals: 0)])
+        #expect(
+            Value.read("1.234")?.readings == [
+                .init(value: 1.234, decimals: 3), .init(value: 1234, decimals: 0),
+            ])
+        #expect(Value.read("0.125")?.readings == [.init(value: 0.125, decimals: 3)])
+        #expect(Value.read("1.2.3")?.unsupported == .unreadable)
+        #expect(Value.read("1,23,456")?.unsupported == .unreadable)
+        // A value must be ten units of its last place to be evidence for a scale.
+        #expect(Value.read("9")?.readings.first?.isSubstantial == false)
+        #expect(Value.read("10")?.readings.first?.isSubstantial == true)
+        #expect(Value.read("0.9")?.readings.first?.isSubstantial == false)
+        #expect(Value.read("1.0")?.readings.first?.isSubstantial == true)
+        #expect(Value.read("2.5")?.readings.first?.isSubstantial == true)
+        var records = Self.chain(scale: 50, lengths: [20, 30, 15])
+        records.append(Self.text("1.2.3", 5, -9.5))
+        let (_, result) = try Self.rebuild(records)
+        let reasons = result.warnings.compactMap { warning -> DXF.DimensionRebuild.Reason? in
+            guard case .valueNotExplained(_, _, let reason) = warning else { return nil }
+            return reason
+        }
+        #expect(reasons == [.unreadable])
+    }
+
     // MARK: the real drawings
 
     /// The 2120 acceptance: set `DXF_REBUILD_FILE` to a Jw_cad export or the drawing of a PDF.

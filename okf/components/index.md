@@ -4,7 +4,7 @@ title: Components index
 resource: https://github.com/SecondMouseAU/SwiftDXF
 tags: [index]
 description: Public modules / API surfaces exposed by SwiftDXF.
-timestamp: 2026-11-18
+timestamp: 2026-11-19
 ---
 
 # Components

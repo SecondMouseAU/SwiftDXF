@@ -84,6 +84,31 @@ struct CodePageTests {
         #expect(Self.strings(dos) == ["\u{65E5}\u{672C}"] && dos.codePage == nil)
     }
 
+    @Test("a byte the page cannot decode costs its line, not the file")
+    func strayByte() throws {
+        var builder = DXFBuilder()
+        builder.codePage = "ANSI_1252"
+        builder.entities = [
+            DXFBuilder.text("##"), DXFBuilder.text("caf@@"), DXFBuilder.text("@@@@"),
+        ]
+        var data = Data(builder.text().utf8)
+        data.replaceSubrange(data.range(of: Data("##".utf8))!, with: [0x81])
+        data.replaceSubrange(data.range(of: Data("@@@@".utf8))!, with: [0xE9, 0x80])
+        data.replaceSubrange(data.range(of: Data("@@".utf8))!, with: [0xE9])
+        let strings = Self.strings(try DXF.read(data: data))
+        #expect(strings.count == 3)
+        #expect(strings[1] == "caf\u{E9}" && strings[2] == "\u{E9}\u{20AC}")
+        // The same for a multibyte page: a lone lead byte costs its line only.
+        var japanese = DXFBuilder()
+        japanese.codePage = "ANSI_932"
+        japanese.entities = [DXFBuilder.text("##"), DXFBuilder.text("@@")]
+        var sjis = Data(japanese.text().utf8)
+        sjis.replaceSubrange(sjis.range(of: Data("##".utf8))!, with: [0x81])
+        sjis.replaceSubrange(sjis.range(of: Data("@@".utf8))!, with: [0x93, 0xFA])
+        let lines = Self.strings(try DXF.read(data: sjis))
+        #expect(lines.count == 2 && lines[1] == "\u{65E5}")
+    }
+
     @Test("valid UTF-8 is UTF-8 whatever the header names, and the page is still read")
     func utf8() throws {
         let bytes = Array("caf\u{E9} \u{65E5}".utf8)

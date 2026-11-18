@@ -33,11 +33,15 @@ extension DXF {
 
         /// What the rebuild may be told.
         public struct Options: Equatable, Sendable {
-            /// A scale to use for every layer group, instead of inferring one: the real value per
-            /// drawn unit, so `80` for a drawing at 1:80.
+            /// A scale to use for every layer group, instead of inferring one.
+            ///
+            /// The real value per drawn unit, so `80` for a drawing at 1:80. Anything but a
+            /// positive number is none.
             public var scale: Double?
-            /// How far apart two pieces may be and still meet, in drawing units. `nil` takes 3%
-            /// of the height of the value texts.
+            /// How far apart two pieces may be and still meet, in drawing units.
+            ///
+            /// A length may be off by twice that at each end. `nil`, and anything but a positive
+            /// number, takes 3% of the height of the value texts.
             public var tolerance: Double?
             /// Which pieces may belong to a value text.
             public var pieceLayers: PieceLayers
@@ -94,6 +98,8 @@ extension DXF {
             case unit
             /// More than one number in the text.
             case severalNumbers
+            /// A number written in a way that is not read, such as `1.2.3`.
+            case unreadable
         }
 
         public enum Warning: Equatable, Sendable, CustomStringConvertible {

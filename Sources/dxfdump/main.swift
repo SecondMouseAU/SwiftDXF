@@ -256,8 +256,14 @@ var rebuildOptions = DXF.DimensionRebuild.Options()
 if let flag = arguments.firstIndex(of: "--rebuild") {
     arguments.remove(at: flag)
     rebuild = true
-    if let at = arguments.firstIndex(of: "--scale"), at + 1 < arguments.count {
-        rebuildOptions.scale = Double(arguments[at + 1])
+    if let at = arguments.firstIndex(of: "--scale") {
+        guard at + 1 < arguments.count, let scale = Double(arguments[at + 1]), scale > 0,
+            scale.isFinite
+        else {
+            FileHandle.standardError.write(Data("--scale needs a positive number\n".utf8))
+            exit(2)
+        }
+        rebuildOptions.scale = scale
         arguments.removeSubrange(at...(at + 1))
     }
 }

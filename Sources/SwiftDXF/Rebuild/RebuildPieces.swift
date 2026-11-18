@@ -59,11 +59,14 @@ extension DXF {
         struct Grid {
             var cell: Double
             var cells: [Int64: [Int]] = [:]
+            /// The boxes too large to put in every cell they cover, which every query returns.
+            var long: [Int] = []
+            private static let largest = 1024
 
             init(cell: Double) { self.cell = max(cell, 1e-6) }
 
             private func range(_ lo: Double, _ hi: Double) -> ClosedRange<Int> {
-                Int((lo / cell).rounded(.down))...Int((hi / cell).rounded(.down))
+                CollinearIndex.cell(lo / cell)...CollinearIndex.cell(hi / cell)
             }
 
             private static func key(_ x: Int, _ y: Int) -> Int64 {
@@ -71,18 +74,27 @@ extension DXF {
             }
 
             mutating func insert(_ index: Int, _ box: Box2) {
-                for x in range(box.min.x, box.max.x) {
-                    for y in range(box.min.y, box.max.y) {
-                        cells[Self.key(x, y), default: []].append(index)
-                    }
+                let xs = range(box.min.x, box.max.x)
+                let ys = range(box.min.y, box.max.y)
+                guard xs.count * ys.count <= Self.largest else {
+                    long.append(index)
+                    return
+                }
+                for x in xs {
+                    for y in ys { cells[Self.key(x, y), default: []].append(index) }
                 }
             }
 
             /// The indices inserted with a box that may meet `box`, each once, in ascending order.
             func query(_ box: Box2) -> [Int] {
-                var found = Set<Int>()
-                for x in range(box.min.x, box.max.x) {
-                    for y in range(box.min.y, box.max.y) {
+                var found = Set<Int>(long)
+                let xs = range(box.min.x, box.max.x)
+                let ys = range(box.min.y, box.max.y)
+                guard xs.count * ys.count <= Self.largest * 4 else {
+                    return Array(Set(cells.values.joined()).union(long)).sorted()
+                }
+                for x in xs {
+                    for y in ys {
                         if let list = cells[Self.key(x, y)] { found.formUnion(list) }
                     }
                 }
@@ -96,7 +108,7 @@ extension DXF {
             for (index, entity) in drawing.entities.enumerated() {
                 guard
                     case .text(let at, let height, let rotation, let string, let layer, let color) =
-                        entity, height > 0
+                        entity, height > 0, height.isFinite, Self.usable(at.x, at.y, rotation)
                 else { continue }
                 let content = drawing.textContent(ofEntityAt: index)
                 let radians = rotation * .pi / 180
@@ -134,7 +146,9 @@ extension DXF {
             }
             heights.sort()
             let median = heights.isEmpty ? 1 : heights[heights.count / 2]
-            tolerance = requested ?? 0.03 * median
+            // A tolerance that is not a positive number is the default, not a crash.
+            tolerance = max(
+                requested.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0.03 * median, 1e-9)
             markSize = 2 * median
 
             var seen: [String: [Int]] = [:]
@@ -175,13 +189,15 @@ extension DXF {
                     } else {
                         noteSmall(&small, index, points, layer)
                     }
-                case .circle(let center, let radius, let layer, _):
+                case .circle(let center, let radius, let layer, _)
+                where Self.usable(center.x, center.y, radius):
                     circles.append(
                         Circle(
                             center: Point2(center.x, center.y), radius: radius, entity: index,
                             layer: layer, span: nil))
                     noteSmall(&small, index, Self.box(center, radius), layer)
-                case .arc(let center, let radius, let start, let end, let layer, _):
+                case .arc(let center, let radius, let start, let end, let layer, _)
+                where Self.usable(center.x, center.y, radius, start, end):
                     circles.append(
                         Circle(
                             center: Point2(center.x, center.y), radius: radius, entity: index,
@@ -190,7 +206,7 @@ extension DXF {
                 case .spline(let spline):
                     let points = spline.controlPoints.map { Point2($0.x, $0.y) }
                     noteSmall(&small, index, points, spline.layer)
-                case .point(let at, let layer, _):
+                case .point(let at, let layer, _) where Self.usable(at.x, at.y):
                     marks.append(Mark(at: Point2(at.x, at.y), entities: [index], layer: layer))
                 default:
                     break
@@ -226,11 +242,17 @@ extension DXF {
             [Point2(c.x - r, c.y - r), Point2(c.x + r, c.y + r)]
         }
 
+        /// The largest coordinate of a piece that is read; beyond it a drawing is not usable.
+        static let limit = 1e12
+
+        private static func usable(_ values: Double...) -> Bool {
+            values.allSatisfy { $0.isFinite && abs($0) <= limit }
+        }
+
         private mutating func add(_ a: Point2, _ b: Point2, _ entity: Int, _ layer: String) {
+            guard Self.usable(a.x, a.y, b.x, b.y) else { return }
             let length = a.distance(to: b)
-            guard length > 1e-9, a.x.isFinite, a.y.isFinite, b.x.isFinite, b.y.isFinite else {
-                return
-            }
+            guard length > 1e-9 else { return }
             let index = segments.count
             segments.append(
                 Segment(
@@ -253,9 +275,7 @@ extension DXF {
             _ small: inout [(entity: Int, box: Box2, layer: String)], _ entity: Int,
             _ points: [Point2], _ layer: String
         ) {
-            guard !points.isEmpty, points.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else {
-                return
-            }
+            guard !points.isEmpty, points.allSatisfy({ Self.usable($0.x, $0.y) }) else { return }
             let box = Self.bounds(points)
             if hypot(box.width, box.height) <= markSize {
                 small.append((entity, box, layer))

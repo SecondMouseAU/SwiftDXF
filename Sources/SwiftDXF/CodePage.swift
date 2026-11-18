@@ -53,6 +53,40 @@ extension DXF {
             return String(data: Data(bytes), encoding: encoding)
         }
 
+        /// Whether a character of this page may be two bytes.
+        private var isMultibyte: Bool { [932, 936, 949, 950].contains(number) }
+
+        /// `bytes` decoded line by line, with each byte that is not a character of the page as
+        /// U+FFFD, so that one stray byte does not turn the rest of the file into other characters.
+        func decodeLines(_ bytes: [UInt8]) -> String {
+            var out = ""
+            var start = 0
+            for (i, byte) in bytes.enumerated() where byte == 0x0A || i == bytes.count - 1 {
+                let line = Array(bytes[start...i])
+                out += decode(line) ?? decodeByCharacter(line)
+                start = i + 1
+            }
+            return out
+        }
+
+        private func decodeByCharacter(_ line: [UInt8]) -> String {
+            var out = ""
+            var i = 0
+            while i < line.count {
+                let byte = line[i]
+                if byte < 0x80 {
+                    out.unicodeScalars.append(Unicode.Scalar(byte))
+                } else if isMultibyte, i + 1 < line.count, let pair = decode([byte, line[i + 1]]) {
+                    out += pair
+                    i += 1
+                } else {
+                    out += decode([byte]) ?? "\u{FFFD}"
+                }
+                i += 1
+            }
+            return out
+        }
+
         private var encoding: String.Encoding? {
             #if canImport(CoreFoundation)
                 let page: CFStringEncoding

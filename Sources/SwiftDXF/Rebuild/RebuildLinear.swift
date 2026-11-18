@@ -52,10 +52,8 @@ extension DXF {
             self.tolerance = tolerance
             for (index, segment) in segments.enumerated() {
                 let (angle, offset) = Self.place(segment.unit, segment.a)
-                buckets[
-                    Self.key(angle, Int((offset / (4 * tolerance)).rounded(.down))),
-                    default: []
-                ].append(index)
+                buckets[Self.key(angle, Self.cell(offset / (4 * tolerance))), default: []]
+                    .append(index)
             }
         }
 
@@ -72,17 +70,30 @@ extension DXF {
         }
 
         /// The indices of the segments that may lie on the line through `point` along `unit`.
+        ///
+        /// A line near the half turn is stored with one direction or the other, and its offset
+        /// changes sign with it, so the neighbours across the wrap are asked for with the sign
+        /// turned, and so is the first angle, which both ends of the half turn share.
         func near(_ unit: Point2, _ point: Point2) -> [Int] {
             let (angle, offset) = Self.place(unit, point)
-            let step = Int((offset / (4 * tolerance)).rounded(.down))
             var found: [Int] = []
+            func look(_ angle: Int, _ offset: Double) {
+                let step = Self.cell(offset / (4 * tolerance))
+                for dOffset in -1...1 { found += buckets[Self.key(angle, step + dOffset)] ?? [] }
+            }
             for da in -2...2 {
-                let a = (angle + da + Self.angleSteps) % Self.angleSteps
-                for dOffset in -1...1 {
-                    found += buckets[Self.key(a, step + dOffset)] ?? []
-                }
+                let raw = angle + da
+                let wrapped = raw < 0 || raw >= Self.angleSteps
+                let a = (raw + Self.angleSteps) % Self.angleSteps
+                look(a, wrapped ? -offset : offset)
+                if a == 0 { look(0, wrapped ? offset : -offset) }
             }
             return found
+        }
+
+        /// A cell index for `value`, bounded so that a huge value cannot overflow.
+        static func cell(_ value: Double) -> Int {
+            Int(max(-2e9, min(2e9, value.rounded(.down))))
         }
     }
 }
@@ -247,8 +258,13 @@ extension DXF.DimensionRebuilder {
         let tc = t(text.center)
         let offset = perp(text.center)
         var candidates: [DXF.RebuildCandidate] = []
+        // A span is up to eight ends of the line, or the whole of it, so that a line with
+        // hundreds of ends is not tried in every pair.
         for i in merged.indices {
-            for j in (i + 1)..<max(merged.count, i + 1) {
+            if merged[i].t - tc > reach { break }
+            var others = Array((i + 1)..<max(min(i + 9, merged.count), i + 1))
+            if i == 0, merged.count > 9 { others.append(merged.count - 1) }
+            for j in others {
                 let (from, to) = (merged[i].t, merged[j].t)
                 let length = to - from
                 guard length > 4 * tol, max(0, from - tc, tc - to) <= reach else { continue }

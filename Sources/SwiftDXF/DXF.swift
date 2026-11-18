@@ -344,26 +344,20 @@ public enum DXF {
     /// names, or in **CP932 / Shift-JIS** when it names none that is read (the common code page
     /// for DXF exported by Japanese CAD tools). Every supported page is an ASCII superset, so the
     /// group-code/value structure is unaffected either way.
+    ///
+    /// A byte the page cannot decode costs the line it is in, not the whole file.
     static func decode(_ data: Data) -> String {
         if let s = String(data: data, encoding: .utf8) { return s }
-        if let page = headerCodePage(in: data), page != .shiftJIS,
-            let s = page.decode([UInt8](data))
-        {
-            return s
-        }
-        return decodeCP932([UInt8](data))
+        let page = headerCodePage(in: data) ?? .shiftJIS
+        let bytes = [UInt8](data)
+        return page.decode(bytes) ?? page.decodeLines(bytes)
     }
 
     /// Decode CP932 (Shift-JIS / Windows-31J) bytes to a Swift String, via CoreFoundation on Apple
     /// platforms, falling back to `.shiftJIS` then a lossy UTF-8 decode.
     public static func decodeCP932(_ bytes: [UInt8]) -> String {
-        let data = Data(bytes)
-        #if canImport(CoreFoundation)
-            let cp932 = String.Encoding(
-                rawValue: CFStringConvertEncodingToNSStringEncoding(
-                    CFStringEncoding(CFStringEncodings.dosJapanese.rawValue)))
-            if let s = String(data: data, encoding: cp932) { return s }
-        #endif
-        return String(data: data, encoding: .shiftJIS) ?? String(decoding: bytes, as: UTF8.self)
+        if let s = CodePage.shiftJIS.decode(bytes) { return s }
+        return String(data: Data(bytes), encoding: .shiftJIS)
+            ?? String(decoding: bytes, as: UTF8.self)
     }
 }
