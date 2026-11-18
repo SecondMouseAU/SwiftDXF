@@ -20,6 +20,7 @@ extension DXF {
         public var upper: String
         /// The lower part, such as `-0,005`.
         public var lower: String
+        /// Tolerance, fraction or diagonal fraction, from the divider.
         public var kind: Kind
 
         public init(upper: String, lower: String, kind: Kind) {

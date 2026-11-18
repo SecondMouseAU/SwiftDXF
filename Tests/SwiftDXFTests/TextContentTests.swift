@@ -88,6 +88,8 @@ struct TextContentTests {
         #expect(
             Self.mtext(#"\H2.5x\S1/2;"#).stacks == [.init(upper: "1", lower: "2", kind: .fraction)])
         #expect(Self.mtext(#"\H.5;a\H5.;b\H1e1xc"#).plain == "abc")
+        // An oblique angle takes no `x` factor.
+        #expect(Self.mtext(#"\Q15xA"#).plain == "xA")
         #expect(Self.mtext(#"a\H2.5"#).plain == "a")
         #expect(Self.mtext(#"a\fArial|b1 rest"#).plain == "a")
     }
@@ -119,6 +121,7 @@ struct TextContentTests {
         // is a line break, not a divider.
         #expect(Self.mtext(#"\S1/2"#).stacks == [.init(upper: "1", lower: "2", kind: .fraction)])
         #expect(Self.mtext(#"\S1^J2;"#).stacks.isEmpty)
+        #expect(Self.mtext(#"\S1^I2;"#).plain == "1\t2")
         let flat = Self.mtext(#"a\Sbc;d"#)
         #expect(flat.stacks.isEmpty && flat.plain == "abcd")
         #expect(Self.mtext(#"\S1^ 2;\S3^ 4;"#).plain == "1/2 3/4")

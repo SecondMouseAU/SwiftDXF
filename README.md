@@ -267,11 +267,11 @@ for (i, entity) in dwg.entities.enumerated() {
   tab and `^J` a line break.
 - **MTEXT formatting codes are removed** with their arguments up to the `;`: `\A` (alignment), `\C`
   and `\c` (colour), `\F` and `\f` (font), `\H` (height), `\Q` (oblique angle), `\T` (tracking),
-  `\W` (width) and `\p` (paragraph). When the `;` is missing, a code with one value (all but the
-  font and paragraph codes) ends with its value, as `ezdxf` reads it, so `\H2xBig` reads `Big`. So are the switches `\L`, `\l`, `\O`, `\o`, `\K` and `\k`, and
-  the `{` and `}` that group codes. `\P`, `\N` and `\X` are line breaks, `\~` is a no-break space,
-  and `\\`, `\{` and `\}` are the characters themselves. `{\fArial|b1|i0|c0|p34;www.example.com}`
-  reads `www.example.com`.
+  `\W` (width) and `\p` (paragraph). So are the switches `\L`, `\l`, `\O`, `\o`, `\K` and `\k`,
+  and the `{` and `}` that group codes. When the `;` is missing, a code with one value (all but the
+  font and paragraph codes) ends with its value, as `ezdxf` reads it, so `\H2xBig` reads `Big`.
+  `\P`, `\N` and `\X` are line breaks, `\~` is a no-break space, and `\\`, `\{` and `\}` are the
+  characters themselves. `{\fArial|b1|i0|c0|p34;www.example.com}` reads `www.example.com`.
 - **Stacks.** `\S` writes two parts one above the other, divided by `^` for a tolerance (written
   `^ ` in a DXF file), `/` for a fraction or `#` for a diagonal fraction. Each stack is a
   `DXF.StackedText` with its two parts as written. The plain text gives a stack as `upper/lower`
@@ -281,8 +281,8 @@ for (i, entity) in dwg.entities.enumerated() {
   `C:\DRAWINGS\PLAN.DWG` stays whole.
 - **A code that is not understood is kept as written**: an unknown backslash code, `\M+nXXXX` (a
   character of a multibyte code page), and a `%%nnn` or `\U+XXXX` that names a control character,
-  a number above 255 or half a surrogate pair. A `\S` whose `;` is missing ends at the `}` of its
-  group, or at the end of the text.
+  a number above 255 or half a surrogate pair. A `}` ends a stack as it ends the group around
+  it, so a `\S` whose `;` is missing ends there, or at the end of the text.
 
 `dwg.textContents` is parallel to `entities` like `identities`, and is cleared when `entities`
 changes. A block's are in `Block.textContents`, and an expansion carries them through.
@@ -541,7 +541,7 @@ The oracle writes `%%c` as `⌀`, a stack as `upper/lower` after a space, `\~` a
 `\X` as a line break, as SwiftDXF does, so the diff shows only where the two read a string
 differently. Over 23,429 strings in 3,109 real drawings, given to both with their non-ASCII
 characters written as `\U+XXXX` (ezdxf reads a file through its `$DWGCODEPAGE`, SwiftDXF as UTF-8
-or else CP932), the two agree on all but 25, each a Jw_cad superscript mark from the second case
+or else CP932), the two agree on all but 25, each a Jw_cad superscript mark from the third case
 below. They read a string differently in these cases, on purpose:
 
 - `%%nnn` is decoded; `ezdxf` leaves it.
@@ -550,9 +550,9 @@ below. They read a string differently in these cases, on purpose:
   character, so the Jw_cad superscript mark in `m^u3` becomes `m53`.
 - `%%u`, `%%o` and `%%k` are dropped in `MTEXT` as in `TEXT`; `ezdxf` keeps them in `MTEXT`.
 - In a stack, `%%` codes are decoded, `^I` and `^J` are a tab and a line break, and any other `^`
-  without its space still divides (`ezdxf` reads `^-` as a control character). A `\S` with no divider is read as text, where `ezdxf` gives a stack with
-  an empty lower part, and one without its `;` ends with its group, where `ezdxf` runs it on to the
-  end of the text.
+  without its space still divides (`ezdxf` reads `^-` as a control character). A `\S` with no
+  divider is read as text, where `ezdxf` gives a stack with an empty lower part, and a `}` ends a
+  stack, where `ezdxf` runs it on to its `;`.
 - `\M+nXXXX`, and a `\U+XXXX` of a control character or of half a surrogate pair, are kept as
   written; `ezdxf` decodes them. A `%%` or a
   backslash at the very end is kept; `ezdxf` drops it.

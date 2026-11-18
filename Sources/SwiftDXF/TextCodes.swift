@@ -93,9 +93,10 @@ extension DXF {
             }
 
             /// The special character that starts at `k`, and how many scalars it takes, or `nil`
-            /// when none starts there: `%%c`, `%%d`, `%%p`, `%%%`, `%%nnn`, the underline and
-            /// overline toggles `%%u`, `%%o` and `%%k`, `\U+XXXX`, `\M+nXXXX` (kept as written),
-            /// and the control characters `^ ` (a caret), `^I` (a tab) and `^J` (a line break).
+            /// when none starts there: `%%c`, `%%d`, `%%p`, `%%%`, `%%nnn`, the underline, overline
+            /// and strike-through toggles `%%u`, `%%o` and `%%k`, `\U+XXXX`, `\M+nXXXX` (kept as
+            /// written), and the control characters `^ ` (a caret), `^I` (a tab) and `^J` (a line
+            /// break).
             func special(at k: Int) -> (Piece, Int)? {
                 switch s[k] {
                 case "%":
@@ -225,13 +226,14 @@ extension DXF {
                 }
             }
 
-            /// A `\S` stack at `i`, up to its `;`, or when that is missing up to the `}` that ends
-            /// its group or the end of the text.
+            /// A `\S` stack at `i`, up to its `;`, the `}` that ends its group, or the end of the
+            /// text.
             ///
             /// The first `^`, `/` or `#` divides the parts; a `^` may be written `^ `, with the
-            /// space of the DXF caret notation, and `^I` and `^J` are a tab and a line break. A backslash makes the next character part of the
-            /// text, so `\/` and `\;` do not divide or end the stack. Without a divider nothing is
-            /// stacked and the text is read as it is.
+            /// space of the DXF caret notation, and `^I` and `^J` are a tab and a line break. A
+            /// backslash makes the next character part of the text, so `\/` and `\;` do not divide
+            /// or end the stack. Without a divider nothing is stacked, and the text is read as it
+            /// is.
             mutating func stack() {
                 var parts = [String.UnicodeScalarView(), String.UnicodeScalarView()]
                 var divider: Unicode.Scalar?
