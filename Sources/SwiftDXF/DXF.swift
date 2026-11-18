@@ -138,7 +138,8 @@ public enum DXF {
         /// Parallel to ``entities`` like ``identities``, and cleared with it. Use
         /// ``effectiveLineType(ofEntityAt:)`` for the line type an entity is drawn with.
         public var entityLineTypes: [String?]
-        /// One decoded string per entry in ``entities``, `nil` for an entity that is not text.
+        /// One decoded string per entry in ``entities``, `nil` for an entity that is not text or
+        /// whose string was not read from a file.
         ///
         /// Parallel to ``entities`` like ``identities``, and cleared with it; see
         /// ``textContent(ofEntityAt:)``.

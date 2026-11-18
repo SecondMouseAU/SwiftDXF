@@ -23,7 +23,8 @@ extension DXF {
         public var identities: [Identity]
         /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
         public var entityLineTypes: [String?]
-        /// One decoded string per entry in ``entities``, `nil` for an entity that is not text.
+        /// One decoded string per entry in ``entities``, `nil` for an entity that is not text or
+        /// whose string was not read from a file.
         public var textContents: [TextContent?]
         /// The `INSERT`s inside the block, which an expansion carries through with the block.
         public var references: [BlockReference]

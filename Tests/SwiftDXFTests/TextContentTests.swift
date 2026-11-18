@@ -45,7 +45,7 @@ struct TextContentTests {
     @Test("%%nnn is the character with that number; %%u, %%o and %%k are dropped")
     func characterNumbers() {
         #expect(Self.text("45%%176").plain == "45°")
-        #expect(Self.text("%%065%%66").plain == "AB")
+        #expect(Self.text("%%065%%066").plain == "AB")
         #expect(Self.text("100%%%").plain == "100%")
         #expect(Self.text("%%uunder%%u, %%oover%%o, %%kstruck%%k").plain == "under, over, struck")
         #expect(Self.mtext("%%d%%P%%U").plain == "°±")
@@ -53,6 +53,8 @@ struct TextContentTests {
         #expect(Self.text("10% of %%x").plain == "10% of %%x")
         #expect(Self.text("a%%").plain == "a%%")
         #expect(Self.text("%%010 %%128 %%256").plain == "%%010 %%128 %%256")
+        // The number has three digits.
+        #expect(Self.text("%%65").plain == "%%65")
     }
 
     @Test("MTEXT: a fit tolerance is a stack, and the plain text reads the value and tolerance")
@@ -79,8 +81,15 @@ struct TextContentTests {
         #expect(Self.mtext(#"a\~b \\ \{c\}"#).plain == "a\u{00A0}b \\ {c}")
         #expect(Self.mtext("{{a}b}c}").plain == "abc")
         #expect(Self.mtext(#"one\Ptwo\Nthree\Xfour"#).plain == "one\ntwo\nthree\nfour")
-        // A code without its `;` takes the rest of the text, as ezdxf reads it.
+        // Without its `;`, a code with one value ends with the value, and a font or paragraph code
+        // takes the rest of the text, as ezdxf reads them.
+        #expect(
+            Self.mtext(#"\H2xBig \T1.1abc \A1x \Q-15.5y \C1z \c255w"#).plain == "Big abc x y z w")
+        #expect(
+            Self.mtext(#"\H2.5x\S1/2;"#).stacks == [.init(upper: "1", lower: "2", kind: .fraction)])
+        #expect(Self.mtext(#"\H.5;a\H5.;b\H1e1xc"#).plain == "abc")
         #expect(Self.mtext(#"a\H2.5"#).plain == "a")
+        #expect(Self.mtext(#"a\fArial|b1 rest"#).plain == "a")
     }
 
     @Test("stacks: fractions, a diagonal fraction, escapes, and a stack with no divider")
@@ -106,8 +115,10 @@ struct TextContentTests {
             Self.mtext(#"\S%%p0,1^ 0;"#).stacks == [
                 .init(upper: "±0,1", lower: "0", kind: .tolerance)
             ])
-        // Without a `;` the stack runs to the end; without a divider nothing is stacked.
-        #expect(Self.mtext(#"\S1/2"#).plain == "1/2")
+        // Without a `;` the stack runs to the end; without a divider nothing is stacked, and `^J`
+        // is a line break, not a divider.
+        #expect(Self.mtext(#"\S1/2"#).stacks == [.init(upper: "1", lower: "2", kind: .fraction)])
+        #expect(Self.mtext(#"\S1^J2;"#).stacks.isEmpty)
         let flat = Self.mtext(#"a\Sbc;d"#)
         #expect(flat.stacks.isEmpty && flat.plain == "abcd")
         #expect(Self.mtext(#"\S1^ 2;\S3^ 4;"#).plain == "1/2 3/4")

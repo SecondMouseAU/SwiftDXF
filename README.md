@@ -258,7 +258,8 @@ for (i, entity) in dwg.entities.enumerated() {
 ```
 
 - **Special characters**, in both: `%%c` is `⌀` (the diameter sign, U+2300), `%%d` is `°`, `%%p`
-  is `±`, `%%%` is `%`, and `%%nnn` is the Unicode character nnn up to 255, so `%%176` is `°`.
+  is `±`, `%%%` is `%`, and `%%nnn`, with three digits, is the Unicode character nnn up to 255,
+  so `%%176` is `°`.
   The drawing's code page is not consulted, so from 128 to 159, where Windows-1252 has the euro
   sign and other letters, the code is kept as written.
   `%%u`, `%%o` and `%%k`, which switch underline, overline and strike-through, are dropped.
@@ -266,7 +267,8 @@ for (i, entity) in dwg.entities.enumerated() {
   tab and `^J` a line break.
 - **MTEXT formatting codes are removed** with their arguments up to the `;`: `\A` (alignment), `\C`
   and `\c` (colour), `\F` and `\f` (font), `\H` (height), `\Q` (oblique angle), `\T` (tracking),
-  `\W` (width) and `\p` (paragraph). So are the switches `\L`, `\l`, `\O`, `\o`, `\K` and `\k`, and
+  `\W` (width) and `\p` (paragraph). When the `;` is missing, a code with one value (all but the
+  font and paragraph codes) ends with its value, as `ezdxf` reads it, so `\H2xBig` reads `Big`. So are the switches `\L`, `\l`, `\O`, `\o`, `\K` and `\k`, and
   the `{` and `}` that group codes. `\P`, `\N` and `\X` are line breaks, `\~` is a no-break space,
   and `\\`, `\{` and `\}` are the characters themselves. `{\fArial|b1|i0|c0|p34;www.example.com}`
   reads `www.example.com`.
@@ -543,11 +545,12 @@ or else CP932), the two agree on all but 25, each a Jw_cad superscript mark from
 below. They read a string differently in these cases, on purpose:
 
 - `%%nnn` is decoded; `ezdxf` leaves it.
+- `^J` in a `TEXT` is a line break; `ezdxf` keeps a `TEXT` on one line and drops it.
 - A caret other than `^ `, `^I` and `^J` is text; `ezdxf` reads every caret as a control
   character, so the Jw_cad superscript mark in `m^u3` becomes `m53`.
 - `%%u`, `%%o` and `%%k` are dropped in `MTEXT` as in `TEXT`; `ezdxf` keeps them in `MTEXT`.
-- In a stack, `%%` codes are decoded and a `^` without its space still divides (`ezdxf` reads `^-`
-  as a control character). A `\S` with no divider is read as text, where `ezdxf` gives a stack with
+- In a stack, `%%` codes are decoded, `^I` and `^J` are a tab and a line break, and any other `^`
+  without its space still divides (`ezdxf` reads `^-` as a control character). A `\S` with no divider is read as text, where `ezdxf` gives a stack with
   an empty lower part, and one without its `;` ends with its group, where `ezdxf` runs it on to the
   end of the text.
 - `\M+nXXXX`, and a `\U+XXXX` of a control character or of half a surrogate pair, are kept as

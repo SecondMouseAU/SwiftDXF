@@ -34,11 +34,13 @@ extension DXF {
             case nothing
         }
 
-        /// MTEXT codes that take arguments up to a `;`: alignment, colour, font, height, oblique
-        /// angle, tracking, width and paragraph properties.
-        private static let withArguments: Set<Unicode.Scalar> = [
-            "A", "C", "c", "F", "f", "H", "Q", "T", "W", "p",
-        ]
+        /// MTEXT codes whose arguments run to a `;`: font and paragraph properties.
+        private static let withArguments: Set<Unicode.Scalar> = ["F", "f", "p"]
+
+        /// MTEXT codes that take one value and then an optional `;`: alignment (one character),
+        /// colour (digits), oblique angle (a number), and height, tracking and width (a number, or
+        /// a factor such as `2x`).
+        private static let withValue: Set<Unicode.Scalar> = ["A", "C", "c", "Q", "H", "T", "W"]
 
         /// MTEXT codes that switch underline, overline and strike-through on or off.
         private static let toggles: Set<Unicode.Scalar> = ["L", "l", "O", "o", "K", "k"]
@@ -135,15 +137,15 @@ extension DXF {
                 }
             }
 
-            /// `%%nnn`: the character numbered by up to three digits, read as a Unicode code point
-            /// up to 255, when it can be shown; any other number is kept as written.
+            /// `%%nnn`: the character numbered by three digits, read as a Unicode code point up to
+            /// 255, when it can be shown; any other number is kept as written.
             ///
             /// The drawing's code page is not consulted, so from 128 to 159 this differs from
             /// Windows-1252, which puts the euro sign at 128.
             func characterNumber(at k: Int) -> (Piece, Int)? {
                 var end = k + 2
                 while end < k + 5, let digit = at(end), ("0"..."9").contains(digit) { end += 1 }
-                guard end > k + 2 else { return nil }
+                guard end == k + 5 else { return nil }
                 guard let value = UInt32(string((k + 2)..<end)), value <= 255,
                     let scalar = Unicode.Scalar(value), Self.canBeShown(scalar)
                 else { return (.code(string(k..<end)), end - k) }
@@ -184,6 +186,9 @@ extension DXF {
                         var end = i + 2
                         while end < s.count, s[end] != ";" { end += 1 }
                         i = min(end + 1, s.count)
+                    } else if TextCodes.withValue.contains(code) {
+                        i = valueEnd(of: code, from: i + 2)
+                        if at(i) == ";" { i += 1 }
                     } else {
                         emit(.code(string(i..<(i + 2))))
                         i += 2
@@ -191,11 +196,40 @@ extension DXF {
                 }
             }
 
+            /// The index just past the value of the code `code` that starts at `k`, read as ezdxf
+            /// reads it, so that the text after a code without its `;` is kept.
+            func valueEnd(of code: Unicode.Scalar, from k: Int) -> Int {
+                func digits(from j: Int) -> Int {
+                    var end = j
+                    while let c = at(end), ("0"..."9").contains(c) { end += 1 }
+                    return end
+                }
+                switch code {
+                case "A": return min(k + 1, s.count)
+                case "C", "c": return digits(from: k)
+                default:
+                    var j = k
+                    if at(j) == "+" || at(j) == "-" { j += 1 }
+                    let whole = digits(from: j)
+                    var end = whole
+                    if at(whole) == ".", digits(from: whole + 1) > whole + 1 || whole > j {
+                        end = digits(from: whole + 1)
+                    }
+                    guard end > j else { return k }
+                    if at(end) == "e" || at(end) == "E" {
+                        let sign = at(end + 1) == "+" || at(end + 1) == "-" ? end + 2 : end + 1
+                        if digits(from: sign) > sign { end = digits(from: sign) }
+                    }
+                    if code != "Q", at(end) == "x" { end += 1 }
+                    return end
+                }
+            }
+
             /// A `\S` stack at `i`, up to its `;`, or when that is missing up to the `}` that ends
             /// its group or the end of the text.
             ///
             /// The first `^`, `/` or `#` divides the parts; a `^` may be written `^ `, with the
-            /// space of the DXF caret notation. A backslash makes the next character part of the
+            /// space of the DXF caret notation, and `^I` and `^J` are a tab and a line break. A backslash makes the next character part of the
             /// text, so `\/` and `\;` do not divide or end the stack. Without a divider nothing is
             /// stacked and the text is read as it is.
             mutating func stack() {
@@ -212,7 +246,8 @@ extension DXF {
                         break
                     }
                     if c == "}" { break }
-                    if divider == nil, c == "^" || c == "/" || c == "#" {
+                    let control = c == "^" && (at(k + 1) == "I" || at(k + 1) == "J")
+                    if divider == nil, !control, c == "^" || c == "/" || c == "#" {
                         divider = c
                         k += (c == "^" && at(k + 1) == " ") ? 2 : 1
                     } else if let (piece, length) = special(at: k) {

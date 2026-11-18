@@ -324,6 +324,8 @@ struct DimensionTests {
         let font = DXF.DimensionText(#"{\fArial|b0|i0|c0|p34;<> mm}"#)
         #expect(font.parts == [.measurement, .words(" mm")])
         #expect(DXF.DimensionText("%%c<>").parts == [.words("⌀"), .measurement])
+        // A height without its `;` does not hide the measurement after it.
+        #expect(DXF.DimensionText(#"\H2.5x<>"#).parts == [.measurement])
         #expect(
             DXF.DimensionText(#"<>\X(ref)"#).parts == [.measurement, .lineBreak, .words("(ref)")])
         // The digits of a code kept as written are not typed numbers, and a sign right after
