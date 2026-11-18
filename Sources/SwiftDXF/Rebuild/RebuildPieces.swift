@@ -65,8 +65,13 @@ extension DXF {
 
             init(cell: Double) { self.cell = max(cell, 1e-6) }
 
+            /// A cell index for `value`, bounded so that a huge value cannot overflow.
+            private static func index(_ value: Double) -> Int {
+                Int(max(-2e9, min(2e9, value.rounded(.down))))
+            }
+
             private func range(_ lo: Double, _ hi: Double) -> ClosedRange<Int> {
-                CollinearIndex.cell(lo / cell)...CollinearIndex.cell(hi / cell)
+                Self.index(lo / cell)...Self.index(hi / cell)
             }
 
             private static func key(_ x: Int, _ y: Int) -> Int64 {

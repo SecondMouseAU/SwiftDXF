@@ -64,7 +64,8 @@ timestamp: 2026-11-19
   `RebuildLinear.swift` finds the spans of a dimension line beside a text, `RebuildRadial.swift`
   the diameters and radii, and the scale is inferred per layer group. The result is a
   `DXF.DimensionRebuild` (dimensions with `Dimension.rebuilt` set, `ScaleEstimate`s, `Warning`s)
-  that `applied(to:)` adds to the drawing; `dxfdump --rebuild` prints it.
+  that `applied(to:)` adds to the drawing; `dxfdump --rebuild` prints it, and
+  `tools/rebuild_corpus.py` summarises a folder of drawings.
 - **Curve fit** (`CurveFit.swift`, `CurveFit+Fitting.swift`): `Entity.fitted(tolerance:source:)`,
   `Spline.fitted(tolerance:source:)` and `Drawing.fittedCurve(at:tolerance:)` turn one `SPLINE` or
   `ELLIPSE` into a `DXF.CurveFit` of `Contour.Segment` pieces (each stamped with the entity's

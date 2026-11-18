@@ -102,6 +102,7 @@ extension DXF {
             case unreadable
         }
 
+        /// What the rebuild could not do, or did that deserves a second look.
         public enum Warning: Equatable, Sendable, CustomStringConvertible {
             /// A value text that no dimension explains.
             case valueNotExplained(text: String, identity: Identity, reason: Reason)

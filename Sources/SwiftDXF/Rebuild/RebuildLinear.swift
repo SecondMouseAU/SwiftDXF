@@ -1,103 +1,5 @@
 import Foundation
 
-extension DXF {
-    /// A way the pieces near a value text could be one dimension, before any scale is known.
-    struct RebuildCandidate {
-        enum Shape {
-            /// A span of a dimension line, from the end at `start` to the end at `end`, measured
-            /// along `unit` from `origin`.
-            case linear(origin: Point2, unit: Point2, start: Double, end: Double)
-            /// A diameter or radius: the two points of its definition (the centre and a point on
-            /// the circle for a radius).
-            case radial(kind: DimensionType, first: Point2, second: Point2)
-        }
-
-        var text: Int
-        /// The length the geometry gives in drawing units.
-        var length: Double
-        /// How far the geometry is from the text: nearer wins when two explain the value.
-        var cost: Double
-        /// Names the geometry of a radial candidate, so two texts do not take the same one.
-        var key: [Int]
-        /// The entities the geometry is made of.
-        var pieces: [Int]
-        var shape: Shape
-
-        /// The ends of a span of a dimension line, or `nil` for a diameter or a radius.
-        var span: (DXF.Point2, DXF.Point2)? {
-            guard case .linear(let origin, let unit, let start, let end) = shape else { return nil }
-            return (
-                DXF.Point2(origin.x + unit.x * start, origin.y + unit.y * start),
-                DXF.Point2(origin.x + unit.x * end, origin.y + unit.y * end)
-            )
-        }
-
-        /// Whether `other` is the same geometry: the same span, or the same circle and line.
-        func isSameGeometry(as other: RebuildCandidate, within tolerance: Double) -> Bool {
-            if let a = span, let b = other.span {
-                return (a.0.distance(to: b.0) <= tolerance && a.1.distance(to: b.1) <= tolerance)
-                    || (a.0.distance(to: b.1) <= tolerance && a.1.distance(to: b.0) <= tolerance)
-            }
-            return span == nil && other.span == nil && key == other.key
-        }
-    }
-
-    /// The segments that lie on one line, found from the angle and offset of each.
-    struct CollinearIndex {
-        private var buckets: [Int64: [Int]] = [:]
-        private let tolerance: Double
-        private static let angleSteps = 720
-
-        init(_ segments: [RebuildPieces.Segment], tolerance: Double) {
-            self.tolerance = tolerance
-            for (index, segment) in segments.enumerated() {
-                let (angle, offset) = Self.place(segment.unit, segment.a)
-                buckets[Self.key(angle, Self.cell(offset / (4 * tolerance))), default: []]
-                    .append(index)
-            }
-        }
-
-        /// The key of the angle (a half turn in `angleSteps`) and offset of a line.
-        private static func place(_ unit: Point2, _ point: Point2) -> (Int, Double) {
-            var (x, y) = (unit.x, unit.y)
-            if y < 0 || (y == 0 && x < 0) { (x, y) = (-x, -y) }
-            let angle = Int((atan2(y, x) / .pi * Double(angleSteps)).rounded()) % angleSteps
-            return (angle, x * point.y - y * point.x)
-        }
-
-        private static func key(_ angle: Int, _ offset: Int) -> Int64 {
-            Int64(angle) &* 1_000_003 &+ Int64(offset)
-        }
-
-        /// The indices of the segments that may lie on the line through `point` along `unit`.
-        ///
-        /// A line near the half turn is stored with one direction or the other, and its offset
-        /// changes sign with it, so the neighbours across the wrap are asked for with the sign
-        /// turned, and so is the first angle, which both ends of the half turn share.
-        func near(_ unit: Point2, _ point: Point2) -> [Int] {
-            let (angle, offset) = Self.place(unit, point)
-            var found: [Int] = []
-            func look(_ angle: Int, _ offset: Double) {
-                let step = Self.cell(offset / (4 * tolerance))
-                for dOffset in -1...1 { found += buckets[Self.key(angle, step + dOffset)] ?? [] }
-            }
-            for da in -2...2 {
-                let raw = angle + da
-                let wrapped = raw < 0 || raw >= Self.angleSteps
-                let a = (raw + Self.angleSteps) % Self.angleSteps
-                look(a, wrapped ? -offset : offset)
-                if a == 0 { look(0, wrapped ? offset : -offset) }
-            }
-            return found
-        }
-
-        /// A cell index for `value`, bounded so that a huge value cannot overflow.
-        static func cell(_ value: Double) -> Int {
-            Int(max(-2e9, min(2e9, value.rounded(.down))))
-        }
-    }
-}
-
 extension DXF.DimensionRebuilder {
     private func cross(_ a: DXF.Point2, _ b: DXF.Point2) -> Double { a.x * b.y - a.y * b.x }
     private func dot(_ a: DXF.Point2, _ b: DXF.Point2) -> Double { a.x * b.x + a.y * b.y }
@@ -127,7 +29,7 @@ extension DXF.DimensionRebuilder {
         // The lines beside the text. The way the text runs is a preference, not a rule: a
         // horizontal text may stand beside a vertical line, and an exporter may write the angle
         // wrongly (Jw_cad writes 5156.62 for 90 degrees).
-        var lines: [(unit: DXF.Point2, origin: DXF.Point2, distance: Double, turn: Double)] = []
+        var lines: [(seed: Int, distance: Double, turn: Double)] = []
         for s in pieces.segmentGrid.query(window) {
             let segment = pieces.segments[s]
             guard sameLayer(segment.layer, as: text) else { continue }
@@ -137,11 +39,11 @@ extension DXF.DimensionRebuilder {
             guard distance <= perpendicular, max(0, -along, along - segment.length) <= reach
             else { continue }
             if !lines.contains(where: {
-                abs(cross($0.unit, minus(segment.a, $0.origin))) <= tol
-                    && abs(cross($0.unit, segment.unit)) <= 0.01
+                let other = pieces.segments[$0.seed]
+                return abs(cross(other.unit, minus(segment.a, other.a))) <= tol
+                    && abs(cross(other.unit, segment.unit)) <= 0.01
             }) {
-                lines.append(
-                    (segment.unit, segment.a, distance, abs(cross(segment.unit, text.direction))))
+                lines.append((s, distance, abs(cross(segment.unit, text.direction))))
             }
         }
         // Lines that run the way the text does, then the nearest, first; a crowd is cut short.
@@ -151,8 +53,7 @@ extension DXF.DimensionRebuilder {
 
         var candidates: [DXF.RebuildCandidate] = []
         for line in lines.prefix(16) {
-            var found = spans(
-                of: (line.unit, line.origin), text: text, textIndex: ti, reach: reach)
+            var found = spans(seed: line.seed, text: text, textIndex: ti, reach: reach)
             for k in found.indices { found[k].cost += line.turn * 2 * text.height }
             candidates += found
         }
@@ -165,23 +66,47 @@ extension DXF.DimensionRebuilder {
     }
 
     private func spans(
-        of line: (unit: DXF.Point2, origin: DXF.Point2), text: DXF.RebuildPieces.Text,
-        textIndex: Int, reach: Double
+        seed: Int, text: DXF.RebuildPieces.Text, textIndex: Int, reach: Double
     ) -> [DXF.RebuildCandidate] {
         let tol = pieces.tolerance
-        let (u, p0) = line
+        let (u, p0) = (pieces.segments[seed].unit, pieces.segments[seed].a)
         func t(_ p: DXF.Point2) -> Double { dot(u, minus(p, p0)) }
         func perp(_ p: DXF.Point2) -> Double { abs(cross(u, minus(p, p0))) }
 
-        // The pieces of the dimension line: the segments on this line.
+        // The pieces of the dimension line: the segments on this line, found by growing from the
+        // one beside the text across gaps no wider than the text. The line is measured from the
+        // seed, not from the origin, so the drawing may be anywhere.
         var carrier: [(entity: Int, lo: Double, hi: Double)] = []
-        for s in collinear.near(u, p0) {
+        var members = Set<Int>()
+        var first = Double.infinity
+        var last = -Double.infinity
+        func admit(_ s: Int) -> Bool {
             let segment = pieces.segments[s]
-            guard sameLayer(segment.layer, as: text), perp(segment.a) <= tol,
-                perp(segment.b) <= tol
-            else { continue }
-            carrier.append(
-                (segment.entity, min(t(segment.a), t(segment.b)), max(t(segment.a), t(segment.b))))
+            guard !members.contains(s), sameLayer(segment.layer, as: text),
+                perp(segment.a) <= tol, perp(segment.b) <= tol
+            else { return false }
+            members.insert(s)
+            let (ta, tb) = (t(segment.a), t(segment.b))
+            carrier.append((segment.entity, min(ta, tb), max(ta, tb)))
+            first = min(first, ta, tb)
+            last = max(last, ta, tb)
+            return true
+        }
+        _ = admit(seed)
+        let gap = text.width + 2 * text.height + 2 * tol
+        var grew = true
+        var rounds = 0
+        while grew, rounds < 1000 {
+            grew = false
+            rounds += 1
+            let window = DXF.RebuildPieces.bounds([
+                DXF.Point2(p0.x + u.x * (first - gap), p0.y + u.y * (first - gap)),
+                DXF.Point2(p0.x + u.x * (last + gap), p0.y + u.y * (last + gap)),
+            ])
+            let wide = DXF.Box2(
+                min: DXF.Point2(window.min.x - tol, window.min.y - tol),
+                max: DXF.Point2(window.max.x + tol, window.max.y + tol))
+            for s in pieces.segmentGrid.query(wide) where admit(s) { grew = true }
         }
         guard !carrier.isEmpty else { return [] }
         carrier.sort { $0.lo < $1.lo }

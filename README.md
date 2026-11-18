@@ -411,7 +411,8 @@ line that is not beside it (a leader), or two scales in one layer group; an arro
 filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] file.dxf`
 prints the result as JSON. The 2120 and the drawings with real dimensions are checked by tests that
 need the files: `DXF_REBUILD_FILE` (a drawing that gives 29 at 1:80) and `DXF_REBUILD_CORPUS` (a
-folder in which every drawing with real dimensions gains none).
+folder in which every drawing with real dimensions gains none). `tools/rebuild_corpus.py <folder>`
+prints what each drawing of a folder gives, with totals, as the figures above were taken.
 
 ### Splines
 

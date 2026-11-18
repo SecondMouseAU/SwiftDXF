@@ -203,6 +203,10 @@ struct CodePageTests {
         #expect(Self.text("%%223", page: "ANSI_1251").plain == "\u{42F}")
         #expect(Self.text("%%177", page: "ANSI_932").plain == "\u{FF71}")
         #expect(Self.text("%%176", page: "ANSI_932").plain == "\u{FF70}")
+        // Below 128 a byte is ASCII in every page, whether or not the platform decodes the page.
+        for page in ["ANSI_874", "ANSI_936", "ANSI_949", "ANSI_950", "ANSI_1255", "ANSI_1258"] {
+            #expect(Self.text("%%065%%048", page: page).plain == "A0", "\(page)")
+        }
         // The first byte of a double-byte character is not a character of its own.
         #expect(Self.text("%%129", page: "ANSI_932").plain == "%%129")
         // A byte the page leaves unassigned, a control character, and a number above 255.

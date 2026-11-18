@@ -29,20 +29,24 @@ extension DXF {
         let drawing: Drawing
         let options: DimensionRebuild.Options
         let pieces: RebuildPieces
-        let collinear: CollinearIndex
 
         init(_ drawing: Drawing, _ options: DimensionRebuild.Options) {
             self.drawing = drawing
             self.options = options
             let pieces = RebuildPieces(drawing, tolerance: options.tolerance)
             self.pieces = pieces
-            collinear = CollinearIndex(pieces.segments, tolerance: pieces.tolerance)
         }
 
         func run() -> DimensionRebuild {
             var candidates = [[RebuildCandidate]](repeating: [], count: pieces.texts.count)
-            for (ti, text) in pieces.texts.enumerated() where text.value.unsupported == nil {
-                candidates[ti] = linearCandidates(ti) + radialCandidates(ti)
+            // A text that cannot be rebuilt (an angle) is still listed when a line is beside it.
+            var beside = Set<Int>()
+            for (ti, text) in pieces.texts.enumerated() {
+                if text.value.unsupported == nil {
+                    candidates[ti] = linearCandidates(ti) + radialCandidates(ti)
+                } else if !linearCandidates(ti).isEmpty || !radialCandidates(ti).isEmpty {
+                    beside.insert(ti)
+                }
             }
 
             // The scale of each layer group.
@@ -119,9 +123,10 @@ extension DXF {
             // Every value that looks like one of the dimensions and is not.
             let rebuiltLayers = Set(chosen.map { pieces.texts[$0.candidate.text].layer })
             for (ti, text) in pieces.texts.enumerated() where !usedTexts.contains(ti) {
-                guard !candidates[ti].isEmpty || rebuiltLayers.contains(text.layer) else {
-                    continue
-                }
+                guard
+                    !candidates[ti].isEmpty || beside.contains(ti)
+                        || rebuiltLayers.contains(text.layer)
+                else { continue }
                 let reason: DimensionRebuild.Reason
                 switch text.value.unsupported {
                 case .angular?: reason = .angular

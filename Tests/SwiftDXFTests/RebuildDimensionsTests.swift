@@ -619,6 +619,51 @@ struct RebuildDimensionsTests {
         }
     }
 
+    @Test("a slanted dimension line broken around its text is found far from the origin")
+    func farFromTheOrigin() throws {
+        for degrees in [20.0, 30, 45, 60, 135] {
+            for origin in [0.0, 1e4, 1e5] {
+                let angle = degrees * .pi / 180
+                let (c, s) = (cos(angle), sin(angle))
+                func at(_ t: Double, _ offset: Double) -> (Double, Double) {
+                    let x = origin + t * c - offset * s
+                    let y = origin + t * s + offset * c
+                    return ((x * 1000).rounded() / 1000, (y * 1000).rounded() / 1000)
+                }
+                var records: [Record] = []
+                for t in [0.0, 20, 50] { records.append(Self.line(at(t, 12), at(t, -2))) }
+                // Four pieces of one line, with a gap for each text, at 3 decimals.
+                for (from, to) in [(0.0, 7.0), (13, 20), (20, 32), (38, 50)] {
+                    records.append(Self.line(at(from, 10), at(to, 10)))
+                }
+                for (from, to, string) in [(0.0, 20.0, "1000"), (20, 50, "1500")] {
+                    let corner = at((from + to) / 2 - 3, 10.5)
+                    records.append(Self.text(string, corner.0, corner.1, rotation: degrees))
+                }
+                let (_, result) = try Self.rebuild(records)
+                #expect(result.dimensions.count == 2, "\(degrees) degrees at \(origin)")
+            }
+        }
+    }
+
+    @Test("an angle beside a dimension line is listed even where nothing was rebuilt")
+    func angleBesideALine() throws {
+        var records = Self.chain(scale: 50, lengths: [20, 30, 15], layer: "0-E")
+        // A line with ends on another layer group, and an angle beside it.
+        records += [
+            Self.line((0, 100), (20, 100), layer: "9-9"),
+            Self.line((0, 110), (0, 98), layer: "9-9"),
+            Self.line((20, 110), (20, 98), layer: "9-9"),
+            Self.text("45\u{B0}", 5, 100.5, layer: "9-9"),
+        ]
+        let (_, result) = try Self.rebuild(records)
+        let reasons = result.warnings.compactMap { warning -> DXF.DimensionRebuild.Reason? in
+            guard case .valueNotExplained(_, _, let reason) = warning else { return nil }
+            return reason
+        }
+        #expect(result.dimensions.count == 3 && reasons == [.angular])
+    }
+
     @Test("a tolerance or scale that is not a positive number is none, not a crash")
     func invalidOptions() throws {
         let records = Self.chain(scale: 50, lengths: [20, 30, 15])

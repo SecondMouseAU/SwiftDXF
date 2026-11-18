@@ -155,7 +155,7 @@ extension DXF {
                 guard end == k + 5 else { return nil }
                 let kept = (Piece.code(string(k..<end)), end - k)
                 guard let value = UInt8(string((k + 2)..<end)) else { return kept }
-                if let codePage {
+                if let codePage, value >= 0x80 {
                     guard let text = codePage.decode([value]), Self.canBeShown(text) else {
                         return kept
                     }
