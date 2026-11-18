@@ -260,9 +260,14 @@ guard !paths.isEmpty else {
 }
 
 if listTexts {
+    // Slashes unescaped, as Python's json writes them, so the two outputs diff line for line.
+    var options: JSONSerialization.WritingOptions = [.sortedKeys]
+    if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
+        options.insert(.withoutEscapingSlashes)
+    }
     for path in paths {
         let data = try JSONSerialization.data(
-            withJSONObject: textSummary(for: path), options: [.sortedKeys, .withoutEscapingSlashes])
+            withJSONObject: textSummary(for: path), options: options)
         print(String(decoding: data, as: UTF8.self))
     }
     exit(0)
