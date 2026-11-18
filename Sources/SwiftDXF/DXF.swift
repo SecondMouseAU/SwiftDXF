@@ -20,6 +20,9 @@ import Foundation
 /// print(dwg.entities.count, dwg.bounds as Any)
 /// ```
 ///
+/// A drawing whose dimensions are loose pieces (a Jw_cad export, a PDF) gets them back with
+/// ``Drawing/rebuildingDimensions(_:)``.
+///
 /// Text is decoded from the file's code page: UTF-8 when the bytes are valid UTF-8, otherwise the
 /// page `$DWGCODEPAGE` names (``CodePage``), and **CP932 / Shift-JIS** when it names none, for DXF
 /// emitted by Japanese tools such as Jw_cad. The codes inside a text string are decoded too,

@@ -57,6 +57,14 @@ timestamp: 2026-11-18
   `DIMSTYLE` record, and `displayedMeasurement(of:)` applies `DIMLFAC`. `DimensionText` splits the
   override into measurement, number, words, line-break and stack parts, with the codes decoded as
   in `MTEXT`. Read by `Reader+Dimension.swift`.
+- **Rebuilding dimensions** (`Sources/SwiftDXF/Rebuild/`): `Drawing.rebuildingDimensions(_:)`
+  rebuilds `.dimension`s from loose pieces (`Drawing+RebuildDimensions.swift`), starting from each
+  value text: `RebuildValue.swift` reads the number (a comma as a decimal mark or thousands
+  separator), `RebuildPieces.swift` collects the texts, segments, circles and end marks,
+  `RebuildLinear.swift` finds the spans of a dimension line beside a text, `RebuildRadial.swift`
+  the diameters and radii, and the scale is inferred per layer group. The result is a
+  `DXF.DimensionRebuild` (dimensions with `Dimension.rebuilt` set, `ScaleEstimate`s, `Warning`s)
+  that `applied(to:)` adds to the drawing; `dxfdump --rebuild` prints it.
 - **Curve fit** (`CurveFit.swift`, `CurveFit+Fitting.swift`): `Entity.fitted(tolerance:source:)`,
   `Spline.fitted(tolerance:source:)` and `Drawing.fittedCurve(at:tolerance:)` turn one `SPLINE` or
   `ELLIPSE` into a `DXF.CurveFit` of `Contour.Segment` pieces (each stamped with the entity's

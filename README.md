@@ -335,6 +335,73 @@ for case .dimension(let d) in dwg.entities {
   a tolerance stack, whose numbers are not typed numbers. `d.textOverride` is the override as the
   file writes it.
 
+### Rebuilding dimensions from loose pieces
+
+A drawing from a Jw_cad export, a vector PDF or a scan holds a dimension as separate pieces: a value
+text, a dimension line, extension lines, and marks at the ends. `rebuildingDimensions()` puts them
+back together, without any format's flags:
+
+```swift
+let result = dwg.rebuildingDimensions()
+for d in result.dimensions {
+    d.textOverride                    // "1,829": the text as written
+    d.measurement                     // 22.863: the length the geometry gives, in drawing units
+    dwg.displayedMeasurement(of: d)   // 1829.04: that times the scale, `d.styleOverrides.linearScale`
+    d.rebuilt?.scale                  // 80
+    d.rebuilt?.pieces                 // the identities it was built from, the value text first
+}
+result.scales                         // per layer group: scale 80, 29 supporting, 0 contradicting
+result.warnings                       // each value it could not explain, and what disagrees
+let withDimensions = result.applied(to: dwg)   // the dimensions added after the entities
+```
+
+It starts from each text that states a number and works out the rest, like SwiftJWW's
+`recoveringDimensions()`, which uses Jw_cad's attribute flags and stays as it is:
+
+- **Ends.** A dimension line is a line beside the text, or a chain of collinear pieces (broken
+  around the text is fine). Its ends are where an extension line meets it, or a `POINT`, a small
+  closed triangle (an arrowhead, whose tip is the end) or a small shape such as a dot or a tick
+  lies on it. An extension line gives the exact place; a mark is used where there is none. A
+  dimension is a span between two ends that the line covers, near the text.
+- **Scale.** Every candidate span and reading implies a scale, the value over the length. The scale
+  that explains the most texts is refined to the least-squares scale of the ones it explains, and
+  made a round scale (80, 1/2) when it is within what the values can tell apart. Each layer group
+  has its own, a group being the `0` of a Jw_cad layer `0-E` and otherwise the layer. Groups that
+  differ are reported with `.scalesDisagree`, never averaged. A scale counts only when it is between
+  1/20 and 10,000 and explains at least three values and as many as it leaves, or two when they are
+  all the values of the group and the scale is round: a numbered sequence beside lines (the ports
+  of a panel, a scale bar, a border) is explained by some scale too, and is left unexplained.
+  `Options(scale:)` states the scale instead.
+- **Values.** A comma is a decimal mark or a thousands separator, whichever the geometry bears
+  out: `1,829` is 1.829 or 1829. Full-width digits, a diameter or radius symbol before the number
+  and a trailing `mm` are read; a tolerance stack is ignored. Angles, other units and texts with
+  several numbers are listed as not rebuilt, with the reason. Numbers a text assembler ran
+  together (`200 629`) are read as the values they are.
+- **Diameters and radii** come from the geometry, not the symbol: a line through the centre of a
+  circle or arc that ends on it at both ends is a diameter, and one that ends on it at one end
+  (from the centre, or along a leader) is a radius. The symbol is a check: `.symbolDisagrees` says
+  where it does not bear the geometry out, and the geometry decides.
+- **Marked, and flagged.** Each dimension has `rebuilt` set. A value text that no dimension
+  explains, on a layer where one was rebuilt or beside a dimension line, is a
+  `.valueNotExplained` warning with its reason. A drawing with `DIMENSION` entities and no loose
+  pieces gains nothing and warns of nothing.
+- **Pieces are on the layer of the text** unless `Options(pieceLayers: .any)`, and are read from
+  `entities`: read a drawing with `expandBlocks` when its pieces are in blocks. The text's
+  direction is a preference, not a rule: Jw_cad writes a vertical text's angle as 5156.62, and an
+  AutoCAD style may keep a text horizontal beside a vertical line.
+
+On Jw_cad's own DXF export of the 2120 it gives all 29 dimensions at 1:80 with all 29 supporting,
+the same values SwiftJWW gives for the JWW. So it does for a DXF of the JWW's loose pieces, and for
+the PDF through OCCTSwiftPDF, whose positions are noisy to about 0.1 mm: 29 at 1:80 (the least
+squares scale is 80.04). Over 2,855 DXF files on one machine it rebuilt nothing from the 57
+McMaster-Carr drawings with real dimensions, and found scale 1:80 in the other Jw_cad railway
+drawings.
+
+It is an inference. It does not rebuild angular or ordinate dimensions, a text on a dimension
+line that is not beside it (a leader), or two scales in one layer group; an arrowhead drawn as a
+filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] file.dxf`
+prints the result as JSON.
+
 ### Splines
 
 ```swift
@@ -386,6 +453,10 @@ entities actually read.
   entities only on request (see *Block references and paper space*).
 
 ### Upgrading from 0.4
+
+- **`Dimension` has a new property**, `rebuilt`, `nil` for a dimension the file holds and set by
+  `rebuildingDimensions()`; it is defaulted in `init`. `Dimension.text` reads `%%nnn` through its
+  `codePage`, a new property read from the drawing.
 
 - **The `string` of `.text` is the text as it reads.** It used to drop only the backslash of each
   MTEXT code and keep the rest (`36{H2.400000;S+0,011^ -0,005;}`), and to leave `%%c`, `%%d` and

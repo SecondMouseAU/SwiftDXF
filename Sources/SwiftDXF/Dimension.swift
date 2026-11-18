@@ -82,6 +82,10 @@ extension DXF {
         /// The code page of the drawing the dimension was read from, which `%%nnn` in its text is
         /// read through; see ``text``.
         public var codePage: CodePage?
+        /// What the dimension was rebuilt from, or `nil` for a dimension the file holds.
+        ///
+        /// Set by ``DimensionRebuild``, which infers dimensions from loose pieces.
+        public var rebuilt: Rebuilt?
         public var layer: String
         public var color: Int
 
@@ -91,7 +95,7 @@ extension DXF {
             defPoint3: Point? = nil, defPoint4: Point? = nil, defPoint5: Point? = nil,
             layer: String, color: Int, rotation: Double? = nil, obliqueAngle: Double? = nil,
             styleName: String? = nil, styleOverrides: DimensionStyle.Variables = .init(),
-            codePage: CodePage? = nil
+            codePage: CodePage? = nil, rebuilt: Rebuilt? = nil
         ) {
             self.kind = kind
             self.measurement = measurement
@@ -109,6 +113,7 @@ extension DXF {
             self.styleName = styleName
             self.styleOverrides = styleOverrides
             self.codePage = codePage
+            self.rebuilt = rebuilt
         }
     }
 }
