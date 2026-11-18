@@ -152,7 +152,7 @@ struct TextContentTests {
     @Test("a code that is not understood is kept as written")
     func unknownCodes() {
         #expect(Self.mtext(#"a\zb"#).plain == #"a\zb"#)
-        #expect(Self.mtext(#"\M+18342"#).plain == #"\M+18342"#)
+        #expect(Self.mtext(#"\M+68342"#).plain == #"\M+68342"#)
         #expect(Self.text(#"\U+D800 \U+000A"#).plain == #"\U+D800 \U+000A"#)
         #expect(Self.mtext(#"end\"#).plain == #"end\"#)
     }

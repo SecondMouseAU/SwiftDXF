@@ -20,9 +20,10 @@ import Foundation
 /// print(dwg.entities.count, dwg.bounds as Any)
 /// ```
 ///
-/// Text is decoded from the file's code page: a `$DWGCODEPAGE` of `ANSI_932` (or the absence of one,
-/// for DXF emitted by Japanese tools such as Jw_cad) is read as **CP932 / Shift-JIS**; UTF-8 DXF is
-/// also handled. The codes inside a text string are decoded too; see ``TextContent``.
+/// Text is decoded from the file's code page: UTF-8 when the bytes are valid UTF-8, otherwise the
+/// page `$DWGCODEPAGE` names (``CodePage``), and **CP932 / Shift-JIS** when it names none, for DXF
+/// emitted by Japanese tools such as Jw_cad. The codes inside a text string are decoded too,
+/// through the same page; see ``TextContent``.
 public enum DXF {
 
     // MARK: Model
@@ -114,6 +115,11 @@ public enum DXF {
         }
         /// Per-type entity counts, for verification against reference tools (ezdxf, IxMilia.Dxf).
         public var counts: Counts
+        /// The code page `$DWGCODEPAGE` names, or `nil` when the header has none or names a page
+        /// that is not read (see ``CodePage``).
+        ///
+        /// `%%nnn` in the text of the drawing is read through it.
+        public var codePage: CodePage?
         /// `$INSUNITS` header code (0 = unitless, 1 = inches, 2 = feet, 4 = mm, 5 = cm, 6 = m, …),
         /// or `nil` when the file declares none.
         public var insUnits: Int?
@@ -179,9 +185,10 @@ public enum DXF {
             lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = [],
             dimensionDefaults: DimensionStyle.Variables = .init(),
             references: [BlockReference] = [], warnings: [Warning] = [],
-            paperSpace: [String: Int] = [:]
+            paperSpace: [String: Int] = [:], codePage: CodePage? = nil
         ) {
             self.version = version
+            self.codePage = codePage
             self.entities = entities
             self.counts = counts
             self.insUnits = insUnits
@@ -330,11 +337,17 @@ public enum DXF {
 
     /// Decode DXF bytes to text.
     ///
-    /// ASCII and UTF-8 pass through; otherwise the bytes are treated as **CP932 / Shift-JIS** (the
-    /// common code page for DXF exported by Japanese CAD tools). Because CP932 is an ASCII
-    /// superset, the group-code/value structure is unaffected either way.
+    /// ASCII and UTF-8 pass through. Otherwise the bytes are in the code page `$DWGCODEPAGE`
+    /// names, or in **CP932 / Shift-JIS** when it names none that is read (the common code page
+    /// for DXF exported by Japanese CAD tools). Every supported page is an ASCII superset, so the
+    /// group-code/value structure is unaffected either way.
     static func decode(_ data: Data) -> String {
         if let s = String(data: data, encoding: .utf8) { return s }
+        if let page = headerCodePage(in: data), page != .shiftJIS,
+            let s = page.decode([UInt8](data))
+        {
+            return s
+        }
         return decodeCP932([UInt8](data))
     }
 

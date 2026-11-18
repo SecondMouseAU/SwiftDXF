@@ -258,13 +258,16 @@ for (i, entity) in dwg.entities.enumerated() {
 ```
 
 - **Special characters**, in both: `%%c` is `⌀` (the diameter sign, U+2300), `%%d` is `°`, `%%p`
-  is `±`, `%%%` is `%`, and `%%nnn`, with three digits, is the Unicode character nnn up to 255,
-  so `%%176` is `°`.
-  The drawing's code page is not consulted, so from 128 to 159, where Windows-1252 has the euro
-  sign and other letters, the code is kept as written.
+  is `±`, `%%%` is `%`, and `%%nnn`, with three digits, is the character numbered nnn in the
+  drawing's code page (`Drawing.codePage`, from `$DWGCODEPAGE`): in Windows-1252 `%%176` is `°`
+  and `%%128` the euro sign, and in Shift-JIS `%%177` is the half-width katakana `ｱ`. A drawing with
+  no code page takes nnn as a Unicode code point up to 255.
   `%%u`, `%%o` and `%%k`, which switch underline, overline and strike-through, are dropped.
-  `\U+XXXX` is the Unicode character. Of the caret notation of DXF strings, `^ ` is a caret, `^I` a
-  tab and `^J` a line break.
+  `\U+XXXX` is the Unicode character, and two that make a surrogate pair, `\U+D83D\U+DE00`, are
+  one character. `\M+nXXXX` is the character whose two bytes XXXX are in the multibyte code page
+  that `n` names, as `ezdxf` reads it: 1 is Shift-JIS, 2 Big5, 3 Korean Wansung and 5 GB 2312,
+  whatever the drawing's own code page. Of the caret notation of DXF strings, `^ ` is a caret,
+  `^I` a tab and `^J` a line break.
 - **MTEXT formatting codes are removed** with their arguments up to the `;`: `\A` (alignment), `\C`
   and `\c` (colour), `\F` and `\f` (font), `\H` (height), `\Q` (oblique angle), `\T` (tracking),
   `\W` (width) and `\p` (paragraph). So are the switches `\L`, `\l`, `\O`, `\o`, `\K` and `\k`,
@@ -279,10 +282,12 @@ for (i, entity) in dwg.entities.enumerated() {
   order.
 - **A backslash in `TEXT` is a character.** `TEXT` has no formatting codes, so a file path such as
   `C:\DRAWINGS\PLAN.DWG` stays whole.
-- **A code that is not understood is kept as written**: an unknown backslash code, `\M+nXXXX` (a
-  character of a multibyte code page), and a `%%nnn` or `\U+XXXX` that names a control character,
-  a number above 255 or half a surrogate pair. A `}` ends a stack as it ends the group around
-  it, so a `\S` whose `;` is missing ends there, or at the end of the text.
+- **A code that is not understood is kept as written**: an unknown backslash code, a `\M+nXXXX`
+  whose `n` is not 1, 2, 3 or 5 (Korean Johab, 4, is not decoded) or whose bytes are not a
+  character of its page, a `%%nnn` that names a control character, a number above 255, or a byte
+  the code page leaves unassigned or uses to start a double-byte character, and a `\U+XXXX` that
+  names a control character or is half a surrogate pair. A `}` ends a stack as it ends the group
+  around it, so a `\S` whose `;` is missing ends there, or at the end of the text.
 
 `dwg.textContents` is parallel to `entities` like `identities`, and is cleared when `entities`
 changes. A block's are in `Block.textContents`, and an expansion carries them through.
@@ -362,9 +367,13 @@ entities actually read.
 
 ### Behaviours worth knowing
 
-- **Encoding.** Files are decoded as UTF-8 when valid, otherwise **CP932 / Shift-JIS**: the common
-  code page for DXF exported by Japanese CAD tools (e.g. Jw_cad). Because CP932 is an ASCII superset,
-  the group-code structure is unaffected either way. The codes inside text are decoded too; see
+- **Encoding.** Files are decoded as UTF-8 when valid. Otherwise the bytes are in the code page
+  that `$DWGCODEPAGE` names (`ANSI_932`, `ANSI_936`, `ANSI_949`, `ANSI_950`, `ANSI_874` and
+  `ANSI_1250` to `ANSI_1258`; `Drawing.codePage` says which), or in **CP932 / Shift-JIS** when it
+  names none or one that is not read (`DOS437`, `ISO8859-1`, `ANSI_1361`): the common code page
+  for DXF exported by Japanese CAD tools (e.g. Jw_cad). Each is an ASCII superset, so the
+  group-code structure is unaffected. Without CoreFoundation, only Shift-JIS and `ANSI_1250` to
+  `ANSI_1254` are decoded. The codes inside text are decoded through the same code page; see
   *Text*.
 - **Line endings & padding.** Handles LF / CRLF / CR and R12-style space-padded group codes (`  0`).
 - **Ellipse normalisation.** DXF requires `ratio = minor/major ≤ 1`. Files that emit `ratio > 1`
@@ -387,6 +396,15 @@ entities actually read.
   backslash was dropped, which broke file paths. `\U+XXXX` is still decoded, and needs its four hex
   digits; one that names a control character is kept as written. An MTEXT code that is not
   understood keeps its backslash.
+- **A file is read through its `$DWGCODEPAGE`.** A file that is not UTF-8 used to be read as
+  Shift-JIS whatever its header said, so a drawing that names `ANSI_1252` (McMaster-Carr's, for
+  one) read `é`, `°` and `Ø` as other characters, or as replacement characters. It now reads them
+  in the page it names. A file with no `$DWGCODEPAGE` is still read as Shift-JIS.
+  `DXF.CodePage`, `Drawing.codePage` and `Dimension.codePage` are new, and `TextContent.init` and
+  `DimensionText.init` take a `codePage`, defaulted to none.
+- **`%%nnn`, `\M+nXXXX` and surrogate pairs.** `%%128` in an `ANSI_1252` drawing is the euro sign,
+  where it was kept as written; `\M+nXXXX` is decoded, where it was kept as written; and two
+  `\U+` escapes that make a surrogate pair are one character, where each was kept.
 - **`DimensionText.Part` has a new case**, `.stack`, so an exhaustive `switch` over the parts needs
   it. `.words` no longer holds formatting codes, `%%c` in it is `⌀`, and `\X` is a `.lineBreak`. A
   sign after a line break now belongs to the number that follows. `Dimension.textOverride` is
@@ -540,11 +558,13 @@ texts of blocks, which the oracle does not list.
 The oracle writes `%%c` as `⌀`, a stack as `upper/lower` after a space, `\~` as a no-break space and
 `\X` as a line break, as SwiftDXF does, so the diff shows only where the two read a string
 differently. Over 23,429 strings in 3,109 real drawings, given to both with their non-ASCII
-characters written as `\U+XXXX` (ezdxf reads a file through its `$DWGCODEPAGE`, SwiftDXF as UTF-8
-or else CP932), the two agree on all but 25, each a Jw_cad superscript mark from the third case
-below. They read a string differently in these cases, on purpose:
+characters written as `\U+XXXX`, the two agree on all but 25, each a Jw_cad superscript mark from
+the third case below. Both read a file through its `$DWGCODEPAGE`; with none, `ezdxf` reads
+Windows-1252 and SwiftDXF Shift-JIS, so a Japanese file with no header reads differently in the
+two. Over the 96 files of a local corpus that are not UTF-8, the strings of 86 are the same in
+both, and the other 10 are Japanese files with no `$DWGCODEPAGE`. They read a string differently in these cases, on purpose:
 
-- `%%nnn` is decoded; `ezdxf` leaves it.
+- `%%nnn` is decoded, through the drawing's code page; `ezdxf` leaves it.
 - `^J` in a `TEXT` is a line break; `ezdxf` keeps a `TEXT` on one line and drops it.
 - A caret other than `^ `, `^I` and `^J` is text; `ezdxf` reads every caret as a control
   character, so the Jw_cad superscript mark in `m^u3` becomes `m53`.
@@ -553,8 +573,9 @@ below. They read a string differently in these cases, on purpose:
   without its space still divides (`ezdxf` reads `^-` as a control character). A `\S` with no
   divider is read as text, where `ezdxf` gives a stack with an empty lower part, and a `}` ends a
   stack, where `ezdxf` runs it on to its `;`.
-- `\M+nXXXX`, and a `\U+XXXX` of a control character or of half a surrogate pair, are kept as
-  written; `ezdxf` decodes them. A `%%` or a
+- `\M+4XXXX` (Korean Johab) is kept as written; `ezdxf` decodes it. A `\U+XXXX` of a control
+  character, or of half a surrogate pair, is kept as written; `ezdxf` decodes it. `ezdxf` leaves
+  a surrogate pair as two code points, and the oracle joins them as SwiftDXF does. A `%%` or a
   backslash at the very end is kept; `ezdxf` drops it.
 
 ## Install

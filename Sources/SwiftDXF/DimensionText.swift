@@ -28,10 +28,11 @@ extension DXF {
         public var raw: String?
         public var parts: [Part]
 
-        /// Splits `raw`, the text override of a dimension (`nil` or empty when there is none).
-        public init(_ raw: String?) {
+        /// Splits `raw`, the text override of a dimension (`nil` or empty when there is none),
+        /// reading `%%nnn` through `codePage` (as a Unicode code point when it is `nil`).
+        public init(_ raw: String?, codePage: CodePage? = nil) {
             self.raw = raw
-            self.parts = Self.split(raw ?? "")
+            self.parts = Self.split(raw ?? "", codePage: codePage)
         }
 
         /// `true` when the dimension shows its measured value: no override, or one containing `<>`.
@@ -84,7 +85,7 @@ extension DXF {
             return out
         }
 
-        private static func split(_ raw: String) -> [Part] {
+        private static func split(_ raw: String, codePage: CodePage?) -> [Part] {
             var parts: [Part] = []
             var buffer = ""
             // The character before the current text, for the sign rule of `numberEnd`.
@@ -93,7 +94,7 @@ extension DXF {
                 if !buffer.isEmpty { parts.append(.words(buffer)) }
                 buffer = ""
             }
-            for token in TextCodes.tokens(raw, syntax: .mtext) {
+            for token in TextCodes.tokens(raw, syntax: .mtext, codePage: codePage) {
                 switch token {
                 case .text(let text):
                     let chars = Array(text)

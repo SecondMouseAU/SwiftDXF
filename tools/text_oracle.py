@@ -20,8 +20,11 @@ U+2300 (ezdxf gives U+00D8), a stack reads as `upper/lower` after a space (ezdxf
 with the divider and no space), `\\~` is a no-break space (ezdxf gives a space), and `\\X` is a line
 break (ezdxf drops it). The README lists where the two still read a string differently.
 
-ezdxf decodes a file's characters through its `$DWGCODEPAGE`, and SwiftDXF as UTF-8 or else CP932,
-so a file whose text is in neither reads differently in the two before any code is decoded.
+Both read a file's characters through its `$DWGCODEPAGE` when it is not UTF-8. With none, ezdxf
+reads Windows-1252 and SwiftDXF Shift-JIS, so a Japanese file with no `$DWGCODEPAGE` reads
+differently in the two before any code is decoded. ezdxf leaves a surrogate pair written as two
+`\\U+` escapes as two code points; the oracle joins them, as SwiftDXF does. ezdxf does not decode
+`%%nnn`, which SwiftDXF reads through the drawing's code page.
 
 Requires: pip install ezdxf
 """
@@ -62,6 +65,15 @@ def mtext(raw):
     return out, stacks
 
 
+def joined(text):
+    """`text` with each surrogate pair made one character."""
+    return text.encode("utf-16", "surrogatepass").decode("utf-16", "surrogatepass")
+
+
+def joined_stacks(stacks):
+    return [[joined(upper), joined(lower), kind] for upper, lower, kind in stacks]
+
+
 def summarize(path):
     try:
         doc, _ = recover.readfile(path)
@@ -72,14 +84,16 @@ def summarize(path):
         kind = e.dxftype()
         if kind == "TEXT":
             texts.append({
-                "type": "TEXT", "plain": plain_text(DIAMETER.sub("⌀", e.dxf.text)),
+                "type": "TEXT", "plain": joined(plain_text(DIAMETER.sub("⌀", e.dxf.text))),
                 "stacks": []})
         elif kind == "MTEXT":
             plain, stacks = mtext(e.text)
-            texts.append({"type": "MTEXT", "plain": plain, "stacks": stacks})
+            texts.append(
+                {"type": "MTEXT", "plain": joined(plain), "stacks": joined_stacks(stacks)})
         elif kind == "DIMENSION" and e.dxf.get("text", ""):
             plain, stacks = mtext(e.dxf.text)
-            texts.append({"type": "DIMENSION", "plain": plain, "stacks": stacks})
+            texts.append(
+                {"type": "DIMENSION", "plain": joined(plain), "stacks": joined_stacks(stacks)})
     return {"file": os.path.basename(path), "texts": texts}
 
 

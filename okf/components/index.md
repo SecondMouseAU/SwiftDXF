@@ -38,10 +38,13 @@ timestamp: 2026-11-18
   (polyline and edge types); `.leader` the vertices, arrowhead and annotation handle. `Layer` and
   `LineType` carry the table fields, and `Drawing.effectiveLineType(ofEntityAt:)` resolves BYLAYER
   and BYBLOCK. Read by `Reader+Hatch.swift` and `Reader+Tables.swift`.
-- **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `Drawing+Text.swift`): the
+- **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `CodePage.swift`,
+  `Drawing+Text.swift`): the
   `string` of `.text` is the text as it reads. `Drawing.textContent(ofEntityAt:)` gives a
   `DXF.TextContent`: the string as written (`raw`), its `syntax` (`TEXT` or `MTEXT`), its `parts`
-  and `plain` text, and its `stacks`. `%%c`, `%%d`, `%%p` and `%%nnn` are decoded in both; in
+  and `plain` text, and its `stacks`. `%%c`, `%%d`, `%%p` and `%%nnn` are decoded in both, `%%nnn` through the drawing's `DXF.CodePage`
+  (`Drawing.codePage`, from `$DWGCODEPAGE`), which also reads the bytes of a file that is not UTF-8,
+  and `\M+nXXXX` through the multibyte page `n` names; in
   `MTEXT` the formatting codes and groups are removed and a `\S` stack is a `DXF.StackedText`
   (upper, lower, tolerance or fraction). `Drawing.textContents` and `Block.textContents` are
   parallel to the entities. `TextCodes` is the one scanner, shared with `DimensionText`;

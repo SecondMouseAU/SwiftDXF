@@ -8,6 +8,8 @@ extension DXF {
         /// (group code, raw value) pairs, in file order. `\r` already stripped from values.
         let pairs: [(code: Int, value: String)]
         var version = ""
+        /// The code page `$DWGCODEPAGE` names, which `%%nnn` in a text string is read through.
+        var codePage: DXF.CodePage?
         /// What to flatten and what to leave out; see ``ReadOptions``.
         let options: ReadOptions
 
@@ -136,7 +138,8 @@ extension DXF {
                 break
             }
 
-            var dwg = Drawing(version: version)
+            codePage = DXF.CodePage(name: first(3, headerVar("$DWGCODEPAGE")) ?? "")
+            var dwg = Drawing(version: version, codePage: codePage)
             dwg.insUnits = ints(70, headerVar("$INSUNITS"))
             let mn = headerVar("$EXTMIN")
             if mn.contains(where: { $0.code == 10 }) { dwg.extMin = point(mn) }
@@ -199,10 +202,11 @@ extension DXF {
         func textContent(type: String, _ f: [(code: Int, value: String)]) -> DXF.TextContent? {
             switch type {
             case "TEXT":
-                return DXF.TextContent(first(1, f) ?? "", syntax: .text)
+                return DXF.TextContent(first(1, f) ?? "", syntax: .text, codePage: codePage)
             case "MTEXT":
                 let continued = f.filter { $0.code == 3 }.map(\.value).joined()
-                return DXF.TextContent(continued + (first(1, f) ?? ""), syntax: .mtext)
+                return DXF.TextContent(
+                    continued + (first(1, f) ?? ""), syntax: .mtext, codePage: codePage)
             default:
                 return nil
             }
