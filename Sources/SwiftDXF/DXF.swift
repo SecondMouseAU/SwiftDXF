@@ -345,7 +345,7 @@ public enum DXF {
     /// for DXF exported by Japanese CAD tools). Every supported page is an ASCII superset, so the
     /// group-code/value structure is unaffected either way.
     ///
-    /// A byte the page cannot decode costs the line it is in, not the whole file.
+    /// A byte the page cannot decode is U+FFFD, and the rest of the file is read in the page.
     static func decode(_ data: Data) -> String {
         if let s = String(data: data, encoding: .utf8) { return s }
         let page = headerCodePage(in: data) ?? .shiftJIS

@@ -472,6 +472,19 @@ struct RebuildDimensionsTests {
         #expect(none.1.dimensions.map(\.textOverride) == ["R10"])
     }
 
+    @Test("an arc of 360 degrees is a whole circle")
+    func fullArc() throws {
+        let full: Record = [
+            (0, "ARC"), (8, "0"), (10, "0"), (20, "0"), (30, "0"), (40, "10"), (50, "0"),
+            (51, "360"),
+        ]
+        let (_, result) = try Self.rebuild([
+            full, Self.line((-10, 0), (10, 0)), Self.text("40", -3, 1),
+            Self.circle(40, 0, 5), Self.line((35, 0), (45, 0)), Self.text("20", 37, 1),
+        ])
+        #expect(result.dimensions.map(\.kind) == [.diameter, .diameter])
+    }
+
     @Test("a symbol the geometry does not bear out is reported, and the geometry decides")
     func symbolDisagrees() throws {
         let records: [Record] = [
@@ -622,15 +635,26 @@ struct RebuildDimensionsTests {
     @Test("pieces at absurd coordinates, and very long lines, do not stop the rest")
     func absurdPieces() throws {
         var records = Self.chain(scale: 50, lengths: [20, 30, 15])
+        // Beyond what is read, and within it but vast: none may crash the rebuild or slow it.
         records.append(Self.line((0, 0), (1e30, 1e30)))
         records.append(Self.line((-1e300, 5), (1e300, 5)))
         records.append(Self.point(1e30, -1e30))
         records.append(Self.circle(1e30, 0, 1e30))
         records.append(Self.text("500", 1e30, 0))
+        records.append(Self.line((-1e12, -1e12), (1e12, 1e12)))
+        records.append(Self.line((-1e11, 5), (1e11, 5)))
         records.append(Self.line((0, 0), (1e5, 1e5)))
+        records.append(Self.point(1e11, -1e11))
+        records.append(Self.circle(0, 0, 1e11))
+        records.append(Self.text("500", 5, 5))
+        // A text 4e9 times as tall as the others puts every window across a vast number of cells.
+        records.append([
+            (0, "TEXT"), (8, "0"), (10, "0"), (20, "0"), (30, "0"), (40, "1e10"), (1, "100"),
+        ])
         let start = Date()
         let (_, result) = try Self.rebuild(records)
-        #expect(result.dimensions.count == 3)
+        let found = Set(result.dimensions.compactMap(\.textOverride))
+        #expect(found.isSuperset(of: ["1000", "1500", "750"]))
         #expect(Date().timeIntervalSince(start) < 20)
     }
 
@@ -711,6 +735,26 @@ struct RebuildDimensionsTests {
     }
 
     // MARK: the real drawings
+
+    /// Drawings that have real dimensions gain none: set `DXF_REBUILD_CORPUS` to a folder of DXFs.
+    @Test(
+        "no dimension is rebuilt from a drawing that has real ones",
+        .enabled(if: ProcessInfo.processInfo.environment["DXF_REBUILD_CORPUS"] != nil))
+    func realDimensionsGainNone() throws {
+        let folder = try #require(ProcessInfo.processInfo.environment["DXF_REBUILD_CORPUS"])
+        let files = FileManager.default.enumerator(atPath: folder)?.compactMap { $0 as? String }
+            .filter { $0.lowercased().hasSuffix(".dxf") }
+        var checked = 0
+        for file in files ?? [] {
+            let url = URL(fileURLWithPath: folder).appendingPathComponent(file)
+            guard let dwg = try? DXF.read(contentsOf: url), dwg.counts.dimension > 0 else {
+                continue
+            }
+            checked += 1
+            #expect(dwg.rebuildingDimensions().dimensions.isEmpty, "\(file)")
+        }
+        #expect(checked > 0, "no drawing with dimensions in \(folder)")
+    }
 
     /// The 2120 acceptance: set `DXF_REBUILD_FILE` to a Jw_cad export or the drawing of a PDF.
     @Test(

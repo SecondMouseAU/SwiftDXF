@@ -56,7 +56,7 @@ extension DXF {
         /// Whether a character of this page may be two bytes.
         private var isMultibyte: Bool { [932, 936, 949, 950].contains(number) }
 
-        /// `bytes` decoded line by line, with each byte that is not a character of the page as
+        /// `bytes` decoded a line at a time, with each byte that is not a character of the page as
         /// U+FFFD, so that one stray byte does not turn the rest of the file into other characters.
         func decodeLines(_ bytes: [UInt8]) -> String {
             var out = ""

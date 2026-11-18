@@ -6,8 +6,9 @@ extension DXF.Drawing {
     ///
     /// For each text that states a number, it finds the dimension line beside it and the ends of
     /// the span, or the circle or arc it dimensions, and infers the scale of each layer group from
-    /// the values against the drawn lengths. A scale counts only when at least two values
-    /// support it, and a group that disagrees with another is reported, not averaged. A diameter
+    /// the values against the drawn lengths. A scale counts only when it is credible (see the
+    /// README: three values, or two that are all the group's and a round scale), and a group that
+    /// disagrees with another is reported, not averaged. A diameter
     /// or radius is read from the geometry, not from its symbol; a symbol that disagrees is
     /// reported.
     ///

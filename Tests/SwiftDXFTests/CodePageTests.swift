@@ -51,24 +51,34 @@ struct CodePageTests {
 
     // MARK: the bytes of the file
 
-    @Test(
-        "the bytes of a file are read in the page its header names",
-        arguments: [
+    /// The pages every platform decodes, and, with CoreFoundation, the rest.
+    static let pageCases: [(String, [UInt8], String)] = {
+        var cases: [(String, [UInt8], String)] = [
             ("ANSI_932", [0x93, 0xFA, 0x96, 0x7B], "\u{65E5}\u{672C}"),
-            ("ANSI_936", [0xD6, 0xD0], "\u{4E2D}"),
-            ("ANSI_949", [0xC7, 0xD1], "\u{D55C}"),
-            ("ANSI_950", [0xA4, 0xA4], "\u{4E2D}"),
             ("ANSI_1252", [0x63, 0x61, 0x66, 0xE9, 0x20, 0x80], "caf\u{E9} \u{20AC}"),
             ("ANSI_1250", [0xB3], "\u{142}"),
             ("ANSI_1251", [0xDF], "\u{42F}"),
             ("ANSI_1253", [0xD9], "\u{3A9}"),
             ("ANSI_1254", [0xFE], "\u{15F}"),
-            ("ANSI_1255", [0xE0], "\u{5D0}"),
-            ("ANSI_1256", [0xC7], "\u{627}"),
-            ("ANSI_1257", [0xE2], "\u{101}"),
-            ("ANSI_1258", [0xE3], "\u{103}"),
-            ("ANSI_874", [0xA1], "\u{E01}"),
-        ] as [(String, [UInt8], String)])
+        ]
+        #if canImport(CoreFoundation)
+            cases += [
+                ("ANSI_936", [0xD6, 0xD0], "\u{4E2D}"),
+                ("ANSI_949", [0xC7, 0xD1], "\u{D55C}"),
+                ("ANSI_950", [0xA4, 0xA4], "\u{4E2D}"),
+                ("ANSI_1255", [0xE0], "\u{5D0}"),
+                ("ANSI_1256", [0xC7], "\u{627}"),
+                ("ANSI_1257", [0xE2], "\u{101}"),
+                ("ANSI_1258", [0xE3], "\u{103}"),
+                ("ANSI_874", [0xA1], "\u{E01}"),
+            ]
+        #endif
+        return cases
+    }()
+
+    @Test(
+        "the bytes of a file are read in the page its header names",
+        arguments: CodePageTests.pageCases)
     func fileBytes(page: String, bytes: [UInt8], expected: String) throws {
         let dwg = try DXF.read(data: Self.file(page: page, bytes: bytes))
         #expect(Self.strings(dwg) == [expected])
@@ -84,7 +94,7 @@ struct CodePageTests {
         #expect(Self.strings(dos) == ["\u{65E5}\u{672C}"] && dos.codePage == nil)
     }
 
-    @Test("a byte the page cannot decode costs its line, not the file")
+    @Test("a byte the page cannot decode is one character lost, not the file")
     func strayByte() throws {
         var builder = DXFBuilder()
         builder.codePage = "ANSI_1252"
@@ -98,7 +108,7 @@ struct CodePageTests {
         let strings = Self.strings(try DXF.read(data: data))
         #expect(strings.count == 3)
         #expect(strings[1] == "caf\u{E9}" && strings[2] == "\u{E9}\u{20AC}")
-        // The same for a multibyte page: a lone lead byte costs its line only.
+        // The same for a multibyte page: a lone lead byte is one character lost.
         var japanese = DXFBuilder()
         japanese.codePage = "ANSI_932"
         japanese.entities = [DXFBuilder.text("##"), DXFBuilder.text("@@")]
@@ -128,16 +138,26 @@ struct CodePageTests {
 
     // MARK: \M+nXXXX
 
-    @Test(
-        "\\M+nXXXX is a character of the multibyte page n names",
-        arguments: [
+    /// `\M+nXXXX` cases: Shift-JIS everywhere, and with CoreFoundation the other pages.
+    static let multibyteCases: [(String, String)] = {
+        var cases: [(String, String)] = [
             ("\\M+193FA\\M+1967B", "\u{65E5}\u{672C}"),
             ("\\M+193fa", "\u{65E5}"),
-            ("\\M+2A4A4", "\u{4E2D}"),
-            ("\\M+3C7D1", "\u{D55C}"),
-            ("\\M+5D6D0", "\u{4E2D}"),
             ("a\\M+193FAb", "a\u{65E5}b"),
-        ] as [(String, String)])
+        ]
+        #if canImport(CoreFoundation)
+            cases += [
+                ("\\M+2A4A4", "\u{4E2D}"),
+                ("\\M+3C7D1", "\u{D55C}"),
+                ("\\M+5D6D0", "\u{4E2D}"),
+            ]
+        #endif
+        return cases
+    }()
+
+    @Test(
+        "\\M+nXXXX is a character of the multibyte page n names",
+        arguments: CodePageTests.multibyteCases)
     func multibyte(raw: String, expected: String) {
         for syntax in [DXF.TextContent.Syntax.text, .mtext] {
             #expect(Self.text(raw, syntax).plain == expected)

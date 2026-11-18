@@ -66,7 +66,8 @@ extension DXF.DimensionRebuilder {
         guard abs(p.distance(to: circle.center) - circle.radius) <= tol else { return false }
         guard let span = circle.span else { return true }
         let degrees = atan2(p.y - circle.center.y, p.x - circle.center.x) * 180 / .pi
-        let sweep = (span.end - span.start + 720).truncatingRemainder(dividingBy: 360)
+        let raw = span.end - span.start
+        let sweep = raw >= 360 - 1e-9 ? 360 : (raw + 720).truncatingRemainder(dividingBy: 360)
         let from = (degrees - span.start + 720).truncatingRemainder(dividingBy: 360)
         // Allow for the tolerance on either side of the ends of the arc.
         let slack = tol / max(circle.radius, 1e-9) * 180 / .pi

@@ -76,7 +76,7 @@ extension DXF {
             mutating func insert(_ index: Int, _ box: Box2) {
                 let xs = range(box.min.x, box.max.x)
                 let ys = range(box.min.y, box.max.y)
-                guard xs.count * ys.count <= Self.largest else {
+                guard Double(xs.count) * Double(ys.count) <= Double(Self.largest) else {
                     long.append(index)
                     return
                 }
@@ -90,7 +90,7 @@ extension DXF {
                 var found = Set<Int>(long)
                 let xs = range(box.min.x, box.max.x)
                 let ys = range(box.min.y, box.max.y)
-                guard xs.count * ys.count <= Self.largest * 4 else {
+                guard Double(xs.count) * Double(ys.count) <= Double(Self.largest * 4) else {
                     return Array(Set(cells.values.joined()).union(long)).sorted()
                 }
                 for x in xs {

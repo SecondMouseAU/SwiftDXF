@@ -409,7 +409,9 @@ drawings.
 It is an inference. It does not rebuild angular or ordinate dimensions, a text on a dimension
 line that is not beside it (a leader), or two scales in one layer group; an arrowhead drawn as a
 filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] file.dxf`
-prints the result as JSON.
+prints the result as JSON. The 2120 and the drawings with real dimensions are checked by tests that
+need the files: `DXF_REBUILD_FILE` (a drawing that gives 29 at 1:80) and `DXF_REBUILD_CORPUS` (a
+folder in which every drawing with real dimensions gains none).
 
 ### Splines
 
@@ -448,8 +450,8 @@ entities actually read.
   `ANSI_1250` to `ANSI_1258`; `Drawing.codePage` says which), or in **CP932 / Shift-JIS** when it
   names none or one that is not read (`DOS437`, `ISO8859-1`, `ANSI_1361`): the common code page
   for DXF exported by Japanese CAD tools (e.g. Jw_cad). Each is an ASCII superset, so the
-  group-code structure is unaffected. A byte its page cannot decode costs its line (shown as
-  U+FFFD), not the file. Without CoreFoundation, only Shift-JIS and `ANSI_1250` to `ANSI_1254` are
+  group-code structure is unaffected. A byte its page cannot decode is shown as
+  U+FFFD, and the rest of the file is still read in the page. Without CoreFoundation, only Shift-JIS and `ANSI_1250` to `ANSI_1254` are
   decoded. The codes inside text are decoded through the same code page; see
   *Text*.
 - **Line endings & padding.** Handles LF / CRLF / CR and R12-style space-padded group codes (`  0`).
