@@ -63,6 +63,13 @@ extension DXF {
                 String(String.UnicodeScalarView(s[range]))
             }
 
+            /// How many ASCII hex digits, up to four, start at `k`.
+            func hexDigits(from k: Int) -> Int {
+                var n = 0
+                while n < 4, let c = at(k + n), c.properties.isASCIIHexDigit { n += 1 }
+                return n
+            }
+
             mutating func emit(_ token: Token) {
                 if !buffer.isEmpty { tokens.append(.text(String(buffer))) }
                 buffer = .init()
@@ -118,19 +125,21 @@ extension DXF {
                     }
                 case "\\":
                     guard at(k + 2) == "+" else { return nil }
-                    if at(k + 1) == "M", k + 8 <= s.count,
-                        string((k + 3)..<(k + 8)).allSatisfy(\.isHexDigit)
+                    if at(k + 1) == "M", let page = at(k + 3), ("1"..."5").contains(page),
+                        hexDigits(from: k + 4) == 4
                     {
-                        // `\M+nXXXX`, a character of a multibyte code page: kept as written.
+                        // `\M+` with the number of a multibyte code page (1 to 5) and four hex
+                        // digits, such as `\M+18342`: kept as written.
                         return (.code(string(k..<(k + 8))), 8)
                     }
-                    guard at(k + 1) == "U", k + 7 <= s.count else { return nil }
-                    let hex = string((k + 3)..<(k + 7))
-                    guard hex.allSatisfy(\.isHexDigit), let value = UInt32(hex, radix: 16) else {
-                        return nil
-                    }
-                    guard let scalar = Unicode.Scalar(value), Self.canBeShown(scalar) else {
-                        return (.code(string(k..<(k + 7))), 7)
+                    guard at(k + 1) == "U" else { return nil }
+                    let count = hexDigits(from: k + 3)
+                    guard count == 4, let value = UInt32(string((k + 3)..<(k + 7)), radix: 16),
+                        let scalar = Unicode.Scalar(value), Self.canBeShown(scalar)
+                    else {
+                        // Short, or not a character that can be shown: `\U+` and its hex digits
+                        // are one code, kept as written.
+                        return (.code(string(k..<(k + 3 + count))), 3 + count)
                     }
                     return (.text(String(scalar)), 7)
                 default:

@@ -53,7 +53,7 @@ struct TextContentTests {
         #expect(Self.text("10% of %%x").plain == "10% of %%x")
         #expect(Self.text("a%%").plain == "a%%")
         #expect(Self.text("%%010 %%128 %%256").plain == "%%010 %%128 %%256")
-        // The number has three digits.
+        // `%%nnn` needs all three digits, so the two-digit `%%65` is kept as written.
         #expect(Self.text("%%65").plain == "%%65")
     }
 
@@ -154,6 +154,19 @@ struct TextContentTests {
         #expect(Self.mtext(#"a\zb"#).plain == #"a\zb"#)
         #expect(Self.mtext(#"\M+18342"#).plain == #"\M+18342"#)
         #expect(Self.text(#"\U+D800 \U+000A"#).plain == #"\U+D800 \U+000A"#)
+        // A `\U+` without its four hex digits is kept whole, as one code.
+        #expect(Self.mtext(#"\U+GGGG \U+12"#).plain == #"\U+GGGG \U+12"#)
+        #expect(
+            DXF.TextCodes.tokens(#"\U+12x"#, syntax: .mtext) == [.code(#"\U+12"#), .text("x")])
+        #expect(
+            DXF.TextCodes.tokens(#"\U+GGGG"#, syntax: .mtext) == [.code(#"\U+"#), .text("GGGG")])
+        #expect(
+            DXF.TextCodes.tokens(#"\M+18342"#, syntax: .mtext) == [.code(#"\M+18342"#)])
+        // The digit after `\M+` is the code page, 1 to 5; anything else is not a character code.
+        #expect(
+            DXF.TextCodes.tokens(#"\M+A1234"#, syntax: .mtext) == [.code(#"\M"#), .text("+A1234")])
+        #expect(
+            DXF.TextCodes.tokens(#"\M+1834"#, syntax: .mtext) == [.code(#"\M"#), .text("+1834")])
         #expect(Self.mtext(#"end\"#).plain == #"end\"#)
     }
 
@@ -194,7 +207,7 @@ struct TextContentTests {
         #expect(DXF.StackedText.number(" -0.005 ") == -0.005)
         #expect(DXF.StackedText.number("0") == 0)
         #expect(DXF.StackedText.number("\u{2212}0,2") == -0.2)
-        for text in ["", "+", "1,2,3", "H7", "5-", "1.5mm", "1e3", "inf"] {
+        for text in ["", "+", "1,2,3", "H7", "5-", "1.5mm", "1e3", "inf", "+-1", "1.2.3", "++1"] {
             #expect(DXF.StackedText.number(text) == nil, "\(text)")
         }
     }

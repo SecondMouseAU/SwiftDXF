@@ -332,6 +332,7 @@ struct DimensionTests {
         // the code does not belong to the number that follows.
         #expect(DXF.DimensionText(#"\M+18342 5"#).typedNumbers == [5])
         #expect(DXF.DimensionText(#"\M+18342-5"#).typedNumbers == [5])
+        #expect(DXF.DimensionText(#"\U+12 5"#).typedNumbers == [5])
         // A sign after a line break belongs to the number; one right after a stack does not.
         #expect(DXF.DimensionText(#"<>\P-5"#).typedNumbers == [-5])
         #expect(DXF.DimensionText(#"1\S1/2;-3"#).typedNumbers == [1, 3])
