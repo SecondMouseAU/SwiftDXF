@@ -22,7 +22,7 @@ import Foundation
 ///
 /// Text is decoded from the file's code page: a `$DWGCODEPAGE` of `ANSI_932` (or the absence of one,
 /// for DXF emitted by Japanese tools such as Jw_cad) is read as **CP932 / Shift-JIS**; UTF-8 DXF is
-/// also handled. AutoCAD `\U+XXXX` unicode escapes in text are decoded.
+/// also handled. The codes inside a text string are decoded too; see ``TextContent``.
 public enum DXF {
 
     // MARK: Model
@@ -63,8 +63,10 @@ public enum DXF {
             layer: String, color: Int)
         case point(at: Point, layer: String, color: Int)
         /// `TEXT` or `MTEXT`. `height` is the text height (group 40); `rotationDeg` the rotation in
-        /// degrees (group 50), in the world; `string` is decoded to Unicode at read time. `TEXT` on
-        /// a `-z` plane is converted into the world; `MTEXT` is read as written.
+        /// degrees (group 50), in the world; `string` is the text as it reads, with its codes
+        /// decoded (``TextContent/plain``). ``Drawing/textContent(ofEntityAt:)`` gives the string
+        /// as written and its stacks. `TEXT` on a `-z` plane is converted into the world; `MTEXT`
+        /// is read as written.
         case text(
             at: Point, height: Double, rotationDeg: Double, string: String, layer: String,
             color: Int)
@@ -101,12 +103,13 @@ public enum DXF {
         public var version: String
         /// The modelled entities of model space.
         ///
-        /// Changing this clears ``identities`` and ``entityLineTypes``, which would no longer line
-        /// up. Set them again afterwards when they still do.
+        /// Changing this clears ``identities``, ``entityLineTypes`` and ``textContents``, which
+        /// would no longer line up. Set them again afterwards when they still do.
         public var entities: [Entity] {
             didSet {
                 identities = []
                 entityLineTypes = []
+                textContents = []
             }
         }
         /// Per-type entity counts, for verification against reference tools (ezdxf, IxMilia.Dxf).
@@ -135,6 +138,12 @@ public enum DXF {
         /// Parallel to ``entities`` like ``identities``, and cleared with it. Use
         /// ``effectiveLineType(ofEntityAt:)`` for the line type an entity is drawn with.
         public var entityLineTypes: [String?]
+        /// One decoded string per entry in ``entities``, `nil` for an entity that is not text or
+        /// whose string was not read from a file.
+        ///
+        /// Parallel to ``entities`` like ``identities``, and cleared with it; see
+        /// ``textContent(ofEntityAt:)``.
+        public var textContents: [TextContent?]
         /// The block definitions of the `BLOCKS` section.
         public var blocks: [Block]
         /// The records of the `LAYER` table.
@@ -165,8 +174,8 @@ public enum DXF {
             version: String = "", entities: [Entity] = [], counts: Counts = .init(),
             insUnits: Int? = nil, extMin: Point? = nil, extMax: Point? = nil,
             skipped: [String: Int] = [:], skippedByLayer: [String: [String: Int]] = [:],
-            identities: [Identity] = [], entityLineTypes: [String?] = [], blocks: [Block] = [],
-            layers: [Layer] = [],
+            identities: [Identity] = [], entityLineTypes: [String?] = [],
+            textContents: [TextContent?] = [], blocks: [Block] = [], layers: [Layer] = [],
             lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = [],
             dimensionDefaults: DimensionStyle.Variables = .init(),
             references: [BlockReference] = [], warnings: [Warning] = [],
@@ -182,6 +191,7 @@ public enum DXF {
             self.skippedByLayer = skippedByLayer
             self.identities = identities
             self.entityLineTypes = entityLineTypes
+            self.textContents = textContents
             self.blocks = blocks
             self.layers = layers
             self.lineTypes = lineTypes

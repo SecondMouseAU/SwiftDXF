@@ -29,6 +29,7 @@ extension DXF.Drawing {
         var newEntities = entities
         var newIdentities = identities
         var newLineTypes = entityLineTypes
+        var newTextContents = textContents
         var newCounts = counts
         var newSkipped = skipped
         var newSkippedByLayer = skippedByLayer
@@ -87,6 +88,7 @@ extension DXF.Drawing {
             let arrayed = ref.columns > 1 || ref.rows > 1
             let aligned = block.identities.count == block.entities.count
             let lineTypesAligned = block.entityLineTypes.count == block.entities.count
+            let textsAligned = block.textContents.count == block.entities.count
             for row in 0..<ref.rows {
                 for column in 0..<ref.columns {
                     guard budget > 0 else {
@@ -122,6 +124,7 @@ extension DXF.Drawing {
                         newIdentities.append(id)
                         newLineTypes.append(
                             lineType(lineTypesAligned ? block.entityLineTypes[i] : nil, own))
+                        newTextContents.append(textsAligned ? block.textContents[i] : nil)
                     }
                     for (type, byLayer) in block.skippedByLayer {
                         for (layerName, count) in byLayer {
@@ -149,6 +152,7 @@ extension DXF.Drawing {
         entities = newEntities
         identities = newIdentities
         entityLineTypes = newLineTypes
+        textContents = newTextContents
         counts = newCounts
         skipped = newSkipped
         skippedByLayer = newSkippedByLayer

@@ -10,18 +10,22 @@ extension DXF {
         public var identity: Identity
         /// The block's base point (group 10), `0, 0, 0` when absent.
         public var basePoint: Point
-        /// Changing this clears ``identities`` and ``entityLineTypes``, which would no longer line
-        /// up.
+        /// Changing this clears ``identities``, ``entityLineTypes`` and ``textContents``, which
+        /// would no longer line up.
         public var entities: [Entity] {
             didSet {
                 identities = []
                 entityLineTypes = []
+                textContents = []
             }
         }
         /// One identity per entry in ``entities``, in the same order.
         public var identities: [Identity]
         /// One line type name (group 6, as written) per entry in ``entities``, `nil` when absent.
         public var entityLineTypes: [String?]
+        /// One decoded string per entry in ``entities``, `nil` for an entity that is not text or
+        /// whose string was not read from a file.
+        public var textContents: [TextContent?]
         /// The `INSERT`s inside the block, which an expansion carries through with the block.
         public var references: [BlockReference]
         /// Entities of unmodelled types inside the block, by type then layer. `INSERT` is not
@@ -31,7 +35,8 @@ extension DXF {
         public init(
             name: String, identity: Identity, basePoint: Point = .init(0, 0, 0),
             entities: [Entity] = [], identities: [Identity] = [], entityLineTypes: [String?] = [],
-            references: [BlockReference] = [], skippedByLayer: [String: [String: Int]] = [:]
+            textContents: [TextContent?] = [], references: [BlockReference] = [],
+            skippedByLayer: [String: [String: Int]] = [:]
         ) {
             self.name = name
             self.identity = identity
@@ -39,6 +44,7 @@ extension DXF {
             self.entities = entities
             self.identities = identities
             self.entityLineTypes = entityLineTypes
+            self.textContents = textContents
             self.references = references
             self.skippedByLayer = skippedByLayer
         }

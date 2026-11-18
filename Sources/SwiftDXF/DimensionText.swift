@@ -12,11 +12,16 @@ extension DXF {
             case measurement
             /// A number typed into the text, with the characters it was written with.
             case number(Double, text: String)
-            /// Other text, as written. Formatting codes other than `\P` are left in, and the
-            /// numbers inside them are not read as typed numbers.
+            /// Other text, decoded as ``TextContent`` decodes `MTEXT`: `%%c` is `⌀`, and the
+            /// formatting codes are removed. A code that is not understood is kept as written, and
+            /// its digits are not read as typed numbers.
             case words(String)
-            /// `\P`: a paragraph break.
+            /// A line break: `\P` (a paragraph), `\N` (a column), `^J`, or `\X` (the break between
+            /// the text above and below the dimension line).
             case lineBreak
+            /// A `\S` stack, such as the tolerance `\S+0.1^ -0.2;`. Its numbers are not typed
+            /// numbers.
+            case stack(StackedText)
         }
 
         /// The override as stored (group 1), or `nil` when the dimension has none.
@@ -56,73 +61,73 @@ extension DXF {
             }
         }
 
-        /// MTEXT codes written `\X...;`: alignment, colour, font, height, oblique, stack,
-        /// tracking, width and paragraph properties.
-        private static let takesArguments: Set<Character> = [
-            "A", "C", "c", "F", "f", "H", "Q", "S", "T", "W", "p",
-        ]
+        /// The stacks, in order.
+        public var stacks: [StackedText] {
+            parts.compactMap {
+                guard case .stack(let stack) = $0 else { return nil }
+                return stack
+            }
+        }
+
+        /// The text as it reads, with `<>` where the measured value goes and each stack as
+        /// `upper/lower` after a space, as in ``TextContent/plain``.
+        public var plain: String {
+            var out = ""
+            for part in parts {
+                switch part {
+                case .measurement: out += "<>"
+                case .number(_, let text), .words(let text): out += text
+                case .lineBreak: out += "\n"
+                case .stack(let stack): TextCodes.append(stack, to: &out)
+                }
+            }
+            return out
+        }
 
         private static func split(_ raw: String) -> [Part] {
-            let chars = Array(raw)
             var parts: [Part] = []
             var buffer = ""
+            // The character before the current text, for the sign rule of `numberEnd`.
+            var previous: Character?
             func flush() {
                 if !buffer.isEmpty { parts.append(.words(buffer)) }
                 buffer = ""
             }
-            var i = 0
-            while i < chars.count {
-                let c = chars[i]
-                if c == "<", i + 1 < chars.count, chars[i + 1] == ">" {
-                    flush()
-                    parts.append(.measurement)
-                    i += 2
-                } else if c == "%", i + 2 < chars.count, chars[i + 1] == "%" {
-                    // `%%d`, `%%c`, `%%p` and `%%176`: AutoCAD symbols, not numbers.
-                    var end = i + 3
-                    if chars[i + 2].isASCII, chars[i + 2].isNumber {
-                        while end < i + 5, end < chars.count, chars[end].isASCII,
-                            chars[end].isNumber
-                        {
-                            end += 1
+            for token in TextCodes.tokens(raw, syntax: .mtext) {
+                switch token {
+                case .text(let text):
+                    let chars = Array(text)
+                    var i = 0
+                    while i < chars.count {
+                        if chars[i] == "<", i + 1 < chars.count, chars[i + 1] == ">" {
+                            flush()
+                            parts.append(.measurement)
+                            i += 2
+                        } else if let end = numberEnd(chars, from: i, after: previous) {
+                            flush()
+                            let number = String(chars[i..<end])
+                            if let value = Double(number) {
+                                parts.append(.number(value, text: number))
+                            }
+                            i = end
+                        } else {
+                            buffer.append(chars[i])
+                            i += 1
                         }
                     }
-                    buffer.append(contentsOf: chars[i..<end])
-                    i = end
-                } else if c == "\\", i + 1 < chars.count {
-                    let code = chars[i + 1]
-                    if code == "P" {
-                        flush()
-                        parts.append(.lineBreak)
-                        i += 2
-                    } else if code == "U", i + 2 < chars.count, chars[i + 2] == "+" {
-                        // `\U+00B0`: a unicode escape, whose hex digits are not typed numbers.
-                        var end = i + 3
-                        while end < i + 7, end < chars.count, chars[end].isHexDigit { end += 1 }
-                        buffer.append(contentsOf: chars[i..<end])
-                        i = end
-                    } else if Self.takesArguments.contains(code),
-                        let end = chars[(i + 2)...].firstIndex(of: ";")
-                    {
-                        // Colour, font, height, stack and the like: its digits are not typed.
-                        buffer.append(contentsOf: chars[i...end])
-                        i = end + 1
-                    } else if code == "\\" || code == "{" || code == "}" || code.isLetter {
-                        buffer.append(c)
-                        buffer.append(code)
-                        i += 2
-                    } else {
-                        buffer.append(c)
-                        i += 1
-                    }
-                } else if let end = numberEnd(chars, from: i) {
+                    previous = chars.last
+                case .code(let code):
+                    // Kept as written; its digits are not typed numbers.
+                    buffer += code
+                    previous = code.last
+                case .lineBreak:
                     flush()
-                    let text = String(chars[i..<end])
-                    if let value = Double(text) { parts.append(.number(value, text: text)) }
-                    i = end
-                } else {
-                    buffer.append(c)
-                    i += 1
+                    parts.append(.lineBreak)
+                    previous = "\n"
+                case .stack(let stack):
+                    flush()
+                    parts.append(.stack(stack))
+                    previous = "/"
                 }
             }
             flush()
@@ -131,12 +136,15 @@ extension DXF {
 
         /// The index just past a number starting at `start`, or `nil` when none starts there.
         ///
-        /// A sign counts only at the start of the text or after a space, so `40 - 60` and `40-60`
-        /// are two numbers.
-        private static func numberEnd(_ chars: [Character], from start: Int) -> Int? {
+        /// A sign counts only at the start of the text, after a space or after a line break, so
+        /// `40 - 60` and `40-60` are two numbers. `previous` is the character before `chars`.
+        private static func numberEnd(
+            _ chars: [Character], from start: Int, after previous: Character?
+        ) -> Int? {
             var i = start
             if chars[i] == "-" || chars[i] == "+" {
-                guard start == 0 || chars[start - 1] == " " else { return nil }
+                let before = start == 0 ? previous : chars[start - 1]
+                guard before == nil || before == " " || before == "\n" else { return nil }
                 i += 1
             }
             let digitsStart = i

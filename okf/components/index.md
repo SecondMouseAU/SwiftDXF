@@ -4,18 +4,19 @@ title: Components index
 resource: https://github.com/SecondMouseAU/SwiftDXF
 tags: [index]
 description: Public modules / API surfaces exposed by SwiftDXF.
-timestamp: 2026-11-12
+timestamp: 2026-11-18
 ---
 
 # Components
 
 - **`SwiftDXF`** (library): `DXF.read(contentsOf:)` parses an ASCII DXF file into a `Sendable`
   drawing model: the DXF version, entity counts, and the model-space `DXF.Entity` cases
-  (line, arc, circle, polyline, text, spline, …) with their layer. `DXF.Dimension` carries
-  rotation, style name and overrides, a computed measurement and `DimensionText` parts;
-  `Drawing.identities` gives each entity its handle or position; `Drawing.dimensionStyles` is the
-  `DIMSTYLE` table. Unmodelled entity types are tallied in `Drawing.skipped` / `skippedByLayer`;
-  `DXF.Spline.flattened(tolerance:)` turns a spline into polyline points.
+  (line, arc, circle, polyline, text, spline, …) with their layer, text decoded.
+  `DXF.Dimension` carries rotation, style name and overrides, a computed measurement and
+  `DimensionText` parts; `Drawing.identities` gives each entity its handle or position;
+  `Drawing.dimensionStyles` is the `DIMSTYLE` table. Unmodelled entity types are tallied in
+  `Drawing.skipped` / `skippedByLayer`; `DXF.Spline.flattened(tolerance:)` turns a spline into
+  polyline points.
 - **Extrusion** (`ObjectPlane.swift`, `Reader+Extrusion.swift`): an entity written in an object
   coordinate system with a `-z` normal is read as its world geometry (`Entity.transformed(by:)` with
   `ObjectPlane.mirror`; an `ELLIPSE` only reverses its parameter range). A normal that is not along z
@@ -37,13 +38,22 @@ timestamp: 2026-11-12
   (polyline and edge types); `.leader` the vertices, arrowhead and annotation handle. `Layer` and
   `LineType` carry the table fields, and `Drawing.effectiveLineType(ofEntityAt:)` resolves BYLAYER
   and BYBLOCK. Read by `Reader+Hatch.swift` and `Reader+Tables.swift`.
+- **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `Drawing+Text.swift`): the
+  `string` of `.text` is the text as it reads. `Drawing.textContent(ofEntityAt:)` gives a
+  `DXF.TextContent`: the string as written (`raw`), its `syntax` (`TEXT` or `MTEXT`), its `parts`
+  and `plain` text, and its `stacks`. `%%c`, `%%d`, `%%p` and `%%nnn` are decoded in both; in
+  `MTEXT` the formatting codes and groups are removed and a `\S` stack is a `DXF.StackedText`
+  (upper, lower, tolerance or fraction). `Drawing.textContents` and `Block.textContents` are
+  parallel to the entities. `TextCodes` is the one scanner, shared with `DimensionText`;
+  `tools/text_oracle.py` is the ezdxf reference for `dxfdump --texts`.
 - **Dimensions** (`Dimension.swift`, `Dimension+Computed.swift`, `DimensionText.swift`,
   `DimensionStyleVariables.swift`, `Drawing+Dimensions.swift`): `Dimension` carries the stored
   `measurement` (nil when absent, zero or negative), `rotation`, `obliqueAngle`, `styleName` and the
   `styleOverrides` read from the `DSTYLE` extended data. `computedMeasurement` is the geometric value
   (linear, aligned, radius, diameter); `Drawing.styleVariables(of:)` resolves overrides over the
   `DIMSTYLE` record, and `displayedMeasurement(of:)` applies `DIMLFAC`. `DimensionText` splits the
-  override into measurement, number, words and line-break parts. Read by `Reader+Dimension.swift`.
+  override into measurement, number, words, line-break and stack parts, with the codes decoded as
+  in `MTEXT`. Read by `Reader+Dimension.swift`.
 - **Curve fit** (`CurveFit.swift`, `CurveFit+Fitting.swift`): `Entity.fitted(tolerance:source:)`,
   `Spline.fitted(tolerance:source:)` and `Drawing.fittedCurve(at:tolerance:)` turn one `SPLINE` or
   `ELLIPSE` into a `DXF.CurveFit` of `Contour.Segment` pieces (each stamped with the entity's
@@ -59,5 +69,5 @@ timestamp: 2026-11-12
   nesting). Pure Swift and OCCT-free: OCCT consumers belong in OCCTSwiftIO. Known limits are in the
   README (entities on a tilted plane are read as written, `INSERT` flattened only on request).
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
-  `--contours` prints the contour summary as JSON; `--expand` and `--skip-paper-space` read with
-  those `ReadOptions`.
+  `--contours` prints the contour summary as JSON; `--texts` prints each text string as it reads,
+  with its stacks; `--expand` and `--skip-paper-space` read with those `ReadOptions`.

@@ -159,6 +159,7 @@ extension DXF {
             dwg.entities = run.entities
             dwg.identities = run.identities
             dwg.entityLineTypes = run.lineTypes
+            dwg.textContents = run.textContents
             dwg.counts = run.counts
             dwg.skipped = run.skipped
             dwg.skippedByLayer = run.skippedByLayer
@@ -192,51 +193,19 @@ extension DXF {
 
         func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
 
-        /// Text payload for TEXT/MTEXT: concatenate MTEXT continuation groups (3) then the final
-        /// group (1), and decode AutoCAD inline escapes.
-        func textValue(_ f: [(code: Int, value: String)]) -> String {
-            let continued = f.filter { $0.code == 3 }.map(\.value).joined()
-            let main = first(1, f) ?? ""
-            return unescape(continued + main)
-        }
-
-        /// Decode the inline escapes that matter for plain text: `\U+XXXX` unicode, and `\P` newline.
-        func unescape(_ s: String) -> String {
-            guard s.contains("\\") else { return s }
-            var out = ""
-            var it = s.makeIterator()
-            var pending: Character? = nil
-            func next() -> Character? {
-                if let p = pending {
-                    pending = nil
-                    return p
-                }
-                return it.next()
+        /// The decoded string of a `TEXT` or `MTEXT` record, or `nil` for any other type.
+        ///
+        /// An `MTEXT` string is its continuation groups (3) and then its last group (1).
+        func textContent(type: String, _ f: [(code: Int, value: String)]) -> DXF.TextContent? {
+            switch type {
+            case "TEXT":
+                return DXF.TextContent(first(1, f) ?? "", syntax: .text)
+            case "MTEXT":
+                let continued = f.filter { $0.code == 3 }.map(\.value).joined()
+                return DXF.TextContent(continued + (first(1, f) ?? ""), syntax: .mtext)
+            default:
+                return nil
             }
-            while let c = next() {
-                guard c == "\\" else {
-                    out.append(c)
-                    continue
-                }
-                guard let n = next() else {
-                    out.append(c)
-                    break
-                }
-                if n == "U", let plus = next(), plus == "+" {
-                    var hex = ""
-                    for _ in 0..<4 {
-                        if let h = next(), h.isHexDigit { hex.append(h) } else { break }
-                    }
-                    if let v = UInt32(hex, radix: 16), let u = Unicode.Scalar(v) {
-                        out.unicodeScalars.append(u)
-                    }
-                } else if n == "P" || n == "p" {
-                    out.append("\n")
-                } else {
-                    out.append(n)  // drop the backslash, keep the escaped char
-                }
-            }
-            return out
         }
     }
 }

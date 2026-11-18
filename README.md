@@ -29,7 +29,7 @@ The 2D entity set that dominates real-world drawings, from the `ENTITIES` (model
 | `ARC` | `.arc(center, radius, startDeg, endDeg, …)` |
 | `ELLIPSE` | `.ellipse(center, majorAxis, ratio, startParam, endParam, …)` |
 | `POINT` | `.point(at, …)` |
-| `TEXT`, `MTEXT` | `.text(at, height, rotationDeg, string, …)` |
+| `TEXT`, `MTEXT` | `.text(at, height, rotationDeg, string, …)`: `string` as it reads, its codes decoded (see *Text*) |
 | `LWPOLYLINE`, `POLYLINE`/`VERTEX` | `.polyline(vertices, closed, …)`: each vertex carries its **bulge** |
 | `DIMENSION` | `.dimension(Dimension)`: what it measures and how it is stated, not the rendered arrow/text glyphs |
 | `SPLINE` | `.spline(Spline)`: degree, flags, control points, knots, weights, fit points; flattens to a polyline |
@@ -239,6 +239,54 @@ contour layer finds.
 - Degenerate input (fewer than two points, a zero-size ellipse) gives no pieces and does not trap.
   A tolerance that is not positive and finite is clamped to a billionth.
 
+### Text
+
+The `string` of a `TEXT` or `MTEXT` entity is the text as it reads, with its codes decoded. The
+string as the file writes it, and its stacked parts, are kept beside it:
+
+```swift
+for (i, entity) in dwg.entities.enumerated() {
+    guard case .text(_, _, _, let string, _, _) = entity,
+        let content = dwg.textContent(ofEntityAt: i)
+    else { continue }
+    string                     // "36 +0,011/-0,005": as it reads, the same as content.plain
+    content.raw                // "36{\H2.4;\S+0,011^ -0,005;}": as the file writes it
+    content.syntax             // .mtext, or .text for a TEXT entity
+    content.stacks             // [StackedText(upper: "+0,011", lower: "-0,005", kind: .tolerance)]
+    content.stacks[0].lowerValue   // -0.005: a comma or a point is the decimal mark
+}
+```
+
+- **Special characters**, in both: `%%c` is `⌀` (the diameter sign, U+2300), `%%d` is `°`, `%%p`
+  is `±`, `%%%` is `%`, and `%%nnn`, with three digits, is the Unicode character nnn up to 255,
+  so `%%176` is `°`.
+  The drawing's code page is not consulted, so from 128 to 159, where Windows-1252 has the euro
+  sign and other letters, the code is kept as written.
+  `%%u`, `%%o` and `%%k`, which switch underline, overline and strike-through, are dropped.
+  `\U+XXXX` is the Unicode character. Of the caret notation of DXF strings, `^ ` is a caret, `^I` a
+  tab and `^J` a line break.
+- **MTEXT formatting codes are removed** with their arguments up to the `;`: `\A` (alignment), `\C`
+  and `\c` (colour), `\F` and `\f` (font), `\H` (height), `\Q` (oblique angle), `\T` (tracking),
+  `\W` (width) and `\p` (paragraph). So are the switches `\L`, `\l`, `\O`, `\o`, `\K` and `\k`,
+  and the `{` and `}` that group codes. When the `;` is missing, a code with one value (all but the
+  font and paragraph codes) ends with its value, as `ezdxf` reads it, so `\H2xBig` reads `Big`.
+  `\P`, `\N` and `\X` are line breaks, `\~` is a no-break space, and `\\`, `\{` and `\}` are the
+  characters themselves. `{\fArial|b1|i0|c0|p34;www.example.com}` reads `www.example.com`.
+- **Stacks.** `\S` writes two parts one above the other, divided by `^` for a tolerance (written
+  `^ ` in a DXF file), `/` for a fraction or `#` for a diagonal fraction. Each stack is a
+  `DXF.StackedText` with its two parts as written. The plain text gives a stack as `upper/lower`
+  after a space, so `1\S1/2;` reads `1 1/2`, and `content.parts` holds the text and the stacks in
+  order.
+- **A backslash in `TEXT` is a character.** `TEXT` has no formatting codes, so a file path such as
+  `C:\DRAWINGS\PLAN.DWG` stays whole.
+- **A code that is not understood is kept as written**: an unknown backslash code, `\M+nXXXX` (a
+  character of a multibyte code page), and a `%%nnn` or `\U+XXXX` that names a control character,
+  a number above 255 or half a surrogate pair. A `}` ends a stack as it ends the group around
+  it, so a `\S` whose `;` is missing ends there, or at the end of the text.
+
+`dwg.textContents` is parallel to `entities` like `identities`, and is cleared when `entities`
+changes. A block's are in `Block.textContents`, and an expansion carries them through.
+
 ### Dimensions
 
 A `DIMENSION` says what it measures, and how the number is to be stated:
@@ -254,6 +302,7 @@ for case .dimension(let d) in dwg.entities {
     style.suppressesTrailingZeros         // DIMZIN: "8.1" may be 8.100 with its zeros hidden
     style.linearScale, style.unitSuffix   // DIMLFAC and DIMPOST
     d.text.showsMeasurement               // does the text show the measured value?
+    d.text.stacks, d.text.plain           // a stacked tolerance, and the text as it reads
 }
 ```
 
@@ -273,10 +322,13 @@ for case .dimension(let d) in dwg.entities {
   whichever style was current when the file was saved, so they are not applied for you. A negative
   `DIMLFAC` applies to paper space only and is ignored.
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
-  and `\P` line breaks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)` and
-  `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a
+  `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`
+  and `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a
   limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces;
-  `isSuppressed` is the single space that hides the text.
+  `isSuppressed` is the single space that hides the text. The codes are decoded as in an `MTEXT`
+  (see *Text*), so `%%c<>` gives the words `⌀` and `<>{\H0.7x;\S+0.1^ -0.2;}` the measurement and
+  a tolerance stack, whose numbers are not typed numbers. `d.textOverride` is the override as the
+  file writes it.
 
 ### Splines
 
@@ -312,7 +364,8 @@ entities actually read.
 
 - **Encoding.** Files are decoded as UTF-8 when valid, otherwise **CP932 / Shift-JIS**: the common
   code page for DXF exported by Japanese CAD tools (e.g. Jw_cad). Because CP932 is an ASCII superset,
-  the group-code structure is unaffected either way. AutoCAD `\U+XXXX` text escapes are decoded.
+  the group-code structure is unaffected either way. The codes inside text are decoded too; see
+  *Text*.
 - **Line endings & padding.** Handles LF / CRLF / CR and R12-style space-padded group codes (`  0`).
 - **Ellipse normalisation.** DXF requires `ratio = minor/major ≤ 1`. Files that emit `ratio > 1`
   (a swapped major axis) are normalised to the canonical form (same curve, valid axis), so consumers
@@ -322,6 +375,22 @@ entities actually read.
 - **Model space.** The `ENTITIES` section is what `ezdxf`'s `modelspace()` iterates. Paper-space
   entities are counted and can be left out, and `BLOCKS` definitions are read and flattened into the
   entities only on request (see *Block references and paper space*).
+
+### Upgrading from 0.4
+
+- **The `string` of `.text` is the text as it reads.** It used to drop only the backslash of each
+  MTEXT code and keep the rest (`36{H2.400000;S+0,011^ -0,005;}`), and to leave `%%c`, `%%d` and
+  `%%p` as written. The codes are now decoded or removed (`36 +0,011/-0,005`), and
+  `Drawing.textContent(ofEntityAt:)` gives the string as written, its syntax and its stacks.
+  `Drawing` and `Block` gain `textContents`, defaulted in `init`.
+- **A backslash in `TEXT` stays.** A `\P` in a `TEXT` used to become a line break and every other
+  backslash was dropped, which broke file paths. `\U+XXXX` is still decoded, and needs its four hex
+  digits; one that names a control character is kept as written. An MTEXT code that is not
+  understood keeps its backslash.
+- **`DimensionText.Part` has a new case**, `.stack`, so an exhaustive `switch` over the parts needs
+  it. `.words` no longer holds formatting codes, `%%c` in it is `⌀`, and `\X` is a `.lineBreak`. A
+  sign after a line break now belongs to the number that follows. `Dimension.textOverride` is
+  unchanged: the override as the file writes it.
 
 ### Upgrading from 0.3
 
@@ -455,6 +524,38 @@ matches `ezdxf` **exactly**: every entity count and every coordinate scalar, to 
 gate (skipped when the corpus is absent; point `DXF_CORPUS` at a folder of `.dxf` files to run).
 The single-curve fit has a second gate: point `DXF_SPLINE_FILE` at a drawing with splines to check
 every spline in it fits within 0.001 and chains into the contour layer's regions.
+
+Text is checked with `tools/text_oracle.py`, which prints, from `ezdxf`, the shape that
+`dxfdump --texts` prints: each `TEXT`, `MTEXT` and dimension override in entity order, as it reads
+and with its stacks.
+
+```bash
+diff <(swift run dxfdump --texts --skip-paper-space drawing.dxf) \
+    <(python3 tools/text_oracle.py drawing.dxf)
+```
+
+`--skip-paper-space` leaves out what `ezdxf`'s `modelspace()` leaves out; `--expand` would add the
+texts of blocks, which the oracle does not list.
+
+The oracle writes `%%c` as `⌀`, a stack as `upper/lower` after a space, `\~` as a no-break space and
+`\X` as a line break, as SwiftDXF does, so the diff shows only where the two read a string
+differently. Over 23,429 strings in 3,109 real drawings, given to both with their non-ASCII
+characters written as `\U+XXXX` (ezdxf reads a file through its `$DWGCODEPAGE`, SwiftDXF as UTF-8
+or else CP932), the two agree on all but 25, each a Jw_cad superscript mark from the third case
+below. They read a string differently in these cases, on purpose:
+
+- `%%nnn` is decoded; `ezdxf` leaves it.
+- `^J` in a `TEXT` is a line break; `ezdxf` keeps a `TEXT` on one line and drops it.
+- A caret other than `^ `, `^I` and `^J` is text; `ezdxf` reads every caret as a control
+  character, so the Jw_cad superscript mark in `m^u3` becomes `m53`.
+- `%%u`, `%%o` and `%%k` are dropped in `MTEXT` as in `TEXT`; `ezdxf` keeps them in `MTEXT`.
+- In a stack, `%%` codes are decoded, `^I` and `^J` are a tab and a line break, and any other `^`
+  without its space still divides (`ezdxf` reads `^-` as a control character). A `\S` with no
+  divider is read as text, where `ezdxf` gives a stack with an empty lower part, and a `}` ends a
+  stack, where `ezdxf` runs it on to its `;`.
+- `\M+nXXXX`, and a `\U+XXXX` of a control character or of half a surrogate pair, are kept as
+  written; `ezdxf` decodes them. A `%%` or a
+  backslash at the very end is kept; `ezdxf` drops it.
 
 ## Install
 
