@@ -79,9 +79,11 @@ extension DXF {
             /// The real value per drawn unit, `80` for a drawing at 1:80.
             public var scale: Double
             /// The value texts this scale explains.
+            ///
+            /// Only a value that is ten units of its last place counts: `5` fits many scales.
             public var supporting: Int
-            /// The value texts of the group that have a dimension line beside them but that this
-            /// scale does not explain.
+            /// The value texts of the group that have a dimension line beside them and that count,
+            /// but that this scale does not explain.
             public var contradicting: Int
 
             public init(group: String, scale: Double, supporting: Int, contradicting: Int) {
@@ -114,8 +116,8 @@ extension DXF {
             case valueNotExplained(text: String, identity: Identity, reason: Reason)
             /// The layer groups do not agree on the scale. Each keeps its own; none is averaged.
             case scalesDisagree([ScaleEstimate])
-            /// A diameter or radius symbol that the geometry does not bear out. The dimension
-            /// is the kind the geometry gives.
+            /// A diameter or radius symbol that the geometry does not bear out, or a radius symbol
+            /// on a straight dimension. The dimension is the kind the geometry gives.
             case symbolDisagrees(text: String, identity: Identity, geometry: DimensionType)
 
             public var description: String {
@@ -135,8 +137,8 @@ extension DXF {
         /// The drawing with the rebuilt dimensions added after its entities.
         ///
         /// The pieces they were built from stay, and each dimension's ``Dimension/rebuilt`` names
-        /// them. The new entities have identities `REBUILT:n`, and the drawing's other parallel
-        /// arrays are kept.
+        /// them. The new entities have identities `REBUILT:n`, numbered on from any the drawing
+        /// already holds, and the drawing's other parallel arrays are kept.
         public func applied(to drawing: Drawing) -> Drawing {
             var out = drawing
             let identities = drawing.identities.count == drawing.entities.count
@@ -145,8 +147,9 @@ extension DXF {
             let before = drawing.entities.count
             var newIdentities = (0..<before).map { drawing.identity(ofEntityAt: $0) }
             out.entities = drawing.entities + dimensions.map { .dimension($0) }
+            let held = newIdentities.filter { $0.locator.hasPrefix("REBUILT:") }.count
             for n in dimensions.indices {
-                newIdentities.append(Identity(locator: "REBUILT:\(n)"))
+                newIdentities.append(Identity(locator: "REBUILT:\(held + n)"))
             }
             if identities { out.identities = newIdentities }
             if lineTypes {

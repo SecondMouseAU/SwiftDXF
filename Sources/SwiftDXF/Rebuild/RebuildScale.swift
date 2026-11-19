@@ -206,7 +206,7 @@ extension DXF.DimensionRebuilder {
             abs(round - current.scale) <= max(0.003 * current.scale, resolution),
             support(round).count >= current.count
         {
-            current.scale = round
+            current = (round, support(round).count)
         }
         return (current.scale, current.count)
     }

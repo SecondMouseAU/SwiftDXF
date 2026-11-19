@@ -121,6 +121,17 @@ extension DXF {
         }
     }
 
+    /// The `$ACADVER` the file's header names, such as `AC1032`, or `nil`.
+    static func headerVersion(in data: Data) -> String? {
+        guard let key = data.range(of: Data("$ACADVER".utf8)) else { return nil }
+        let tail = data[key.upperBound..<min(data.endIndex, key.upperBound + 48)]
+        let lines = String(decoding: tail, as: UTF8.self).split(whereSeparator: \.isNewline)
+        guard lines.count >= 2, lines[0].trimmingCharacters(in: .whitespaces) == "1" else {
+            return nil
+        }
+        return lines[1].trimmingCharacters(in: .whitespaces)
+    }
+
     /// The code page the file's `$DWGCODEPAGE` names, read from the bytes of the header.
     ///
     /// The header is ASCII in every supported code page, so it can be read before the rest of the

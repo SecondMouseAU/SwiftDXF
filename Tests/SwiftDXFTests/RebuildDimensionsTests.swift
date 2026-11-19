@@ -327,6 +327,27 @@ struct RebuildDimensionsTests {
         #expect(result.dimensions.map(\.kind) == [.diameter, .diameter])
     }
 
+    @Test("a radius symbol on a straight dimension is reported; a diameter symbol is ordinary")
+    func symbolOnStraightDimensions() throws {
+        var records = Self.chain(scale: 50, lengths: [20, 30, 15])
+        records = records.map { record in
+            guard record[0].1 == "TEXT" else { return record }
+            var out = record
+            let string = out.first { $0.0 == 1 }!.1
+            guard let k = out.firstIndex(where: { $0.0 == 1 }) else { return record }
+            out[k].1 = string == "1000" ? "R1000" : (string == "1500" ? "\u{2300}1500" : string)
+            return out
+        }
+        let (dwg, result) = try Self.rebuild(records)
+        #expect(result.dimensions.count == 3)
+        let textIndex = records.firstIndex { $0.contains { $0.1 == "R1000" } }!
+        #expect(
+            result.warnings == [
+                .symbolDisagrees(
+                    text: "R1000", identity: dwg.identity(ofEntityAt: textIndex), geometry: .linear)
+            ])
+    }
+
     @Test("a symbol the geometry does not bear out is reported, and the geometry decides")
     func symbolDisagrees() throws {
         let records: [Record] = [

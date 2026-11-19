@@ -346,7 +346,7 @@ let result = dwg.rebuildingDimensions()
 for d in result.dimensions {
     d.textOverride                    // "1,829": the text as written
     d.measurement                     // 22.863: the length the geometry gives, in drawing units
-    dwg.displayedMeasurement(of: d)   // 1829.04: that times the scale, `d.styleOverrides.linearScale`
+    dwg.displayedMeasurement(of: d)   // 1829.04: that times the scale (`styleOverrides.linearScale`)
     d.rebuilt?.scale                  // 80
     d.rebuilt?.pieces                 // the identities it was built from, the value text first
 }
@@ -363,17 +363,19 @@ It starts from each text that states a number and works out the rest, like Swift
   closed triangle (an arrowhead, whose tip is the end) or a small shape such as a dot or a tick
   lies on it. An extension line gives the exact place; a mark is used where there is none. A
   dimension is a span between two ends that the line covers, near the text, with at most two
-  other ends inside it (an arrowhead has a base) or the whole line. `Options(tolerance:)` is how far apart pieces may be and still meet, 3% of the
-  text height by default; a length may differ from its value by twice that, times the scale.
+  other ends inside it (an arrowhead has a base) or the whole line. `Options(tolerance:)` is how
+  far apart pieces may be and still meet, 3% of the text height by default; a length may differ
+  from its value by twice that, times the scale.
 - **Scale.** Every candidate span and reading implies a scale, the value over the length. The scale
   that explains the most texts is refined to the least-squares scale of the ones it explains, and
   made a round scale (80, 1/2) when it is within what the values can tell apart. Each layer group
   has its own, a group being the `0` of a Jw_cad layer `0-E` and otherwise the layer. Groups that
-  differ are reported with `.scalesDisagree`, never averaged. A scale counts only when it is between
-  1/20 and 1,000,000 and explains at least three values and more than it leaves, or two when they are
-  all the values of the group and the scale is round: a numbered sequence beside lines (the ports
-  of a panel, a scale bar, a border) is explained by some scale too, and is usually left
-  unexplained: a dimension is between neighbouring ends, with at most two others inside it. A
+  differ are reported with `.scalesDisagree`, never averaged. A scale counts only when it is
+  between 1/20 and 1,000,000 and explains at least three values and more than it leaves, or two
+  when they are all the values of the group and the scale is round: a numbered sequence beside
+  lines (the ports of a panel, a scale bar, a border) is explained by some scale too, and is
+  usually left unexplained: a dimension is between neighbouring ends, with at most two others
+  inside it. A
   value votes only when it is ten units of its last place (`5` does not, `50` and `2.5` do): it
   can be explained once the scale is known. Of scales that explain as much, the one whose
   geometry is nearest its texts wins, then a reduction over an enlargement. `Options(scale:)`
@@ -388,7 +390,8 @@ It starts from each text that states a number and works out the rest, like Swift
 - **Diameters and radii** come from the geometry, not the symbol: a line through the centre of a
   circle or arc that ends on it at both ends is a diameter, and one that ends on it at one end
   (from the centre, or along a leader) is a radius. The symbol is a check: `.symbolDisagrees` says
-  where it does not bear the geometry out, and the geometry decides.
+  where it does not bear the geometry out, or a radius symbol is on a straight dimension (a
+  diameter symbol there is ordinary), and the geometry decides.
 - **Marked, and flagged.** Each dimension has `rebuilt` set. A value text that no dimension
   explains, on a layer where one was rebuilt or (an angle, or a value in another unit) beside a
   dimension line, is a
@@ -449,8 +452,9 @@ entities actually read.
 
 ### Behaviours worth knowing
 
-- **Encoding.** Files are decoded as UTF-8 when valid. Otherwise the bytes are in the code page
-  that `$DWGCODEPAGE` names (`ANSI_932`, `ANSI_936`, `ANSI_949`, `ANSI_950`, `ANSI_874` and
+- **Encoding.** Files are decoded as UTF-8 when valid, and a file of R2007 or later (`$ACADVER`
+  `AC1021` and after) always is, with a stray byte as U+FFFD. Otherwise the bytes are in the code
+  page that `$DWGCODEPAGE` names (`ANSI_932`, `ANSI_936`, `ANSI_949`, `ANSI_950`, `ANSI_874` and
   `ANSI_1250` to `ANSI_1258`; `Drawing.codePage` says which), or in **CP932 / Shift-JIS** when it
   names none or one that is not read (`DOS437`, `ISO8859-1`, `ANSI_1361`): the common code page
   for DXF exported by Japanese CAD tools (e.g. Jw_cad). Each is an ASCII superset, so the
@@ -649,7 +653,8 @@ characters written as `\U+XXXX`, the two agree on all but 25, each a Jw_cad supe
 the third case below. Both read a file through its `$DWGCODEPAGE`; with none, `ezdxf` reads
 Windows-1252 and SwiftDXF Shift-JIS, so a Japanese file with no header reads differently in the
 two. Over the 96 files of a local corpus that are not UTF-8, the strings of 86 are the same in
-both, and the other 10 are Japanese files with no `$DWGCODEPAGE`. They read a string differently in these cases, on purpose:
+both, and the other 10 are Japanese files with no `$DWGCODEPAGE`. They read a string
+differently in these cases, on purpose:
 
 - `%%nnn` is decoded, through the drawing's code page; `ezdxf` leaves it.
 - `^J` in a `TEXT` is a line break; `ezdxf` keeps a `TEXT` on one line and drops it.

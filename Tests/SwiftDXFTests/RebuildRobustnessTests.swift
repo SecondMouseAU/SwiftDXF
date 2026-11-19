@@ -122,6 +122,38 @@ struct RebuildRobustnessTests {
         _ = try Rebuild.rebuild(records + [tall])
     }
 
+    @Test("a tolerance that is a number is used: marks off the line by 0.3 meet it at 0.2")
+    func toleranceIsUsed() throws {
+        let records = Rebuild.chain(scale: 50, lengths: [20, 30, 15], ends: .points).map {
+            record -> Record in
+            guard record[0].1 == "POINT" else { return record }
+            return record.map { $0.0 == 20 ? (20, "-10.3") : $0 }
+        }
+        #expect(try Rebuild.rebuild(records).1.dimensions.isEmpty)
+        #expect(try Rebuild.rebuild(records, .init(tolerance: 0.2)).1.dimensions.count == 3)
+    }
+
+    @Test("pieces on any layer are used for a diameter too")
+    func radialOnAnyLayer() throws {
+        let records: [Record] = [
+            Rebuild.circle(0, 0, 10), Rebuild.line((-10, 0), (10, 0), layer: "X"),
+            Rebuild.text("40", -3, 1), Rebuild.circle(40, 0, 5),
+            Rebuild.line((35, 0), (45, 0), layer: "X"), Rebuild.text("20", 37, 1),
+        ]
+        #expect(try Rebuild.rebuild(records).1.dimensions.isEmpty)
+        let any = try Rebuild.rebuild(records, .init(pieceLayers: .any)).1
+        #expect(any.dimensions.map(\.kind) == [.diameter, .diameter])
+    }
+
+    @Test("applying a result twice does not repeat the identities")
+    func appliedTwice() throws {
+        let (dwg, result) = try Rebuild.rebuild(Rebuild.chain(scale: 50, lengths: [20, 30, 15]))
+        let twice = result.applied(to: result.applied(to: dwg))
+        let rebuilt = (0..<twice.entities.count).map { twice.identity(ofEntityAt: $0).locator }
+            .filter { $0.hasPrefix("REBUILT:") }
+        #expect(rebuilt == (0..<6).map { "REBUILT:\($0)" })
+    }
+
     @Test("a tolerance or scale that is not a positive number is none, not a crash")
     func invalidOptions() throws {
         let records = Rebuild.chain(scale: 50, lengths: [20, 30, 15])

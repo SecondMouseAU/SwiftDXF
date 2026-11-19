@@ -118,6 +118,14 @@ struct RebuildScaleTests {
         #expect(try Rebuild.rebuild(axis).1.dimensions.isEmpty)
     }
 
+    @Test("small values do not vote for the scale or against it")
+    func smallValues() throws {
+        let (_, result) = try Rebuild.rebuild(
+            Rebuild.chain(scale: 1, lengths: [20, 30, 15, 5, 8]))
+        #expect(result.dimensions.count == 5 && result.warnings.isEmpty)
+        #expect(result.scales == [.init(group: "0", scale: 1, supporting: 3, contradicting: 0)])
+    }
+
     @Test("a numbered sequence beside lines is not a scale")
     func sequence() throws {
         // Ten equal spans numbered 1 to 10 fit the scale 1/45, which no drawing is at.

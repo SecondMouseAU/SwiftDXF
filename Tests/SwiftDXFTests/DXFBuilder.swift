@@ -10,13 +10,17 @@ struct DXFBuilder {
     var entities: [Record] = []
     /// The `$DWGCODEPAGE` of the header, such as `ANSI_1252`; none when `nil`.
     var codePage: String?
+    /// The `$ACADVER` of the header.
+    ///
+    /// R2007 and later (`AC1021` and after) are UTF-8.
+    var version = "AC1032"
 
     static func lines(_ pairs: Record) -> String {
         pairs.map { "\($0.0)\n\($0.1)" }.joined(separator: "\n") + "\n"
     }
 
     func text() -> String {
-        var out = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1032\n"
+        var out = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\n\(version)\n"
         if let codePage { out += "9\n$DWGCODEPAGE\n3\n\(codePage)\n" }
         out += "0\nENDSEC\n"
         out += "0\nSECTION\n2\nTABLES\n"

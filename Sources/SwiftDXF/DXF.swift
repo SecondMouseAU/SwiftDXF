@@ -348,6 +348,11 @@ public enum DXF {
     /// A byte the page cannot decode is U+FFFD, and the rest of the file is read in the page.
     static func decode(_ data: Data) -> String {
         if let s = String(data: data, encoding: .utf8) { return s }
+        // R2007 and later write UTF-8 whatever `$DWGCODEPAGE` says, so a stray byte is one
+        // character lost and not a reason to read the file in a code page.
+        if let version = headerVersion(in: data), version >= "AC1021" {
+            return String(decoding: data, as: UTF8.self)
+        }
         let page = headerCodePage(in: data) ?? .shiftJIS
         let bytes = [UInt8](data)
         return page.decode(bytes) ?? page.decodeLines(bytes)

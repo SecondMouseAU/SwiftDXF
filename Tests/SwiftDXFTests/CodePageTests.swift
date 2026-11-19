@@ -14,6 +14,7 @@ struct CodePageTests {
     /// A file with one `TEXT` whose string is `bytes` as they are, under the `$DWGCODEPAGE` `page`.
     static func file(page: String?, bytes: [UInt8]) -> Data {
         var builder = DXFBuilder()
+        builder.version = "AC1015"
         builder.codePage = page
         builder.entities = [DXFBuilder.text("@@")]
         var data = Data(builder.text().utf8)
@@ -97,6 +98,7 @@ struct CodePageTests {
     @Test("a byte the page cannot decode is one character lost, not the file")
     func strayByte() throws {
         var builder = DXFBuilder()
+        builder.version = "AC1015"
         builder.codePage = "ANSI_1252"
         builder.entities = [
             DXFBuilder.text("##"), DXFBuilder.text("caf@@"), DXFBuilder.text("@@@@"),
@@ -110,6 +112,7 @@ struct CodePageTests {
         #expect(strings[1] == "caf\u{E9}" && strings[2] == "\u{E9}\u{20AC}")
         // The same for a multibyte page: a lone lead byte is one character lost.
         var japanese = DXFBuilder()
+        japanese.version = "AC1015"
         japanese.codePage = "ANSI_932"
         japanese.entities = [DXFBuilder.text("##"), DXFBuilder.text("@@")]
         var sjis = Data(japanese.text().utf8)
@@ -117,6 +120,18 @@ struct CodePageTests {
         sjis.replaceSubrange(sjis.range(of: Data("@@".utf8))!, with: [0x93, 0xFA])
         let lines = Self.strings(try DXF.read(data: sjis))
         #expect(lines.count == 2 && lines[1] == "\u{65E5}")
+    }
+
+    @Test("a UTF-8 file of R2007 or later with a stray byte is still UTF-8")
+    func strayByteInUTF8() throws {
+        var builder = DXFBuilder()
+        builder.codePage = "ANSI_1252"
+        builder.entities = [DXFBuilder.text("caf@@"), DXFBuilder.text("##")]
+        var data = Data(builder.text().utf8)
+        data.replaceSubrange(data.range(of: Data("@@".utf8))!, with: [0xC3, 0xA9])
+        data.replaceSubrange(data.range(of: Data("##".utf8))!, with: [0x81])
+        let strings = Self.strings(try DXF.read(data: data))
+        #expect(strings.count == 2 && strings[0] == "caf\u{E9}")
     }
 
     @Test("valid UTF-8 is UTF-8 whatever the header names, and the page is still read")

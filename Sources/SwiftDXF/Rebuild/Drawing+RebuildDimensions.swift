@@ -57,23 +57,28 @@ extension DXF {
             var scales: [DimensionRebuild.ScaleEstimate] = []
             var scaleOfGroup: [String: Double] = [:]
             for (group, members) in groups.sorted(by: { $0.key < $1.key }) {
+                // Only a value that can vote counts for a scale or against it; see `isSubstantial`.
+                let voters = members.filter {
+                    pieces.texts[$0].value.readings.contains(where: \.isSubstantial)
+                }
                 let found: (scale: Double, supporting: Int)?
-                if let forced = options.scale, forced > 0 {
+                if let forced = options.scale {
                     let supporting = members.filter {
                         candidates[$0].contains { explains($0, at: forced) != nil }
                     }.count
                     found = (forced, supporting)
                 } else {
-                    found = inferScale(members.map { candidates[$0] })
+                    found = inferScale(voters.map { candidates[$0] })
                 }
-                guard let found, options.scale != nil || accepts(found, of: members.count) else {
+                guard let found, options.scale != nil || accepts(found, of: voters.count) else {
                     continue
                 }
                 scaleOfGroup[group] = found.scale
+                let counted = options.scale == nil ? voters.count : members.count
                 scales.append(
                     DimensionRebuild.ScaleEstimate(
                         group: group, scale: found.scale, supporting: found.supporting,
-                        contradicting: members.count - found.supporting))
+                        contradicting: counted - found.supporting))
             }
 
             // The candidates a scale explains, nearest first, each text and piece used once.
@@ -109,9 +114,15 @@ extension DXF {
                 let text = pieces.texts[item.candidate.text]
                 let scale = scaleOfGroup[Self.group(of: text.layer)] ?? 1
                 let dimension = build(item.candidate, item.reading, scale: scale)
-                if let symbol = text.value.symbol, case .radial = item.candidate.shape,
-                    (symbol == .diameter) != (dimension.kind == .diameter)
-                {
+                // A diameter symbol on a straight dimension is ordinary drafting; a radius symbol
+                // on one, or either symbol the circle contradicts, is not.
+                let disagrees: Bool
+                switch item.candidate.shape {
+                case .radial:
+                    disagrees = (text.value.symbol == .diameter) != (dimension.kind == .diameter)
+                case .linear: disagrees = text.value.symbol == .radius
+                }
+                if text.value.symbol != nil, disagrees {
                     warnings.append(
                         .symbolDisagrees(
                             text: text.raw, identity: drawing.identity(ofEntityAt: text.entity),
