@@ -363,7 +363,8 @@ It starts from each text that states a number and works out the rest, like Swift
   closed triangle (an arrowhead, whose tip is the end) or a small shape such as a dot or a tick
   lies on it. An extension line gives the exact place; a mark is used where there is none. A
   dimension is a span between two ends that the line covers, near the text, with at most two
-  other ends inside it (an arrowhead has a base) or the whole line. `Options(tolerance:)` is how
+  other ends inside it (an arrowhead has a base) or the whole line. A dimension line is read up to
+  512 collinear pieces. `Options(tolerance:)` is how
   far apart pieces may be and still meet, 3% of the text height by default; a length may differ
   from its value by twice that, times the scale.
 - **Scale.** Every candidate span and reading implies a scale, the value over the length. The scale
@@ -493,6 +494,9 @@ entities actually read.
   in the page it names. A file with no `$DWGCODEPAGE` is still read as Shift-JIS.
   `DXF.CodePage`, `Drawing.codePage` and `Dimension.codePage` are new, and `TextContent.init` and
   `DimensionText.init` take a `codePage`, defaulted to none.
+- **A file of R2007 or later is read as UTF-8.** One with bytes that are not valid UTF-8 used to
+  be read as Shift-JIS; its `$DWGCODEPAGE` is not used for the bytes of such a file, and a stray
+  byte is U+FFFD.
 - **`%%nnn`, `\M+nXXXX` and surrogate pairs.** `%%128` in an `ANSI_1252` drawing is the euro sign,
   where it was kept as written; `\M+nXXXX` is decoded, where it was kept as written; and two
   `\U+` escapes that make a surrogate pair are one character, where each was kept.

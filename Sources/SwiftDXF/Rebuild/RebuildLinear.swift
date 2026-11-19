@@ -82,7 +82,8 @@ extension DXF.DimensionRebuilder {
         var last = -Double.infinity
         func admit(_ s: Int) -> Bool {
             let segment = pieces.segments[s]
-            guard !members.contains(s), sameLayer(segment.layer, as: text),
+            // A dimension line is a few pieces; thousands in a row are a dashed line or a grid.
+            guard members.count < 512, !members.contains(s), sameLayer(segment.layer, as: text),
                 perp(segment.a) <= tol, perp(segment.b) <= tol
             else { return false }
             members.insert(s)
@@ -96,17 +97,20 @@ extension DXF.DimensionRebuilder {
         let gap = text.width + 2 * text.height + 2 * tol
         var grew = true
         var rounds = 0
-        while grew, rounds < 1000 {
+        while grew, rounds < 100_000 {
             grew = false
             rounds += 1
-            let window = DXF.RebuildPieces.bounds([
-                DXF.Point2(p0.x + u.x * (first - gap), p0.y + u.y * (first - gap)),
-                DXF.Point2(p0.x + u.x * (last + gap), p0.y + u.y * (last + gap)),
-            ])
-            let wide = DXF.Box2(
-                min: DXF.Point2(window.min.x - tol, window.min.y - tol),
-                max: DXF.Point2(window.max.x + tol, window.max.y + tol))
-            for s in pieces.segmentGrid.query(wide) where admit(s) { grew = true }
+            // Only the stretches just beyond what is held: the rest was looked at already.
+            for (from, to) in [(first - gap, first + tol), (last - tol, last + gap)] {
+                let window = DXF.RebuildPieces.bounds([
+                    DXF.Point2(p0.x + u.x * from, p0.y + u.y * from),
+                    DXF.Point2(p0.x + u.x * to, p0.y + u.y * to),
+                ])
+                let wide = DXF.Box2(
+                    min: DXF.Point2(window.min.x - tol, window.min.y - tol),
+                    max: DXF.Point2(window.max.x + tol, window.max.y + tol))
+                for s in pieces.segmentGrid.query(wide) where admit(s) { grew = true }
+            }
         }
         guard !carrier.isEmpty else { return [] }
         carrier.sort { $0.lo < $1.lo }
@@ -119,7 +123,8 @@ extension DXF.DimensionRebuilder {
             }
         }
         func covered(_ position: Double) -> Bool {
-            covers.contains { position >= $0.lo - tol && position <= $0.hi + tol }
+            let i = Self.firstCover(covers, endingAfter: position - tol)
+            return i < covers.count && covers[i].lo <= position + tol
         }
 
         // The ends: where another piece meets the line within what the line covers.
@@ -134,9 +139,9 @@ extension DXF.DimensionRebuilder {
             max: DXF.Point2(box.max.x + tol, box.max.y + tol))
         for s in pieces.segmentGrid.query(wide) {
             let other = pieces.segments[s]
-            guard sameLayer(other.layer, as: text), abs(cross(u, other.unit)) >= 0.3 else {
-                continue
-            }
+            guard sameLayer(other.layer, as: text), abs(cross(u, other.unit)) >= 0.3,
+                !pieces.arrowheads.contains(other.entity)
+            else { continue }
             let d1 = cross(u, minus(other.a, p0))
             let d2 = cross(u, minus(other.b, p0))
             let position: Double
@@ -179,6 +184,31 @@ extension DXF.DimensionRebuilder {
             let found = merged[k].exact.isEmpty ? merged[k].marked : merged[k].exact
             merged[k].t = found.reduce(0, +) / Double(found.count)
         }
+        // A mark beside an exact end, such as an open arrowhead whose middle is not its tip, is
+        // that end's arrowhead and not an end of its own.
+        let exacts = merged.indices.filter { !merged[$0].exact.isEmpty }
+        if !exacts.isEmpty {
+            for k in merged.indices where merged[k].exact.isEmpty {
+                // The exact ends are in order of position: the nearest is beside the first that
+                // is not before this mark.
+                var low = 0
+                var high = exacts.count
+                while low < high {
+                    let mid = (low + high) / 2
+                    if merged[exacts[mid]].t < merged[k].t { low = mid + 1 } else { high = mid }
+                }
+                let beside = [low - 1, low].filter { exacts.indices.contains($0) }
+                if let nearest = beside.map({ exacts[$0] }).min(by: {
+                    abs(merged[$0].t - merged[k].t) < abs(merged[$1].t - merged[k].t)
+                }), abs(merged[nearest].t - merged[k].t) <= pieces.markSize {
+                    merged[nearest].entities += merged[k].entities
+                    merged[k].entities = []
+                    merged[k].marked = []
+                }
+            }
+        }
+        merged.removeAll { $0.exact.isEmpty && $0.marked.isEmpty }
+        guard merged.count >= 2 else { return [] }
 
         let tc = t(text.center)
         let offset = perp(text.center)
@@ -212,6 +242,22 @@ extension DXF.DimensionRebuilder {
         return candidates
     }
 
+    /// The index of the first of `covers`, which are in order and apart, that ends at or after
+    /// `position`, or `covers.count`: a binary search, as a dashed line has thousands.
+    private static func firstCover(
+        _ covers: [(lo: Double, hi: Double)], endingAfter position: Double
+    )
+        -> Int
+    {
+        var low = 0
+        var high = covers.count
+        while low < high {
+            let mid = (low + high) / 2
+            if covers[mid].hi >= position { high = mid } else { low = mid + 1 }
+        }
+        return low
+    }
+
     /// Whether the dimension line covers `from` to `to`, apart from a gap for the text.
     private func spanIsCovered(
         _ from: Double, _ to: Double, covers: [(lo: Double, hi: Double)], around tc: Double,
@@ -219,7 +265,7 @@ extension DXF.DimensionRebuilder {
     ) -> Bool {
         let tol = pieces.tolerance
         var position = from
-        for cover in covers where cover.hi > from {
+        for cover in covers[Self.firstCover(covers, endingAfter: from)...] {
             if cover.lo > to { break }
             if cover.lo > position + tol, !gapIsForText(position, cover.lo, tc, text) {
                 return false

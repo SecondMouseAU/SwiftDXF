@@ -83,4 +83,5 @@ timestamp: 2026-11-19
   README (entities on a tilted plane are read as written, `INSERT` flattened only on request).
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
   `--contours` prints the contour summary as JSON; `--texts` prints each text string as it reads,
-  with its stacks; `--expand` and `--skip-paper-space` read with those `ReadOptions`.
+  with its stacks; `--rebuild [--scale N]` prints the dimensions rebuilt from loose pieces, the
+  scales and the warnings; `--expand` and `--skip-paper-space` read with those `ReadOptions`.

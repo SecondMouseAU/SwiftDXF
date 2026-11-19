@@ -41,6 +41,8 @@ if __name__ == "__main__":
         for name in names
         if name.lower().endswith(".dxf")
     )
+    if not files:
+        sys.exit(f"no .dxf files under {args[0]}")
     totals = {"files": 0, "rebuilt": 0, "with_real_dimensions": 0, "real_that_rebuilt": 0}
     for path in files:
         out = subprocess.run([DXFDUMP, "--rebuild", path], capture_output=True, text=True).stdout

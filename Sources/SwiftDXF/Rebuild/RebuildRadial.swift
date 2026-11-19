@@ -15,8 +15,11 @@ extension DXF.DimensionRebuilder {
             max: DXF.Point2(text.center.x + reach, text.center.y + reach))
         let nearby = pieces.segmentGrid.query(window)
         var candidates: [DXF.RebuildCandidate] = []
-        for (ci, circle) in pieces.circles.enumerated()
-        where circle.center.distance(to: text.center) <= circle.radius + reach {
+        for ci in pieces.circleGrid.query(window) {
+            let circle = pieces.circles[ci]
+            guard circle.center.distance(to: text.center) <= circle.radius + reach else {
+                continue
+            }
             for s in nearby {
                 let segment = pieces.segments[s]
                 guard options.pieceLayers == .any || segment.layer == text.layer else { continue }

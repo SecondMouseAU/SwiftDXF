@@ -85,15 +85,20 @@ extension DXF {
             var explained:
                 [(candidate: RebuildCandidate, reading: DimensionRebuild.Value.Reading)] =
                     []
+            var fit: [Double] = []
             for (ti, text) in pieces.texts.enumerated() {
                 guard let scale = scaleOfGroup[Self.group(of: text.layer)] else { continue }
                 for candidate in candidates[ti] {
                     if let reading = explains(candidate, at: scale) {
                         explained.append((candidate, reading))
+                        // Nearness and how far the length is from the length of the value: of
+                        // two spans that fit within a unit, the one that fits better.
+                        fit.append(
+                            candidate.cost + abs(candidate.length - reading.value / scale))
                     }
                 }
             }
-            explained.sort { $0.candidate.cost < $1.candidate.cost }
+            explained = explained.indices.sorted { fit[$0] < fit[$1] }.map { explained[$0] }
             var usedTexts = Set<Int>()
             var chosen: [(candidate: RebuildCandidate, reading: DimensionRebuild.Value.Reading)] =
                 []

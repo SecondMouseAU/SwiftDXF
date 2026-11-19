@@ -122,16 +122,34 @@ struct CodePageTests {
         #expect(lines.count == 2 && lines[1] == "\u{65E5}")
     }
 
-    @Test("a UTF-8 file of R2007 or later with a stray byte is still UTF-8")
+    @Test("a file of R2007 or later is UTF-8 with a stray byte, and one of R2004 is not")
     func strayByteInUTF8() throws {
-        var builder = DXFBuilder()
-        builder.codePage = "ANSI_1252"
-        builder.entities = [DXFBuilder.text("caf@@"), DXFBuilder.text("##")]
-        var data = Data(builder.text().utf8)
-        data.replaceSubrange(data.range(of: Data("@@".utf8))!, with: [0xC3, 0xA9])
-        data.replaceSubrange(data.range(of: Data("##".utf8))!, with: [0x81])
-        let strings = Self.strings(try DXF.read(data: data))
-        #expect(strings.count == 2 && strings[0] == "caf\u{E9}")
+        func strings(version: String) throws -> [String] {
+            var builder = DXFBuilder()
+            builder.version = version
+            builder.codePage = "ANSI_1252"
+            builder.entities = [DXFBuilder.text("caf@@"), DXFBuilder.text("##")]
+            var data = Data(builder.text().utf8)
+            data.replaceSubrange(data.range(of: Data("@@".utf8))!, with: [0xC3, 0xA9])
+            data.replaceSubrange(data.range(of: Data("##".utf8))!, with: [0x81])
+            return Self.strings(try DXF.read(data: data))
+        }
+        for version in ["AC1021", "AC1024", "AC1027", "AC1032"] {
+            let read = try strings(version: version)
+            #expect(read.count == 2 && read[0] == "caf\u{E9}", "\(version)")
+        }
+        // R2004 and before are in the code page: the two bytes of the UTF-8 `é` are two characters.
+        for version in ["AC1018", "AC1015", "AC1009"] {
+            let read = try strings(version: version)
+            #expect(read.count == 2 && read[0] == "caf\u{C3}\u{A9}", "\(version)")
+        }
+    }
+
+    @Test("a name is a code page only if it is ANSI_ and digits")
+    func strictNames() {
+        for name in ["ANSI_+932", "ANSI_0932", "ANSI_９３２", "ANSI_ 932", "ANSI_93 2"] {
+            #expect(Self.page(name) == nil, "\(name)")
+        }
     }
 
     @Test("valid UTF-8 is UTF-8 whatever the header names, and the page is still read")

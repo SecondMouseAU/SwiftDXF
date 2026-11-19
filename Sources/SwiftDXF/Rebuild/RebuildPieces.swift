@@ -49,7 +49,11 @@ extension DXF {
         var segments: [Segment] = []
         var circles: [Circle] = []
         var marks: [Mark] = []
+        /// The entities that are a closed arrowhead, whose edges are not extension lines.
+        var arrowheads = Set<Int>()
         var segmentGrid = Grid(cell: 1)
+        /// The circles and arcs by their boxes.
+        var circleGrid = Grid(cell: 1)
         /// The distance within which two pieces meet.
         var tolerance = 0.0
         /// The largest extent of a mark.
@@ -183,6 +187,7 @@ extension DXF {
             }
 
             segmentGrid = Grid(cell: 10 * median)
+            circleGrid = Grid(cell: 10 * median)
             var small: [(entity: Int, box: Box2, layer: String)] = []
             for (index, entity) in drawing.entities.enumerated() {
                 switch entity {
@@ -200,6 +205,7 @@ extension DXF {
                     }
                     if closed, let apex = Self.arrowTip(vertices, within: markSize) {
                         marks.append(Mark(at: apex, entities: [index], layer: layer))
+                        arrowheads.insert(index)
                     } else {
                         noteSmall(&small, index, points, layer)
                     }
@@ -227,6 +233,15 @@ extension DXF {
                 }
             }
             addClusters(of: small)
+            for (i, circle) in circles.enumerated() {
+                circleGrid.insert(
+                    i,
+                    Box2(
+                        min: Point2(
+                            circle.center.x - circle.radius, circle.center.y - circle.radius),
+                        max: Point2(
+                            circle.center.x + circle.radius, circle.center.y + circle.radius)))
+            }
         }
 
         /// The numbers of a string such as `200 629`, with the character each starts at.

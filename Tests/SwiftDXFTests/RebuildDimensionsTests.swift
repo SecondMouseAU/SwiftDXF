@@ -133,6 +133,23 @@ struct RebuildDimensionsTests {
         #expect(!locators.contains("ENTITIES:3"), "the extension line of the other end")
     }
 
+    @Test("open arrowheads beside the extension lines do not shorten the dimension")
+    func openArrowheads() throws {
+        // Extension lines at 0, 16, 28 and 37, arrowheads of two lines 1.75 long at each end of
+        // each span, and the last text 0.7 off its centre: each length is exact.
+        var records = Self.chain(scale: 1, lengths: [16, 12, 9])
+        for (x, inward) in [(0.0, 1.0), (16, -1), (16, 1), (28, -1), (28, 1), (37, -1)] {
+            records.append(Self.line((x, -10), (x + inward * 1.75, -9.7)))
+            records.append(Self.line((x, -10), (x + inward * 1.75, -10.3)))
+        }
+        records[records.count - 13] = Self.text("9", 31.9 + 0.7, -9.5)
+        let (_, result) = try Self.rebuild(records)
+        #expect(result.dimensions.map(\.textOverride) == ["16", "12", "9"])
+        let lengths = result.dimensions.compactMap(\.measurement)
+        #expect(
+            lengths.count == 3 && zip(lengths, [16.0, 12, 9]).allSatisfy { abs($0 - $1) < 1e-9 })
+    }
+
     @Test("a vertical dimension has a vertical text and a rotation of 90")
     func vertical() throws {
         let (_, result) = try Self.rebuild([

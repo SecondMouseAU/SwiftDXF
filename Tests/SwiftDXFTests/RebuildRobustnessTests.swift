@@ -202,6 +202,16 @@ struct RebuildRobustnessTests {
         #expect(Date().timeIntervalSince(start) < 30)
     }
 
+    @Test("a long dashed line with labels along it does not cost the square of its dashes")
+    func dashedLine() throws {
+        var records: [Record] = []
+        for k in 0..<1500 { records.append(Rebuild.line((Double(k), -10), (Double(k) + 0.8, -10))) }
+        for k in 0..<60 { records.append(Rebuild.text("\(100 + k)", Double(k) * 25, -9.5)) }
+        let start = Date()
+        _ = try Rebuild.rebuild(records)
+        #expect(Date().timeIntervalSince(start) < 20)
+    }
+
     @Test("a value written in an MTEXT is read as one in a TEXT")
     func mtextValue() throws {
         let records = Rebuild.chain(scale: 50, lengths: [20, 30, 15]).map { record -> Record in
