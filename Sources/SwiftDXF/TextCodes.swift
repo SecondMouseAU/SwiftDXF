@@ -17,7 +17,7 @@ extension DXF {
         /// The tokens of `raw`, reading `%%nnn` through `codePage`, or as a Unicode code point when
         /// it is `nil`.
         static func tokens(
-            _ raw: String, syntax: TextContent.Syntax, codePage: CodePage?
+            _ raw: String, syntax: TextContent.Syntax, codePage: CodePage? = nil
         ) -> [Token] {
             var scanner = Scanner(
                 Array(raw.unicodeScalars), mtext: syntax == .mtext, codePage: codePage)
@@ -68,6 +68,13 @@ extension DXF {
 
             func string(_ range: Range<Int>) -> String {
                 String(String.UnicodeScalarView(s[range]))
+            }
+
+            /// How many ASCII hex digits, up to four, start at `k`.
+            func hexDigits(from k: Int) -> Int {
+                var n = 0
+                while n < 4, let c = at(k + n), c.properties.isASCIIHexDigit { n += 1 }
+                return n
             }
 
             mutating func emit(_ token: Token) {
@@ -126,7 +133,12 @@ extension DXF {
                 case "\\":
                     guard at(k + 2) == "+" else { return nil }
                     if at(k + 1) == "M" { return multibyteCharacter(at: k) }
-                    guard let value = unicodeEscape(at: k) else { return nil }
+                    guard at(k + 1) == "U" else { return nil }
+                    let count = hexDigits(from: k + 3)
+                    guard count == 4, let value = unicodeEscape(at: k) else {
+                        // Short: `\U+` and its hex digits are one code, kept as written.
+                        return (.code(string(k..<(k + 3 + count))), 3 + count)
+                    }
                     if (0xD800...0xDBFF).contains(value), let low = unicodeEscape(at: k + 7),
                         (0xDC00...0xDFFF).contains(low),
                         let scalar = Unicode.Scalar(
@@ -135,6 +147,7 @@ extension DXF {
                         return (.text(String(scalar)), 14)
                     }
                     guard let scalar = Unicode.Scalar(value), Self.canBeShown(scalar) else {
+                        // Not a character that can be shown: kept as written.
                         return (.code(string(k..<(k + 7))), 7)
                     }
                     return (.text(String(scalar)), 7)
@@ -167,12 +180,9 @@ extension DXF {
 
             /// The value of the `\U+XXXX` escape that starts at `j`, or `nil` when none does.
             func unicodeEscape(at j: Int) -> UInt32? {
-                guard at(j) == "\\", at(j + 1) == "U", at(j + 2) == "+", j + 7 <= s.count else {
-                    return nil
-                }
-                let hex = string((j + 3)..<(j + 7))
-                guard hex.allSatisfy(\.isHexDigit) else { return nil }
-                return UInt32(hex, radix: 16)
+                guard at(j) == "\\", at(j + 1) == "U", at(j + 2) == "+", hexDigits(from: j + 3) == 4
+                else { return nil }
+                return UInt32(string((j + 3)..<(j + 7)), radix: 16)
             }
 
             /// `\M+nXXXX`: the character whose bytes XXXX are in a multibyte code page.
@@ -181,11 +191,11 @@ extension DXF {
             /// when the page is not read, the bytes are not valid in it, or the character cannot
             /// be shown, and `nil` when the text is too short to hold one.
             func multibyteCharacter(at k: Int) -> (Piece, Int)? {
-                guard k + 8 <= s.count, string((k + 3)..<(k + 8)).allSatisfy(\.isHexDigit) else {
-                    return nil
-                }
+                guard let digit = at(k + 3), ("1"..."5").contains(digit),
+                    hexDigits(from: k + 4) == 4
+                else { return nil }
                 let kept = (Piece.code(string(k..<(k + 8))), 8)
-                guard let n = Int(String(s[k + 3])), let page = CodePage.multibyte(n),
+                guard let n = Int(String(digit)), let page = CodePage.multibyte(n),
                     let bytes = UInt16(string((k + 4)..<(k + 8)), radix: 16),
                     let text = page.decode([UInt8(bytes >> 8), UInt8(bytes & 0xFF)]),
                     Self.canBeShown(text)

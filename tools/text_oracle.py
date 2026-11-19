@@ -26,6 +26,9 @@ differently in the two before any code is decoded. ezdxf leaves a surrogate pair
 `\\U+` escapes as two code points; the oracle joins them, as SwiftDXF does. ezdxf does not decode
 `%%nnn`, which SwiftDXF reads through the drawing's code page.
 
+A string ezdxf fails to parse gets an entry with an `error` in place of `plain` and `stacks`, so
+the run goes on and the diff shows it.
+
 Requires: pip install ezdxf
 """
 import json
@@ -37,26 +40,34 @@ from ezdxf import recover
 from ezdxf.tools.text import MTextParser, TokenType, plain_text
 
 KINDS = {"^": "tolerance", "/": "fraction", "#": "diagonalFraction"}
-DIAMETER = re.compile("%%[cC]")
+# A `%%` code with its character, read left to right as ezdxf reads them, so `%%%c` is `%%%`
+# then `c`, not `%` then `%%c`.
+SPECIAL = re.compile("%%(.)")
+
+
+def diameter(text):
+    """`text` with each `%%c` written as the diameter sign U+2300."""
+    return SPECIAL.sub(lambda m: "\u2300" if m.group(1) in "cC" else m.group(0), text)
 
 
 def mtext(raw):
     """The plain text and stacks of an MTEXT string, from ezdxf's tokens."""
     out = ""
     stacks = []
-    for token in MTextParser(DIAMETER.sub("⌀", raw)):
+    for token in MTextParser(diameter(raw)):
         t = token.type
         if t == TokenType.WORD:
             out += token.data
         elif t == TokenType.SPACE:
             out += " "
         elif t == TokenType.NBSP:
-            out += " "
+            out += "\u00a0"
         elif t == TokenType.TABULATOR:
             out += "\t"
         elif t in (TokenType.NEW_PARAGRAPH, TokenType.NEW_COLUMN, TokenType.WRAP_AT_DIMLINE):
             out += "\n"
         elif t == TokenType.STACK:
+            # ezdxf always builds this as (upper, lower, divider); see MTextParser.parse_stacking.
             upper, lower, divider = token.data
             stacks.append([upper, lower, KINDS.get(divider, divider)])
             if out and not out[-1].isspace():
@@ -82,18 +93,21 @@ def summarize(path):
     texts = []
     for e in doc.modelspace():
         kind = e.dxftype()
-        if kind == "TEXT":
-            texts.append({
-                "type": "TEXT", "plain": joined(plain_text(DIAMETER.sub("⌀", e.dxf.text))),
-                "stacks": []})
-        elif kind == "MTEXT":
-            plain, stacks = mtext(e.text)
+        if kind not in ("TEXT", "MTEXT", "DIMENSION"):
+            continue
+        if kind == "DIMENSION" and not e.dxf.get("text", ""):
+            continue
+        try:
+            if kind == "TEXT":
+                plain, stacks = plain_text(diameter(e.dxf.text)), []
+            else:
+                plain, stacks = mtext(e.text if kind == "MTEXT" else e.dxf.text)
             texts.append(
-                {"type": "MTEXT", "plain": joined(plain), "stacks": joined_stacks(stacks)})
-        elif kind == "DIMENSION" and e.dxf.get("text", ""):
-            plain, stacks = mtext(e.dxf.text)
-            texts.append(
-                {"type": "DIMENSION", "plain": joined(plain), "stacks": joined_stacks(stacks)})
+                {"type": kind, "plain": joined(plain), "stacks": joined_stacks(stacks)})
+        except Exception as exc:  # noqa: BLE001
+            # ezdxf failed on this string (1.4.5 raises TypeError on `\S1/2\`). The entry
+            # says so, and shows up in the diff, instead of ending the run.
+            texts.append({"type": kind, "error": f"{type(exc).__name__}: {exc}"})
     return {"file": os.path.basename(path), "texts": texts}
 
 

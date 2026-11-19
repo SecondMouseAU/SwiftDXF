@@ -46,7 +46,9 @@ extension DXF {
         public static func number(_ part: String) -> Double? {
             let text = part.trimmingCharacters(in: .whitespaces)
                 .replacingOccurrences(of: "\u{2212}", with: "-")
-            // `Double` also reads `1e3`, `inf` and `0x10`, which are not deviations.
+            // Only signs, digits and decimal marks pass here, as `Double` also reads `1e3`, `inf`
+            // and `0x10`, which are not deviations; `Double` then rejects them in any order other
+            // than the one described, such as `+-1` or `1.2.3`.
             guard text.allSatisfy({ $0.isASCII && ($0.isNumber || "+-.,".contains($0)) }) else {
                 return nil
             }

@@ -190,8 +190,8 @@ struct CodePageTests {
             DXF.DimensionText("\\M+193FA<>").parts == [.words("\u{65E5}"), .measurement])
         // The digits of a character that was read are not a typed number.
         #expect(DXF.DimensionText("\\M+18342 5").typedNumbers == [5])
-        // The digits of a code kept as written are not typed numbers either.
-        #expect(DXF.DimensionText("\\M+68342 5").typedNumbers == [5])
+        // The digits of a code kept as written (Johab is not decoded) are not typed numbers either.
+        #expect(DXF.DimensionText("\\M+48342 5").typedNumbers == [5])
     }
 
     // MARK: %%nnn
