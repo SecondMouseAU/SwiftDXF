@@ -46,8 +46,8 @@ extension DXF {
             /// How far apart two pieces may be and still meet, in drawing units.
             ///
             /// A length may differ from the stated value by twice that, times the scale, as well as
-            /// by the rounding of the value. `nil`, and anything but a positive number, takes 3%
-            /// of the height of the value texts.
+            /// by the rounding of the value. `nil`, a number that is not positive, and one above
+            /// 1e12 take 3% of the height of the value texts.
             public var tolerance: Double?
             /// Which pieces may belong to a value text.
             public var pieceLayers: PieceLayers
@@ -147,7 +147,11 @@ extension DXF {
             let before = drawing.entities.count
             var newIdentities = (0..<before).map { drawing.identity(ofEntityAt: $0) }
             out.entities = drawing.entities + dimensions.map { .dimension($0) }
-            let held = newIdentities.filter { $0.locator.hasPrefix("REBUILT:") }.count
+            let held =
+                newIdentities.compactMap {
+                    $0.locator.hasPrefix("REBUILT:")
+                        ? Int($0.locator.dropFirst("REBUILT:".count)) : nil
+                }.max().map { $0 + 1 } ?? 0
             for n in dimensions.indices {
                 newIdentities.append(Identity(locator: "REBUILT:\(held + n)"))
             }

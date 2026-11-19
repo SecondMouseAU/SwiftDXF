@@ -350,12 +350,24 @@ public enum DXF {
         if let s = String(data: data, encoding: .utf8) { return s }
         // R2007 and later write UTF-8 whatever `$DWGCODEPAGE` says, so a stray byte is one
         // character lost and not a reason to read the file in a code page.
-        if let version = headerVersion(in: data), version >= "AC1021" {
+        if let version = headerVersion(in: data), Self.isUTF8Version(version) {
             return String(decoding: data, as: UTF8.self)
         }
         let page = headerCodePage(in: data) ?? .shiftJIS
         let bytes = [UInt8](data)
         return page.decode(bytes) ?? page.decodeLines(bytes)
+    }
+
+    /// Whether `version` (`$ACADVER`, such as `AC1032`) is R2007 or later, which is UTF-8.
+    ///
+    /// Only `AC` and four digits count: an older name such as `AC2.10` is not.
+    static func isUTF8Version(_ version: String) -> Bool {
+        let digits = version.dropFirst(2)
+        guard version.hasPrefix("AC"), digits.count == 4,
+            digits.allSatisfy({ $0.isASCII && $0.isNumber }),
+            let number = Int(digits)
+        else { return false }
+        return number >= 1021
     }
 
     /// Decode CP932 (Shift-JIS / Windows-31J) bytes to a Swift String, via CoreFoundation on Apple

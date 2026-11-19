@@ -54,6 +54,8 @@ extension DXF {
         var segmentGrid = Grid(cell: 1)
         /// The circles and arcs by their boxes.
         var circleGrid = Grid(cell: 1)
+        /// The marks by their places.
+        var markGrid = Grid(cell: 1)
         /// The distance within which two pieces meet.
         var tolerance = 0.0
         /// The largest extent of a mark.
@@ -70,6 +72,8 @@ extension DXF {
             init(cell: Double) { self.cell = cell > 0 && cell.isFinite ? cell : 1 }
 
             /// A cell index for `value`, bounded so that a huge value cannot overflow.
+            static func cellIndex(_ value: Double) -> Int { index(value) }
+
             private static func index(_ value: Double) -> Int {
                 guard !value.isNaN else { return 0 }
                 return Int(max(-2e9, min(2e9, value.rounded(.down))))
@@ -169,10 +173,19 @@ extension DXF {
                     ?? 0.03 * median, 1e-9)
             markSize = 2 * median
 
+            // The same text is the same string on the same layer within the tolerance, so it is
+            // looked for in the cell of its place and the cells around it.
             var seen: [String: [Int]] = [:]
+            let size = max(4 * tolerance, 1e-9)
+            func key(_ text: Text, _ dx: Int, _ dy: Int) -> String {
+                let x = Grid.cellIndex(text.center.x / size) + dx
+                let y = Grid.cellIndex(text.center.y / size) + dy
+                return "\(text.layer)\u{0}\(text.string)\u{0}\(x),\(y)"
+            }
             for (_, text) in rawTexts {
-                let key = text.layer + "\u{0}" + text.string
-                if let first = seen[key]?.first(where: {
+                let near = (-1...1).flatMap { dx in (-1...1).map { dy in key(text, dx, dy) } }
+                let held = near.flatMap { seen[$0] ?? [] }
+                if let first = held.first(where: {
                     texts[$0].center.distance(to: text.center) <= tolerance
                 }) {
                     if !texts[first].duplicates.contains(text.entity),
@@ -181,13 +194,14 @@ extension DXF {
                         texts[first].duplicates.append(text.entity)
                     }
                 } else {
-                    seen[key, default: []].append(texts.count)
+                    seen[key(text, 0, 0), default: []].append(texts.count)
                     texts.append(text)
                 }
             }
 
             segmentGrid = Grid(cell: 10 * median)
             circleGrid = Grid(cell: 10 * median)
+            markGrid = Grid(cell: 10 * median)
             var small: [(entity: Int, box: Box2, layer: String)] = []
             for (index, entity) in drawing.entities.enumerated() {
                 switch entity {
@@ -233,6 +247,9 @@ extension DXF {
                 }
             }
             addClusters(of: small)
+            for (i, mark) in marks.enumerated() {
+                markGrid.insert(i, Box2(min: mark.at, max: mark.at))
+            }
             for (i, circle) in circles.enumerated() {
                 circleGrid.insert(
                     i,

@@ -495,6 +495,7 @@ struct RebuildDimensionsTests {
         #expect(out.identity(ofEntityAt: dwg.entities.count).locator == "REBUILT:0")
         #expect(out.identity(ofEntityAt: 0) == dwg.identity(ofEntityAt: 0))
         #expect(out.textContents.count == out.entities.count)
+        #expect(out.entityLineTypes.count == out.entities.count)
         #expect(out.textContent(ofEntityAt: records.count - 1)?.raw == "1500")
         guard case .dimension(let added) = out.entities[dwg.entities.count] else {
             Issue.record("not a dimension")

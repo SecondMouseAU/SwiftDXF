@@ -162,8 +162,10 @@ extension DXF.DimensionRebuilder {
                 ends.append(End(t: position, exact: [position], entities: [other.entity]))
             }
         }
-        for mark in pieces.marks where sameLayer(mark.layer, as: text) {
-            guard perp(mark.at) <= 2 * tol, covered(t(mark.at)) else { continue }
+        for m in pieces.markGrid.query(wide) {
+            let mark = pieces.marks[m]
+            guard sameLayer(mark.layer, as: text), perp(mark.at) <= 2 * tol, covered(t(mark.at))
+            else { continue }
             ends.append(End(t: t(mark.at), marked: [t(mark.at)], entities: mark.entities))
         }
         guard ends.count >= 2 else { return [] }

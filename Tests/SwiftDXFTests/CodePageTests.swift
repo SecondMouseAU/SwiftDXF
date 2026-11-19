@@ -109,6 +109,8 @@ struct CodePageTests {
         data.replaceSubrange(data.range(of: Data("@@".utf8))!, with: [0xE9])
         let strings = Self.strings(try DXF.read(data: data))
         #expect(strings.count == 3)
+        // The stray byte is one lost character, and the other lines are read in the page.
+        #expect(strings[0] == "\u{FFFD}")
         #expect(strings[1] == "caf\u{E9}" && strings[2] == "\u{E9}\u{20AC}")
         // The same for a multibyte page: a lone lead byte is one character lost.
         var japanese = DXFBuilder()
@@ -119,7 +121,7 @@ struct CodePageTests {
         sjis.replaceSubrange(sjis.range(of: Data("##".utf8))!, with: [0x81])
         sjis.replaceSubrange(sjis.range(of: Data("@@".utf8))!, with: [0x93, 0xFA])
         let lines = Self.strings(try DXF.read(data: sjis))
-        #expect(lines.count == 2 && lines[1] == "\u{65E5}")
+        #expect(lines.count == 2 && lines[0] == "\u{FFFD}" && lines[1] == "\u{65E5}")
     }
 
     @Test("a file of R2007 or later is UTF-8 with a stray byte, and one of R2004 is not")
@@ -142,6 +144,16 @@ struct CodePageTests {
         for version in ["AC1018", "AC1015", "AC1009"] {
             let read = try strings(version: version)
             #expect(read.count == 2 && read[0] == "caf\u{C3}\u{A9}", "\(version)")
+        }
+    }
+
+    @Test("only AC and four digits from 1021 are a version that is UTF-8")
+    func utf8Versions() {
+        for version in ["AC1021", "AC1024", "AC1027", "AC1032", "AC1100"] {
+            #expect(DXF.isUTF8Version(version), "\(version)")
+        }
+        for version in ["AC1018", "AC1015", "AC1009", "AC2.10", "AC2.21", "AC2.22", "AC10", ""] {
+            #expect(!DXF.isUTF8Version(version), "\(version)")
         }
     }
 

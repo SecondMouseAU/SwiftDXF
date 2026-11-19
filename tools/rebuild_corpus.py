@@ -21,9 +21,9 @@ def real_dimensions(path):
     """The count of DIMENSION entities, by the entity digest of `dxfdump`."""
     out = subprocess.run([DXFDUMP, path], capture_output=True, text=True).stdout
     try:
-        return json.loads(out.splitlines()[0]).get("counts", {}).get("DIMENSION", 0)
-    except (IndexError, ValueError):
-        return 0
+        return json.loads(out.splitlines()[0])["counts"]["DIMENSION"]
+    except (IndexError, ValueError, KeyError):
+        return None
 
 
 if __name__ == "__main__":
@@ -43,16 +43,26 @@ if __name__ == "__main__":
     )
     if not files:
         sys.exit(f"no .dxf files under {args[0]}")
-    totals = {"files": 0, "rebuilt": 0, "with_real_dimensions": 0, "real_that_rebuilt": 0}
+    totals = {
+        "files": 0, "rebuilt": 0, "with_real_dimensions": 0, "real_that_rebuilt": 0, "failed": 0,
+    }
     for path in files:
         out = subprocess.run([DXFDUMP, "--rebuild", path], capture_output=True, text=True).stdout
         try:
             result = json.loads(out.splitlines()[0])
+            if "error" in result:
+                raise ValueError(result["error"])
         except (IndexError, ValueError):
+            totals["failed"] += 1
+            print(f"{path}\tFAILED (dxfdump --rebuild gave no result)")
+            continue
+        real = real_dimensions(path)
+        if real is None:
+            totals["failed"] += 1
+            print(f"{path}\tFAILED (dxfdump gave no digest)")
             continue
         totals["files"] += 1
         rebuilt = len(result.get("dimensions", []))
-        real = real_dimensions(path)
         totals["rebuilt"] += rebuilt
         if real:
             totals["with_real_dimensions"] += 1
@@ -65,3 +75,4 @@ if __name__ == "__main__":
             )
             print(f"{path}\treal={real}\trebuilt={rebuilt}\twarnings={warnings}\t{scales}")
     print(totals)
+    sys.exit(1 if totals["failed"] else 0)

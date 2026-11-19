@@ -145,6 +145,22 @@ struct RebuildRobustnessTests {
         #expect(any.dimensions.map(\.kind) == [.diameter, .diameter])
     }
 
+    @Test("identities are numbered on from the highest the drawing holds")
+    func identitiesFromTheHighest() throws {
+        let (dwg, result) = try Rebuild.rebuild(Rebuild.chain(scale: 50, lengths: [20, 30, 15]))
+        var held = result.applied(to: dwg)
+        // A drawing that holds REBUILT:1 and REBUILT:2 only.
+        held.identities = (0..<held.entities.count).map {
+            let identity = held.identity(ofEntityAt: $0)
+            return identity.locator == "REBUILT:0" ? .init(locator: "ENTITIES:99") : identity
+        }
+        let more = result.applied(to: held)
+        let locators = (0..<more.entities.count).map { more.identity(ofEntityAt: $0).locator }
+            .filter { $0.hasPrefix("REBUILT:") }
+        #expect(Set(locators).count == locators.count)
+        #expect(locators.suffix(3) == ["REBUILT:3", "REBUILT:4", "REBUILT:5"])
+    }
+
     @Test("applying a result twice does not repeat the identities")
     func appliedTwice() throws {
         let (dwg, result) = try Rebuild.rebuild(Rebuild.chain(scale: 50, lengths: [20, 30, 15]))
