@@ -409,9 +409,10 @@ It starts from each text that states a number and works out the rest, like Swift
 On Jw_cad's own DXF export of the 2120 it gives all 29 dimensions at 1:80 with all 29 supporting,
 the same values SwiftJWW gives for the JWW. So it does for a DXF of the JWW's loose pieces, and for
 the PDF through OCCTSwiftPDF, whose positions are noisy to about 0.1 mm: 29 at 1:80 (the least
-squares scale is 80.04). Over 2,855 DXF files on one machine it rebuilt nothing from the 57
-McMaster-Carr drawings with real dimensions, and found scale 1:80 in the other Jw_cad railway
-drawings.
+squares scale is 80.04). Over 2,855 DXF files on one machine, the 38 that have real
+dimensions (22 of them McMaster-Carr sheets) gained none, 35 of them with no warning and 3 with
+warnings for numbers beside lines, and the other Jw_cad railway drawings (`dd12`,
+`ka2000`, `tmf1`, `to1`) found 1:80.
 
 It is an inference. It does not rebuild angular or ordinate dimensions, a text on a dimension
 line that is not beside it (a leader), or two scales in one layer group; an arrowhead drawn as a
