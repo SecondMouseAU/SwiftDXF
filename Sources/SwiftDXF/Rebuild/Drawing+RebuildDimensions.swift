@@ -2,18 +2,11 @@ import Foundation
 
 extension DXF.Drawing {
     /// Rebuilds dimensions from the loose pieces of the drawing: value texts, dimension lines,
-    /// extension lines, and the marks at their ends.
+    /// extension lines and end marks.
     ///
-    /// For each text that states a number, it finds the dimension line beside it and the ends of
-    /// the span, or the circle or arc it dimensions, and infers the scale of each layer group from
-    /// the values against the drawn lengths. A scale counts only when it is credible (see the
-    /// README: three values and more than it leaves, or two that are all the group's), and a group that
-    /// disagrees with another is reported, not averaged. A diameter
-    /// or radius is read from the geometry, not from its symbol; a symbol that disagrees is
-    /// reported.
-    ///
-    /// A drawing with `DIMENSION` entities and no loose pieces gets nothing. Read a drawing with
-    /// ``ReadOptions/expandBlocks`` when its pieces are in blocks.
+    /// Each text that states a number is matched to the dimension line, circle or arc beside it,
+    /// and each layer group gets the scale its values agree on. See ``DimensionRebuild``, and the
+    /// README for what counts as a credible scale.
     public func rebuildingDimensions(_ options: DXF.DimensionRebuild.Options = .init())
         -> DXF.DimensionRebuild
     {

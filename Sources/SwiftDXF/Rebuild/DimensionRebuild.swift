@@ -45,8 +45,9 @@ extension DXF {
             public var scale: Double?
             /// How far apart two pieces may be and still meet, in drawing units.
             ///
-            /// A length may be off by twice that at each end. `nil`, and anything but a positive
-            /// number, takes 3% of the height of the value texts.
+            /// A length may differ from the stated value by twice that, times the scale, as well as
+            /// by the rounding of the value. `nil`, and anything but a positive number, takes 3%
+            /// of the height of the value texts.
             public var tolerance: Double?
             /// Which pieces may belong to a value text.
             public var pieceLayers: PieceLayers

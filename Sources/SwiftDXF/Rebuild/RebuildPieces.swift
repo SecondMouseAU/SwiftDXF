@@ -67,11 +67,13 @@ extension DXF {
 
             /// A cell index for `value`, bounded so that a huge value cannot overflow.
             private static func index(_ value: Double) -> Int {
-                Int(max(-2e9, min(2e9, value.rounded(.down))))
+                guard !value.isNaN else { return 0 }
+                return Int(max(-2e9, min(2e9, value.rounded(.down))))
             }
 
             private func range(_ lo: Double, _ hi: Double) -> ClosedRange<Int> {
-                Self.index(lo / cell)...Self.index(hi / cell)
+                let (a, b) = (Self.index(lo / cell), Self.index(hi / cell))
+                return min(a, b)...max(a, b)
             }
 
             private static func key(_ x: Int, _ y: Int) -> Int64 {
@@ -118,7 +120,7 @@ extension DXF {
             for (index, entity) in drawing.entities.enumerated() {
                 guard
                     case .text(let at, let height, let rotation, let string, let layer, let color) =
-                        entity, height > 0, height.isFinite, Self.usable(at.x, at.y, rotation)
+                        entity, height > 0, Self.usable(height, at.x, at.y, rotation)
                 else { continue }
                 guard !rebuiltPieces.contains(drawing.identity(ofEntityAt: index)) else { continue }
                 let content = drawing.textContent(ofEntityAt: index)
@@ -157,9 +159,10 @@ extension DXF {
             }
             heights.sort()
             let median = heights.isEmpty ? 1 : heights[heights.count / 2]
-            // A tolerance that is not a positive number is the default, not a crash.
+            // A tolerance that is not a positive number, or is absurd, is the default.
             tolerance = max(
-                requested.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0.03 * median, 1e-9)
+                requested.flatMap { $0.isFinite && $0 > 0 && $0 <= Self.limit ? $0 : nil }
+                    ?? 0.03 * median, 1e-9)
             markSize = 2 * median
 
             var seen: [String: [Int]] = [:]

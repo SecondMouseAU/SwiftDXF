@@ -66,9 +66,16 @@ extension DXF.DimensionRebuilder {
         guard abs(p.distance(to: circle.center) - circle.radius) <= tol else { return false }
         guard let span = circle.span else { return true }
         let degrees = atan2(p.y - circle.center.y, p.x - circle.center.x) * 180 / .pi
+        // The sweep from start to end, counter-clockwise, and 360 for a whole circle. A
+        // `SegmentExtractor` segment is a chord and a bulge, which does not answer where on the
+        // arc an angle is.
+        func turn(_ angle: Double) -> Double {
+            let wrapped = angle.truncatingRemainder(dividingBy: 360)
+            return wrapped < 0 ? wrapped + 360 : wrapped
+        }
         let raw = span.end - span.start
-        let sweep = raw >= 360 - 1e-9 ? 360 : (raw + 720).truncatingRemainder(dividingBy: 360)
-        let from = (degrees - span.start + 720).truncatingRemainder(dividingBy: 360)
+        let sweep = raw >= 360 - 1e-9 ? 360 : turn(raw)
+        let from = turn(degrees - span.start)
         // Allow for the tolerance on either side of the ends of the arc.
         let slack = tol / max(circle.radius, 1e-9) * 180 / .pi
         return from <= sweep + slack || from >= 360 - slack

@@ -364,7 +364,7 @@ It starts from each text that states a number and works out the rest, like Swift
   lies on it. An extension line gives the exact place; a mark is used where there is none. A
   dimension is a span between two ends that the line covers, near the text, with at most two
   other ends inside it (an arrowhead has a base) or the whole line. `Options(tolerance:)` is how far apart pieces may be and still meet, 3% of the
-  text height by default; a length may be off by twice that at each end.
+  text height by default; a length may differ from its value by twice that, times the scale.
 - **Scale.** Every candidate span and reading implies a scale, the value over the length. The scale
   that explains the most texts is refined to the least-squares scale of the ones it explains, and
   made a round scale (80, 1/2) when it is within what the values can tell apart. Each layer group
@@ -454,10 +454,10 @@ entities actually read.
   `ANSI_1250` to `ANSI_1258`; `Drawing.codePage` says which), or in **CP932 / Shift-JIS** when it
   names none or one that is not read (`DOS437`, `ISO8859-1`, `ANSI_1361`): the common code page
   for DXF exported by Japanese CAD tools (e.g. Jw_cad). Each is an ASCII superset, so the
-  group-code structure is unaffected. A byte its page cannot decode is shown as
-  U+FFFD, and the rest of the file is still read in the page. Without CoreFoundation, only Shift-JIS and `ANSI_1250` to `ANSI_1254` are
-  decoded. The codes inside text are decoded through the same code page; see
-  *Text*.
+  group-code structure is unaffected. A byte its page cannot decode is shown as U+FFFD, and the
+  rest of the file is still read in the page. Without CoreFoundation, only Shift-JIS and
+  `ANSI_1250` to `ANSI_1254` are decoded. The codes inside text are decoded too, and `%%nnn`
+  through the code page when the header names one; see *Text*.
 - **Line endings & padding.** Handles LF / CRLF / CR and R12-style space-padded group codes (`  0`).
 - **Ellipse normalisation.** DXF requires `ratio = minor/major ≤ 1`. Files that emit `ratio > 1`
   (a swapped major axis) are normalised to the canonical form (same curve, valid axis), so consumers
