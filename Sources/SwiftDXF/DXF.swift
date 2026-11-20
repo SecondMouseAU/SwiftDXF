@@ -27,6 +27,9 @@ import Foundation
 /// page `$DWGCODEPAGE` names (``CodePage``), and **CP932 / Shift-JIS** when it names none, for DXF
 /// emitted by Japanese tools such as Jw_cad. The codes inside a text string are decoded too, and
 /// `%%nnn` through the page when the header names one; see ``TextContent``.
+///
+/// The `HEADER` section is in ``Drawing/headerVariables``, with named properties for the
+/// variables that say how to read a drawing's numbers, such as ``Drawing/measurement``.
 public enum DXF {
 
     // MARK: Model
@@ -130,6 +133,38 @@ public enum DXF {
         /// computed ``bounds`` of the entities actually read). `nil` when the header omits them.
         public var extMin: Point?
         public var extMax: Point?
+        /// `$MEASUREMENT` (group 70): `0` for an imperial drawing and `1` for a metric one, or `nil`
+        /// when the file declares none.
+        ///
+        /// It is the file's own answer for a drawing whose ``insUnits`` is `0` or missing.
+        public var measurement: Int?
+        /// `$DIMSTYLE` (group 2): the name of the dimension style that is current, or `nil` when the
+        /// file declares none.
+        ///
+        /// ``currentDimensionStyle`` is its record in ``dimensionStyles``.
+        public var currentDimensionStyleName: String?
+        /// `$DIMSCALE` (group 40): the overall dimension scale, or `nil` when the file declares
+        /// none.
+        ///
+        /// It scales sizes such as text height and arrow size, not the measured value, which
+        /// `$DIMLFAC` scales (``dimensionDefaults``). `0` leaves the scale to the application.
+        public var dimensionScale: Double?
+        /// `$LUNITS` (group 70): the format of linear units, `1` scientific, `2` decimal,
+        /// `3` engineering, `4` architectural or `5` fractional, or `nil` when the file declares
+        /// none.
+        public var linearUnitFormat: Int?
+        /// `$LUPREC` (group 70): the precision of linear units, or `nil` when the file declares
+        /// none.
+        public var linearUnitPrecision: Int?
+        /// Every variable of the `HEADER` section by name (`"$MEASUREMENT"`), each with the
+        /// group-coded values the file writes for it.
+        ///
+        /// It holds the variables this package has no property for, and the ones it does: the
+        /// properties above and ``version``, ``codePage``, ``insUnits``, ``extMin``, ``extMax``
+        /// and ``dimensionDefaults`` were read from it. They are not kept in step with it, so a
+        /// change to one does not change the other. A variable written twice keeps its first
+        /// value, and a drawing with no `HEADER` section has none. See ``HeaderVariable``.
+        public var headerVariables: [String: HeaderVariable]
         /// Unmodelled entity types in the `ENTITIES` section, with a count of each.
         ///
         /// For example `["INSERT": 3, "SOLID": 1]`; empty when nothing was skipped. Skipping is
@@ -163,8 +198,9 @@ public enum DXF {
         public var dimensionStyles: [DimensionStyle]
         /// The dimension variables the header holds (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`).
         ///
-        /// These belong to the style that is current when the file is saved, not to any one
-        /// dimension; see ``styleVariables(of:)``.
+        /// These belong to the style that is current when the file is saved, which
+        /// ``currentDimensionStyleName`` names, not to any one dimension; see
+        /// ``styleVariables(of:)``.
         public var dimensionDefaults: DimensionStyle.Variables
         /// The `INSERT`s of the `ENTITIES` section, whether or not they were expanded.
         ///
@@ -188,7 +224,10 @@ public enum DXF {
             lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = [],
             dimensionDefaults: DimensionStyle.Variables = .init(),
             references: [BlockReference] = [], warnings: [Warning] = [],
-            paperSpace: [String: Int] = [:], codePage: CodePage? = nil
+            paperSpace: [String: Int] = [:], codePage: CodePage? = nil, measurement: Int? = nil,
+            currentDimensionStyleName: String? = nil, dimensionScale: Double? = nil,
+            linearUnitFormat: Int? = nil, linearUnitPrecision: Int? = nil,
+            headerVariables: [String: HeaderVariable] = [:]
         ) {
             self.version = version
             self.codePage = codePage
@@ -210,6 +249,12 @@ public enum DXF {
             self.references = references
             self.warnings = warnings
             self.paperSpace = paperSpace
+            self.measurement = measurement
+            self.currentDimensionStyleName = currentDimensionStyleName
+            self.dimensionScale = dimensionScale
+            self.linearUnitFormat = linearUnitFormat
+            self.linearUnitPrecision = linearUnitPrecision
+            self.headerVariables = headerVariables
         }
 
         /// The identity of the entity at `index` in ``entities``.
