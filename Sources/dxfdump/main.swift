@@ -8,10 +8,15 @@ import SwiftDXF
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
 //   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
 //   dxfdump --texts file.dxf [...]
+//   dxfdump --attributes file.dxf [...]
 //   dxfdump --rebuild [--scale N] file.dxf [...]
 //
 // --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
 // entities flagged as paper space. Both work with the digest and with --contours.
+// --expand-attributes is --expand with the attributes the references carry flattened too, as TEXT.
+// --attributes prints the ATTRIB values of each block reference and the ATTDEF of each block, for
+// diffing against tools/attrib_oracle.py (with --skip-paper-space, as ezdxf's modelspace() reads).
+// It cannot be combined with --contours, --texts or --rebuild.
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
 // --texts prints each TEXT and MTEXT string and each dimension's text override as it reads, with
@@ -208,6 +213,60 @@ func textSummary(for path: String) -> [String: Any] {
     }
 }
 
+/// The attributes of each block reference and the attribute definitions of each block.
+///
+/// Only the references and blocks that have any are listed. With `--skip-paper-space`, as ezdxf's
+/// `modelspace()` reads.
+func attributeSummary(for path: String) -> [String: Any] {
+    let url = URL(fileURLWithPath: path)
+    do {
+        let dwg = try DXF.read(contentsOf: url, options: readOptions)
+        func fields(
+            _ tag: String, _ text: String, _ at: DXF.Point, _ height: Double, _ rotation: Double,
+            _ layer: String, _ flags: DXF.AttributeFlags, _ multiline: Bool,
+            _ identity: DXF.Identity
+        ) -> [String: Any] {
+            [
+                "tag": tag, "text": text, "x": at.x, "y": at.y, "height": height,
+                "rotation": rotation, "layer": layer, "flags": flags.rawValue,
+                "multiline": multiline, "handle": identity.handle ?? NSNull() as Any,
+            ]
+        }
+        func references(_ list: [DXF.BlockReference]) -> [[String: Any]] {
+            list.filter { !$0.attributes.isEmpty }.map { ref in
+                [
+                    "name": ref.name, "handle": ref.identity.handle ?? NSNull() as Any,
+                    "attributes": ref.attributes.map {
+                        fields(
+                            $0.tag, $0.value, $0.position, $0.height, $0.rotation, $0.layer,
+                            $0.flags, $0.isMultiline, $0.identity)
+                    },
+                ]
+            }
+        }
+        let blocks: [[String: Any]] = dwg.blocks.compactMap { block in
+            let nested = references(block.references)
+            guard !nested.isEmpty || !block.attributeDefinitions.isEmpty else { return nil }
+            return [
+                "name": block.name, "references": nested,
+                "definitions": block.attributeDefinitions.map {
+                    var out = fields(
+                        $0.tag, $0.defaultValue, $0.position, $0.height, $0.rotation, $0.layer,
+                        $0.flags, $0.isMultiline, $0.identity)
+                    out["prompt"] = $0.prompt
+                    return out
+                },
+            ]
+        }
+        return [
+            "file": url.lastPathComponent, "references": references(dwg.references),
+            "blocks": blocks,
+        ]
+    } catch {
+        return ["file": url.lastPathComponent, "error": "\(error)"]
+    }
+}
+
 /// The dimensions rebuilt from the loose pieces of the file, what scale they were found at, and
 /// what could not be explained.
 func rebuildSummary(for path: String, options: DXF.DimensionRebuild.Options) -> [String: Any] {
@@ -242,6 +301,11 @@ if let flag = arguments.firstIndex(of: "--expand") {
     arguments.remove(at: flag)
     readOptions.expandBlocks = true
 }
+if let flag = arguments.firstIndex(of: "--expand-attributes") {
+    arguments.remove(at: flag)
+    readOptions.expandBlocks = true
+    readOptions.expandAttributes = true
+}
 if let flag = arguments.firstIndex(of: "--skip-paper-space") {
     arguments.remove(at: flag)
     readOptions.skipPaperSpace = true
@@ -250,6 +314,11 @@ var listTexts = false
 if let flag = arguments.firstIndex(of: "--texts") {
     arguments.remove(at: flag)
     listTexts = true
+}
+var listAttributes = false
+if let flag = arguments.firstIndex(of: "--attributes") {
+    arguments.remove(at: flag)
+    listAttributes = true
 }
 var rebuild = false
 var rebuildOptions = DXF.DimensionRebuild.Options()
@@ -297,17 +366,17 @@ if !rebuild, arguments.contains("--scale") {
     FileHandle.standardError.write(Data("--scale goes with --rebuild\n".utf8))
     exit(2)
 }
-if [listTexts, contourOptions != nil, rebuild].filter({ $0 }).count > 1 {
+if [listTexts, listAttributes, contourOptions != nil, rebuild].filter({ $0 }).count > 1 {
     FileHandle.standardError.write(
-        Data("--texts, --contours and --rebuild cannot be used together\n".utf8))
+        Data("--texts, --attributes, --contours and --rebuild cannot be used together\n".utf8))
     exit(2)
 }
 let paths = arguments
 guard !paths.isEmpty else {
     FileHandle.standardError.write(
         Data(
-            ("usage: dxfdump [--expand] [--skip-paper-space]"
-                + " [--contours [--layers A,B] [--units inch|mm] | --texts"
+            ("usage: dxfdump [--expand | --expand-attributes] [--skip-paper-space]"
+                + " [--contours [--layers A,B] [--units inch|mm] | --texts | --attributes"
                 + " | --rebuild [--scale N]] <file.dxf> [...]\n")
                 .utf8)
     )
@@ -323,6 +392,19 @@ if listTexts {
     for path in paths {
         let data = try JSONSerialization.data(
             withJSONObject: textSummary(for: path), options: options)
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
+
+if listAttributes {
+    var options: JSONSerialization.WritingOptions = [.sortedKeys]
+    if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
+        options.insert(.withoutEscapingSlashes)
+    }
+    for path in paths {
+        let data = try JSONSerialization.data(
+            withJSONObject: attributeSummary(for: path), options: options)
         print(String(decoding: data, as: UTF8.self))
     }
     exit(0)
