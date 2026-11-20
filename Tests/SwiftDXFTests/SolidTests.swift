@@ -101,9 +101,10 @@ struct SolidTests {
     func solidFlipped() throws {
         let dwg = try Self.fixture()
         // upright: (x, y, z) becomes (-x, y, -z), and the outline order is kept.
+        let flipped = Self.solids(dwg)[3].corners
         Self.expectEqual(
-            Self.solids(dwg)[3].corners,
-            Self.points([[-1, 1, 0], [-3, 1, 0], [-3, 2, 0], [-1, 2, 0]]))
+            flipped, Self.points([[-1, 1, -2.5], [-3, 1, -2.5], [-3, 2, -2.5], [-1, 2, -2.5]]))
+        #expect(flipped.allSatisfy { $0.z == -2.5 })
         // A tilted plane is read as written, and reported, as for the other entities in an OCS.
         #expect(
             Self.solids(dwg)[4].corners
@@ -317,7 +318,10 @@ struct SolidTests {
                 ]
             )
         ]
-        b.entities = [DXFBuilder.insert("FILLS", at: (10, 20), scale: (2, 2), rotation: 90)]
+        b.entities = [
+            DXFBuilder.insert(
+                "FILLS", at: (10, 20), scale: (2, 2), rotation: 90, layer: "SHEET", color: 5)
+        ]
         let dwg = try DXF.read(text: b.text(), options: .init(expandBlocks: true))
         #expect(dwg.skipped.isEmpty)
         #expect(dwg.counts.solid == 1 && dwg.counts.face3D == 1 && dwg.counts.wipeout == 1)
@@ -328,12 +332,15 @@ struct SolidTests {
                 DXF.Point(10, 20, 0), DXF.Point(10, 22, 0), DXF.Point(8, 22, 0),
                 DXF.Point(8, 20, 0),
             ])
-        #expect(solid.layer == "MARK")
+        #expect(solid.layer == "MARK" && solid.color == 256)
+        // What is on layer 0 or BYBLOCK takes the reference's layer and colour.
         let face = try #require(Self.faces(dwg).first)
+        #expect(face.layer == "SHEET")
         #expect(face.corners[1].x == 10 && abs(face.corners[1].y - 22) < 1e-9)
         #expect(face.corners.map(\.z) == [1, 2, 3, 4] && face.invisibleEdges == 2)
         // The block's boundary is (0, 1), (1, 1), (1, 0), (0, 0) before the reference moves it.
         let wipeout = try #require(Self.wipeouts(dwg).first)
+        #expect(wipeout.layer == "SHEET")
         Self.expectEqual(
             wipeout.boundary,
             Self.points([[8, 20, 0], [8, 22, 0], [10, 22, 0], [10, 20, 0]]), accuracy: 1e-9)

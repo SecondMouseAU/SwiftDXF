@@ -45,7 +45,8 @@ extension DXF {
         /// tolerance zones and datum references.
         ///
         /// A line is a row of boxes, and a second one is a composite frame. A row with no box
-        /// holding anything is left out.
+        /// holding anything is left out. The string is read each time this is used, so keep the
+        /// result when it is needed more than once.
         public var frames: [Frame] { Self.frames(in: text, codePage: codePage) }
 
         /// Whether every symbol and box of every frame was read, with nothing kept as written

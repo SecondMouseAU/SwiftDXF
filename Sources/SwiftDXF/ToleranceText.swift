@@ -9,7 +9,10 @@ extension DXF.Tolerance {
     static func frames(in text: String, codePage: DXF.CodePage?) -> [Frame] {
         var frames: [Frame] = []
         for row in split(Array(text.unicodeScalars), at: isRowBreak) {
-            let boxes = split(row, at: isBoxBreak).map { Box(pieces(of: $0), codePage) }
+            // The second and third boxes hold the tolerances, and may be projected.
+            let boxes = split(row, at: isBoxBreak).enumerated().map { index, box in
+                Box(pieces(of: box), codePage, isTolerance: index == 1 || index == 2)
+            }
             guard boxes.contains(where: { !$0.isEmpty }) else { continue }
             frames.append(frame(raw: String(String.UnicodeScalarView(row)), boxes))
         }
@@ -80,7 +83,8 @@ extension DXF.Tolerance {
     private enum Piece {
         /// Text as written, still to be decoded.
         case text(String)
-        /// A lowercase letter of the GDT font, with the group it was written in.
+        /// A lowercase letter of the GDT font, with the group it was written in: a group of
+        /// several letters is kept as a group for each.
         case symbol(Unicode.Scalar, raw: String)
     }
 
@@ -97,7 +101,8 @@ extension DXF.Tolerance {
                 flush()
                 let written = String(String.UnicodeScalarView(box[i..<group.end]))
                 for c in group.letters {
-                    out.append(("a"..."z").contains(c) ? .symbol(c, raw: written) : .text("\(c)"))
+                    let raw = group.letters.count == 1 ? written : "\(group.opening)\(c)}"
+                    out.append(("a"..."z").contains(c) ? .symbol(c, raw: raw) : .text("\(c)"))
                 }
                 i = group.end
             } else {
@@ -109,11 +114,11 @@ extension DXF.Tolerance {
         return out
     }
 
-    /// A `{\Fgdt;…}` group that starts at `i`: the characters it holds and the index after it, or
-    /// `nil` when there is no group in a font of symbols there.
+    /// A `{\Fgdt;…}` group that starts at `i`: its opening as written (`{\Fgdt;`), the characters
+    /// it holds and the index after it, or `nil` when there is no group in a font of symbols there.
     private static func symbolGroup(
         in s: [Unicode.Scalar], at i: Int
-    ) -> (letters: [Unicode.Scalar], end: Int)? {
+    ) -> (opening: String, letters: [Unicode.Scalar], end: Int)? {
         // A font name and its properties are short, so the search for the `;` is too, however many
         // `{\F` a string repeats.
         let searchEnd = min(i + 3 + 64, s.count)
@@ -126,16 +131,19 @@ extension DXF.Tolerance {
         if name.hasSuffix(".shx") { name.removeLast(4) }
         guard symbolFonts.contains(name) else { return nil }
         let close = s[(semicolon + 1)...].firstIndex(of: "}") ?? s.count
-        return (Array(s[(semicolon + 1)..<close]), min(close + 1, s.count))
+        let opening = String(String.UnicodeScalarView(s[i...semicolon]))
+        return (opening, Array(s[(semicolon + 1)..<close]), min(close + 1, s.count))
     }
 
     // MARK: Boxes and frames
 
     /// A box read into the parts a tolerance or a datum is made of.
     private struct Box {
-        /// The decoded text of the box, without the diameter and material condition read from it.
+        /// The decoded text of the box, without the diameter, material condition and projection read
+        /// from it.
         var text = ""
         var isDiameter = false
+        var isProjected = false
         var materialCondition: MaterialCondition?
         /// The letters of the symbols of the box, in order.
         var letters: [Unicode.Scalar] = []
@@ -146,7 +154,11 @@ extension DXF.Tolerance {
         /// The box as written, trimmed.
         var written = ""
 
-        init(_ pieces: [Piece], _ codePage: DXF.CodePage?) {
+        /// Whether the box is a tolerance, which a projected zone may follow.
+        let isTolerance: Bool
+
+        init(_ pieces: [Piece], _ codePage: DXF.CodePage?, isTolerance: Bool) {
+            self.isTolerance = isTolerance
             for piece in pieces {
                 switch piece {
                 case .text(let raw):
@@ -173,6 +185,7 @@ extension DXF.Tolerance {
         private mutating func read(_ letter: Unicode.Scalar, written raw: String) {
             switch (letter, materialCondition) {
             case ("n", _): isDiameter = true
+            case ("p", _) where isTolerance: isProjected = true
             case ("m", nil): materialCondition = .maximum
             case ("l", nil): materialCondition = .least
             case ("s", nil): materialCondition = .regardlessOfFeatureSize
@@ -189,7 +202,7 @@ extension DXF.Tolerance {
         var zone: Zone {
             Zone(
                 isDiameter: isDiameter, value: DXF.Tolerance.number(text), text: text,
-                materialCondition: materialCondition)
+                materialCondition: materialCondition, isProjected: isProjected)
         }
 
         /// The box as a datum; a diameter sign stays in its reference.

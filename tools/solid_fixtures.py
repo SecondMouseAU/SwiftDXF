@@ -37,7 +37,7 @@ def build(out_dir):
     msp.add_solid([(0, 0), (5, 0), (1, 4), (6, 4)], dxfattribs={"layer": "FILL"})
     msp.add_solid([(10, 0, 2.5), (14, 0, 2.5), (10, 2, 2.5), (14, 2, 2.5)])
     msp.add_solid(
-        [(1, 1), (3, 1), (1, 2), (3, 2)], dxfattribs={"extrusion": (0, 0, -1), "elevation": 0})
+        [(1, 1, 2.5), (3, 1, 2.5), (1, 2, 2.5), (3, 2, 2.5)], dxfattribs={"extrusion": (0, 0, -1)})
     msp.add_solid([(0, 0), (2, 0), (0, 2), (2, 2)], dxfattribs={"extrusion": (0, 1, 0)})
 
     msp.add_3dface(

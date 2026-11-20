@@ -205,6 +205,38 @@ struct ToleranceTests {
         #expect(twice.unread == [#"{\Fgdt;l}"#])
     }
 
+    @Test("a group of several letters is kept as one group per letter, not repeated")
+    func groupOfSeveralLetters() throws {
+        let first = try Self.frames(#"{\Fgdt;oq}%%v0.1"#).first
+        #expect(first?.characteristic == .unrecognised(#"{\Fgdt;o}{\Fgdt;q}"#))
+        let frame = try #require(try Self.frames(#"{\Fgdt;c}%%v{\Fgdt;oq}0.5"#).first)
+        #expect(frame.tolerance?.text == #"{\Fgdt;o}{\Fgdt;q}0.5"#)
+        #expect(frame.unread == [#"{\Fgdt;o}"#, #"{\Fgdt;q}"#])
+        // The letters that are read are read from a group of several as from one of their own.
+        let read = try #require(try Self.frames(#"{\Fgdt;j}%%v{\Fgdt;nm}0.5"#).first)
+        #expect(
+            read.tolerance
+                == .init(
+                    isDiameter: true, value: 0.5, text: "0.5", materialCondition: .maximum))
+        #expect(read.isFullyRead)
+    }
+
+    @Test("a projected zone follows a tolerance, and is not a datum")
+    func projectedZone() throws {
+        let frame = try #require(
+            try Self.frames(#"{\Fgdt;j}%%v%%c0.5{\Fgdt;m}{\Fgdt;p}%%v%%vA"#).first)
+        #expect(
+            frame.tolerance
+                == .init(
+                    isDiameter: true, value: 0.5, text: "0.5", materialCondition: .maximum,
+                    isProjected: true))
+        #expect(frame.isFullyRead)
+        // In a datum box the symbol is not understood, so it is kept and listed.
+        let datum = try #require(try Self.frames(#"{\Fgdt;j}%%v0.5%%v%%vA{\Fgdt;p}"#).first)
+        #expect(datum.datums == [.init(reference: #"A{\Fgdt;p}"#)])
+        #expect(datum.unread == [#"{\Fgdt;p}"#])
+    }
+
     @Test("a box after the sixth has no place in the layout and is kept as written")
     func extraBoxes() throws {
         let frame = try #require(
@@ -348,6 +380,22 @@ struct ToleranceTests {
         #expect(entity.layer == "L" && entity.colorIndex == 3 && entity.typeName == "TOLERANCE")
         let moved = entity.replacing(layer: "M", color: 5)
         #expect(moved.layer == "M" && moved.colorIndex == 5)
+    }
+
+    @Test("every entity type of this kind can be given another layer and colour")
+    func replacingLayerAndColour() {
+        let entities: [DXF.Entity] = [
+            .tolerance(DXF.Tolerance(insertion: DXF.Point(0, 0), text: "x", layer: "A", color: 1)),
+            .solid(DXF.Solid(corners: [DXF.Point(0, 0)], layer: "A", color: 2)),
+            .wipeout(DXF.Wipeout(boundary: [DXF.Point(0, 0)], layer: "A", color: 3)),
+            .face3D(DXF.Face3D(corners: [DXF.Point(0, 0)], layer: "A", color: 4)),
+        ]
+        #expect(entities.map(\.layer) == ["A", "A", "A", "A"])
+        #expect(entities.map(\.colorIndex) == [1, 2, 3, 4])
+        #expect(entities.map(\.typeName) == ["TOLERANCE", "SOLID", "WIPEOUT", "3DFACE"])
+        let moved = entities.map { $0.replacing(layer: "B", color: 7) }
+        #expect(moved.map(\.layer) == ["B", "B", "B", "B"])
+        #expect(moved.map(\.colorIndex) == [7, 7, 7, 7])
     }
 
     @Test("the fixture's records are read as ezdxf reads them")
