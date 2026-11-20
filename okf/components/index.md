@@ -57,11 +57,13 @@ timestamp: 2026-11-19
   (linear, aligned, radius, diameter); `Drawing.styleVariables(of:)` resolves overrides over the
   `DIMSTYLE` record, and `displayedMeasurement(of:)` applies `DIMLFAC`. `DimensionText` splits the
   override into measurement, number, words, line-break and stack parts, with the codes decoded as
-  in `MTEXT`. Read by `Reader+Dimension.swift`.
+  in `MTEXT`; `NumberConvention.swift` says how the drawing writes a comma in a number (thousands
+  separator, decimal mark, or neither), which `Dimension.text(numbers:)` and the rebuild's
+  `Options(numbers:)` both take. Read by `Reader+Dimension.swift`.
 - **Rebuilding dimensions** (`Sources/SwiftDXF/Rebuild/`): `Drawing.rebuildingDimensions(_:)`
   rebuilds `.dimension`s from loose pieces (`Drawing+RebuildDimensions.swift`), starting from each
   value text: `RebuildValue.swift` reads the number (a comma as a decimal mark or thousands
-  separator), `RebuildPieces.swift` collects the texts, segments, circles and end marks,
+  separator, or as `Options(numbers:)` says), `RebuildPieces.swift` collects the texts, segments, circles and end marks,
   `RebuildLinear.swift` finds the spans of a dimension line beside a text, `RebuildRadial.swift`
   the diameters and radii, and the scale is inferred per layer group. The result is a
   `DXF.DimensionRebuild` (dimensions with `Dimension.rebuilt` set, `ScaleEstimate`s, `Warning`s)

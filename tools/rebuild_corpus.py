@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """Runs `dxfdump --rebuild` over a folder of DXF files and prints what each one gives.
 
-    python3 tools/rebuild_corpus.py [--dxfdump path] <folder>
+    python3 tools/rebuild_corpus.py [--dxfdump path] [--numbers thousands|decimal|plain] <folder>
+
+`--numbers` is passed to `dxfdump --rebuild`: how the drawings write a comma in a number (Jw_cad's
+`10,439` is `thousands`). Without it a comma is read every way it can be.
 
 Prints one line per drawing that has rebuilt dimensions or warnings: the file, how many real
 `DIMENSION` entities it holds, how many it rebuilt, how many warnings, and the scales found as
@@ -33,6 +36,11 @@ if __name__ == "__main__":
         i = args.index("--dxfdump")
         DXFDUMP = args[i + 1]
         del args[i : i + 2]
+    NUMBERS = []
+    if "--numbers" in args:
+        i = args.index("--numbers")
+        NUMBERS = args[i : i + 2]
+        del args[i : i + 2]
     if len(args) != 1:
         sys.exit(__doc__)
     files = sorted(
@@ -47,7 +55,9 @@ if __name__ == "__main__":
         "files": 0, "rebuilt": 0, "with_real_dimensions": 0, "real_that_rebuilt": 0, "failed": 0,
     }
     for path in files:
-        out = subprocess.run([DXFDUMP, "--rebuild", path], capture_output=True, text=True).stdout
+        out = subprocess.run(
+            [DXFDUMP, "--rebuild", *NUMBERS, path], capture_output=True, text=True
+        ).stdout
         try:
             result = json.loads(out.splitlines()[0])
             if "error" in result:

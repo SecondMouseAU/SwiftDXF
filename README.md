@@ -334,6 +334,20 @@ for case .dimension(let d) in dwg.entities {
   (see *Text*), so `%%c<>` gives the words `⌀` and `<>{\H0.7x;\S+0.1^ -0.2;}` the measurement and
   a tolerance stack, whose numbers are not typed numbers. `d.textOverride` is the override as the
   file writes it.
+- **How a drawing writes numbers** is not in the text. `10,439` is two numbers to `typedNumbers`
+  (10 and 439), as it always was. Jw_cad writes ten thousand four hundred and thirty-nine that way,
+  and a drawing that writes decimals with a comma means `0,125` as one eighth, so say which:
+
+  ```swift
+  d.text(numbers: .commaSeparatesThousands).typedNumbers   // "10,439" -> [10439]
+  d.text(numbers: .commaIsDecimalMark).typedNumbers        // "0,125"  -> [0.125]
+  DXF.DimensionText("5,186.6", numbers: .commaSeparatesThousands).typedNumbers   // [5186.6]
+  ```
+
+  A comma separates thousands only inside a number written in groups of three (`1,930`,
+  `12,345,678`); `40,60`, `1,2345` and `0,125` stay as written. A point is a decimal mark under
+  every setting. Full-width digits, point and comma (`１０，４３９`) read as the ordinary ones under
+  every setting, and the part keeps the characters it was written with.
 
 ### Rebuilding dimensions from loose pieces
 
@@ -382,7 +396,12 @@ It starts from each text that states a number and works out the rest, like Swift
   geometry is nearest its texts wins, then a reduction over an enlargement. `Options(scale:)`
   states the scale instead; anything but a positive number is no scale.
 - **Values.** A comma or a point is a decimal mark or a thousands separator, whichever the geometry
-  bears out: `1,829` is 1.829 or 1829, and `1.234,5` is 1234.5. Full-width digits, a diameter or
+  bears out: `1,829` is 1.829 or 1829, and `1.234,5` is 1234.5. Where the geometry cannot tell
+  (a chain of `1,829` and `1,981` fits 1:1 and 1:1000 alike), say how the drawing writes numbers
+  with `Options(numbers:)`, the setting `DimensionText` takes: a Jw_cad export is
+  `.commaSeparatesThousands`, and then `10,439` is 10439 and never 10.439. With a setting a comma
+  is read only as it says, and a number it does not read as one (`40,60`) is listed as several.
+  Full-width digits, a diameter or
   radius symbol before the number and a trailing `mm` are read; a tolerance stack is ignored.
   Angles, other units, texts with several numbers and numbers that are not read (`1.2.3`) are
   listed as not rebuilt, with the reason. Numbers a text assembler ran
@@ -412,11 +431,13 @@ the PDF through OCCTSwiftPDF, whose positions are noisy to about 0.1 mm: 29 at 1
 squares scale is 80.04). Over 2,855 DXF files on one machine, the 38 that have real
 dimensions (22 of them McMaster-Carr sheets) gained none, 35 of them with no warning and 3 with
 warnings for numbers beside lines, and the other Jw_cad railway drawings (`dd12`,
-`ka2000`, `tmf1`, `to1`) found 1:80.
+`ka2000`, `tmf1`, `to1`) found 1:80. On the 2120, 17 of the 29 values carry a comma: with
+`Options(numbers: .commaSeparatesThousands)` the result is the same 29 at 1:80; told a comma is a
+decimal mark it finds 17 at a scale of 0.08, and told a comma is not part of a number, 12.
 
 It is an inference. It does not rebuild angular or ordinate dimensions, a text on a dimension
 line that is not beside it (a leader), or two scales in one layer group; an arrowhead drawn as a
-filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] file.dxf`
+filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] [--numbers thousands|decimal|plain] file.dxf`
 prints the result as JSON. The 2120 and the drawings with real dimensions are checked by tests that
 need the files: `DXF_REBUILD_FILE` (a drawing that gives 29 at 1:80) and `DXF_REBUILD_CORPUS` (a
 folder in which every drawing with real dimensions gains none). `tools/rebuild_corpus.py <folder>`

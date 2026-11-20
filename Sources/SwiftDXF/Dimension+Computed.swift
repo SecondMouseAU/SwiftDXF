@@ -28,5 +28,15 @@ extension DXF.Dimension {
     }
 
     /// The text override split into what it shows; see ``DXF/DimensionText``.
+    ///
+    /// A comma is not part of a number; ``text(numbers:)`` says how the drawing writes them.
     public var text: DXF.DimensionText { DXF.DimensionText(textOverride, codePage: codePage) }
+
+    /// The text override split into what it shows, with numbers read as the drawing writes them.
+    ///
+    /// For a Jw_cad drawing, `text(numbers: .commaSeparatesThousands).typedNumbers` of `10,439`
+    /// is `[10439]`.
+    public func text(numbers: DXF.DimensionText.NumberConvention) -> DXF.DimensionText {
+        DXF.DimensionText(textOverride, numbers: numbers, codePage: codePage)
+    }
 }

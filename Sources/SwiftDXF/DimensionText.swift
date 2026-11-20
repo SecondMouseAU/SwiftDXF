@@ -29,10 +29,15 @@ extension DXF {
         public var parts: [Part]
 
         /// Splits `raw`, the text override of a dimension (`nil` or empty when there is none),
-        /// reading `%%nnn` through `codePage` (as a Unicode code point when it is `nil`).
-        public init(_ raw: String?, codePage: CodePage? = nil) {
+        /// reading numbers as `numbers` says the drawing writes them and `%%nnn` through
+        /// `codePage` (as a Unicode code point when it is `nil`).
+        ///
+        /// With the default, ``NumberConvention/plain``, `10,439` is the numbers 10 and 439.
+        public init(
+            _ raw: String?, numbers: NumberConvention = .plain, codePage: CodePage? = nil
+        ) {
             self.raw = raw
-            self.parts = Self.split(raw ?? "", codePage: codePage)
+            self.parts = Self.split(raw ?? "", numbers: numbers, codePage: codePage)
         }
 
         /// `true` when the dimension shows its measured value: no override, or one containing `<>`.
@@ -46,7 +51,8 @@ extension DXF {
 
         /// The numbers typed into the text, in order.
         ///
-        /// A range such as `40 - 60` gives two.
+        /// A range such as `40 - 60` gives two. Which marks are part of a number is up to the
+        /// ``NumberConvention`` the text was split with.
         public var typedNumbers: [Double] {
             parts.compactMap {
                 if case .number(let value, _) = $0 { return value } else { return nil }
@@ -85,7 +91,9 @@ extension DXF {
             return out
         }
 
-        private static func split(_ raw: String, codePage: CodePage?) -> [Part] {
+        private static func split(
+            _ raw: String, numbers: NumberConvention, codePage: CodePage?
+        ) -> [Part] {
             var parts: [Part] = []
             var buffer = ""
             // The character before the current text, for the sign rule of `numberEnd`.
@@ -104,13 +112,13 @@ extension DXF {
                             flush()
                             parts.append(.measurement)
                             i += 2
-                        } else if let end = numberEnd(chars, from: i, after: previous) {
+                        } else if let found = number(
+                            chars, from: i, after: previous, numbers: numbers)
+                        {
                             flush()
-                            let number = String(chars[i..<end])
-                            if let value = Double(number) {
-                                parts.append(.number(value, text: number))
-                            }
-                            i = end
+                            parts.append(
+                                .number(found.value, text: String(chars[i..<found.end])))
+                            i = found.end
                         } else {
                             buffer.append(chars[i])
                             i += 1
@@ -135,28 +143,25 @@ extension DXF {
             return parts
         }
 
-        /// The index just past a number starting at `start`, or `nil` when none starts there.
+        /// The number starting at `start`, with its sign, and the index just past it; `nil` when
+        /// none starts there.
         ///
         /// A sign counts only at the start of the text, after a space or after a line break, so
         /// `40 - 60` and `40-60` are two numbers. `previous` is the character before `chars`.
-        private static func numberEnd(
-            _ chars: [Character], from start: Int, after previous: Character?
-        ) -> Int? {
+        private static func number(
+            _ chars: [Character], from start: Int, after previous: Character?,
+            numbers: NumberConvention
+        ) -> (value: Double, end: Int)? {
             var i = start
+            var sign = 1.0
             if chars[i] == "-" || chars[i] == "+" {
                 let before = start == 0 ? previous : chars[start - 1]
                 guard before == nil || before == " " || before == "\n" else { return nil }
+                if chars[i] == "-" { sign = -1 }
                 i += 1
             }
-            let digitsStart = i
-            while i < chars.count, chars[i].isASCII, chars[i].isNumber { i += 1 }
-            if i < chars.count, chars[i] == ".", i + 1 < chars.count, chars[i + 1].isASCII,
-                chars[i + 1].isNumber
-            {
-                i += 1
-                while i < chars.count, chars[i].isASCII, chars[i].isNumber { i += 1 }
-            }
-            return i > digitsStart ? i : nil
+            guard let found = numbers.scan(chars, from: i) else { return nil }
+            return (sign * found.value, found.end)
         }
     }
 }

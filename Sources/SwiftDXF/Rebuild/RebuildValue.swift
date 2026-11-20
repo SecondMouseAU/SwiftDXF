@@ -45,17 +45,29 @@ extension DXF.DimensionRebuild {
         /// The number a text states, or `nil` for text that does not start with one, after an
         /// optional diameter or radius symbol.
         ///
-        /// Only the text before the first stack is read: `36 +0,011/-0,005` states 36.
-        static func read(_ content: DXF.TextContent) -> Value? {
+        /// Only the text before the first stack is read: `36 +0,011/-0,005` states 36. `numbers`
+        /// is as for ``read(_:numbers:)`` of a string.
+        static func read(
+            _ content: DXF.TextContent, numbers: DXF.DimensionText.NumberConvention? = nil
+        ) -> Value? {
             var main = ""
             for part in content.parts {
                 guard case .text(let text) = part else { break }
                 main += text
             }
-            return read(main)
+            return read(main, numbers: numbers)
         }
 
-        static func read(_ string: String) -> Value? {
+        /// The number a string states, as the drawing writes numbers, or `nil` for a string that
+        /// does not start with one.
+        ///
+        /// With a `numbers` convention a mark is read as it says, and the number is the one the
+        /// text states: `10,439` is 10439 where a comma separates thousands, and 10.439 where it
+        /// is the decimal mark. With `nil` a mark is read every way it can be, `1,829` as 1.829
+        /// and as 1829, for the geometry to choose between.
+        static func read(
+            _ string: String, numbers: DXF.DimensionText.NumberConvention? = nil
+        ) -> Value? {
             let scalars = Array(halfWidth(string).unicodeScalars)
             var i = 0
             func skipSpaces() {
@@ -80,23 +92,33 @@ extension DXF.DimensionRebuild {
                 }
             }
             skipSpaces()
-            var token = ""
-            while i < scalars.count {
-                let c = scalars[i]
-                if isDigit(c) {
-                    token.unicodeScalars.append(c)
-                } else if c == "." || c == ",", i + 1 < scalars.count, isDigit(scalars[i + 1]),
-                    !token.isEmpty
-                {
-                    token.unicodeScalars.append(c)
-                } else {
-                    break
+            let readings: [Reading]
+            let rest: String
+            if let numbers {
+                let characters = Array(String(String.UnicodeScalarView(scalars[i...])))
+                guard let found = numbers.scan(characters, from: 0) else { return nil }
+                readings = [Reading(value: found.value, decimals: found.decimals)]
+                rest = String(characters[found.end...])
+            } else {
+                var token = ""
+                while i < scalars.count {
+                    let c = scalars[i]
+                    if isDigit(c) {
+                        token.unicodeScalars.append(c)
+                    } else if c == "." || c == ",", i + 1 < scalars.count,
+                        isDigit(scalars[i + 1]), !token.isEmpty
+                    {
+                        token.unicodeScalars.append(c)
+                    } else {
+                        break
+                    }
+                    i += 1
                 }
-                i += 1
+                guard !token.isEmpty else { return nil }
+                readings = Self.readings(of: token)
+                rest = String(String.UnicodeScalarView(scalars[i...]))
             }
-            guard !token.isEmpty else { return nil }
-            let rest = String(String.UnicodeScalarView(scalars[i...]))
-            var value = Value(symbol: symbol, readings: readings(of: token), unsupported: nil)
+            var value = Value(symbol: symbol, readings: readings, unsupported: nil)
             if value.readings.isEmpty {
                 value.unsupported = .unreadable
             } else if rest.contains("\u{00B0}") {
