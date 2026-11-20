@@ -2,7 +2,8 @@ extension DXF {
     /// A block definition from the `BLOCKS` section.
     ///
     /// The block's own entities are read. `INSERT` references to a block are read too, and
-    /// expanded into the drawing when ``ReadOptions/expandBlocks`` is set. Every drawing also
+    /// expanded into the drawing when ``ReadOptions/expandBlocks`` is set, and its `ATTDEF`s are
+    /// ``attributeDefinitions``. Every drawing also
     /// holds the built-in blocks such as `*Model_Space` and the anonymous `*D` blocks that carry
     /// the drawn form of a dimension.
     public struct Block: Sendable {
@@ -28,15 +29,18 @@ extension DXF {
         public var textContents: [TextContent?]
         /// The `INSERT`s inside the block, which an expansion carries through with the block.
         public var references: [BlockReference]
+        /// The `ATTDEF`s of the block, in file order: the attributes a reference to it can carry.
+        public var attributeDefinitions: [AttributeDefinition]
         /// Entities of unmodelled types inside the block, by type then layer. `INSERT` is not
-        /// counted, as ``references`` holds it.
+        /// counted, as ``references`` holds it, nor `ATTDEF`, as ``attributeDefinitions`` does.
         public var skippedByLayer: [String: [String: Int]]
 
         public init(
             name: String, identity: Identity, basePoint: Point = .init(0, 0, 0),
             entities: [Entity] = [], identities: [Identity] = [], entityLineTypes: [String?] = [],
             textContents: [TextContent?] = [], references: [BlockReference] = [],
-            skippedByLayer: [String: [String: Int]] = [:]
+            skippedByLayer: [String: [String: Int]] = [:],
+            attributeDefinitions: [AttributeDefinition] = []
         ) {
             self.name = name
             self.identity = identity
@@ -47,6 +51,7 @@ extension DXF {
             self.textContents = textContents
             self.references = references
             self.skippedByLayer = skippedByLayer
+            self.attributeDefinitions = attributeDefinitions
         }
 
         /// The block's handle (group 5), or `nil` when the file has none.

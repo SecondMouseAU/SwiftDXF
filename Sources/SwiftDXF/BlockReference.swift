@@ -1,5 +1,7 @@
 extension DXF {
     /// An `INSERT`: a placement of a named ``Block``, possibly as a rectangular array.
+    ///
+    /// The values it carries, such as a title block's, are its ``attributes``.
     public struct BlockReference: Equatable, Sendable {
         public var name: String
         public var insertion: Point
@@ -24,13 +26,18 @@ extension DXF {
         /// point and rotation are written in. `(0, 0, -1)` mirrors the block's x axis.
         public var extrusion: Point
         public var identity: Identity
+        /// The `ATTRIB`s the reference carries, in file order.
+        ///
+        /// Each is where the file drew it, in the coordinates of the space the reference is in; an
+        /// array carries one set, not one per instance.
+        public var attributes: [Attribute]
 
         public init(
             name: String, insertion: Point, scaleX: Double = 1, scaleY: Double = 1,
             scaleZ: Double = 1, rotation: Double = 0, columns: Int = 1, rows: Int = 1,
             columnSpacing: Double = 0, rowSpacing: Double = 0, layer: String = "0",
             color: Int = 256, lineType: String? = nil, extrusion: Point = Point(0, 0, 1),
-            identity: Identity
+            identity: Identity, attributes: [Attribute] = []
         ) {
             self.name = name
             self.insertion = insertion
@@ -47,6 +54,7 @@ extension DXF {
             self.lineType = lineType
             self.extrusion = extrusion
             self.identity = identity
+            self.attributes = attributes
         }
     }
 
@@ -65,10 +73,25 @@ extension DXF {
         /// Off by default, which reads them into ``Drawing/entities`` as this reader always has;
         /// ``Drawing/paperSpace`` counts them either way.
         public var skipPaperSpace: Bool
+        /// With ``expandBlocks``, also flatten the attributes the references carry into
+        /// ``Drawing/entities``, as `TEXT`.
+        ///
+        /// Each visible ``Attribute`` becomes a `.text` whose identity names its reference in
+        /// ``Identity/via`` and keeps the attribute's handle; an invisible one stays on the
+        /// reference. A constant attribute (``AttributeFlags/constant``), which no reference
+        /// carries, comes through from the block's definition. They are the text AutoCAD draws for
+        /// the reference.
+        ///
+        /// Off by default: the values are on ``BlockReference/attributes`` either way, and
+        /// ``Drawing/entities`` then holds only what the blocks draw.
+        public var expandAttributes: Bool
 
-        public init(expandBlocks: Bool = false, skipPaperSpace: Bool = false) {
+        public init(
+            expandBlocks: Bool = false, skipPaperSpace: Bool = false, expandAttributes: Bool = false
+        ) {
             self.expandBlocks = expandBlocks
             self.skipPaperSpace = skipPaperSpace
+            self.expandAttributes = expandAttributes
         }
     }
 
