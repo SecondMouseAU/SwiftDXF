@@ -58,6 +58,7 @@ def summarize(path):
     # Geometry digest: sum + count of every defining scalar (rounded), mirroring dxfdump exactly.
     acc = {"sum": 0.0, "n": 0}
     by_type = {}
+    tolerances = []
 
     def add(bucket, *vs):
         slot = by_type.setdefault(bucket, [0.0, 0])
@@ -143,6 +144,24 @@ def summarize(path):
         elif t == "LEADER":
             for v in e.vertices:
                 add("LEADER", v[0], v[1])
+        elif t == "TOLERANCE":
+            p, d = e.dxf.insert, e.dxf.x_axis_vector
+            add("TOLERANCE", p.x, p.y, d.x, d.y)
+            tolerances.append(e.dxf.content)
+        elif t == "SOLID":
+            # Corners in outline order (the file's third and fourth swapped; a triangle has three),
+            # after upright_all has flipped a -z plane into the world.
+            for p in e.vertices():
+                add("SOLID", p.x, p.y, p.z)
+        elif t == "WIPEOUT":
+            # The clip boundary in the world, closed; SwiftDXF does not repeat the first vertex.
+            for p in e.boundary_path_wcs()[:-1]:
+                add("WIPEOUT", p.x, p.y, p.z)
+        elif t == "3DFACE":
+            # The four corners as the file lists them, then the invisible-edge flags.
+            for p in (e.dxf.vtx0, e.dxf.vtx1, e.dxf.vtx2, e.dxf.get("vtx3", e.dxf.vtx2)):
+                add("3DFACE", p.x, p.y, p.z)
+            add("3DFACE", e.dxf.get("invisible_edges", 0))
         elif t == "HATCH":
             for boundary in e.paths:
                 if type(boundary).__name__ == "PolylinePath":
@@ -174,10 +193,15 @@ def summarize(path):
         "SPLINE": raw.get("SPLINE", 0),
         "HATCH": raw.get("HATCH", 0),
         "LEADER": raw.get("LEADER", 0),
+        "TOLERANCE": raw.get("TOLERANCE", 0),
+        "SOLID": raw.get("SOLID", 0),
+        "WIPEOUT": raw.get("WIPEOUT", 0),
+        "3DFACE": raw.get("3DFACE", 0),
     }
     counts["total"] = sum(counts.values())
     modelled = {"LINE", "CIRCLE", "ARC", "ELLIPSE", "POINT", "TEXT", "MTEXT", "LWPOLYLINE",
-                "POLYLINE", "DIMENSION", "SPLINE", "HATCH", "LEADER"}
+                "POLYLINE", "DIMENSION", "SPLINE", "HATCH", "LEADER", "TOLERANCE", "SOLID", "WIPEOUT",
+                "3DFACE"}
     skipped = {k: v for k, v in sorted(raw.items()) if k not in modelled}
     skipped_by_layer = {}
     for e in msp:
@@ -205,6 +229,7 @@ def summarize(path):
     return {
         "dimensions": dimensions,
         "handles": handles,
+        "tolerances": tolerances,
         "skipped": skipped,
         "skippedByLayer": skipped_by_layer,
         "file": os.path.basename(path),

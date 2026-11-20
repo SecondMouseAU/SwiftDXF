@@ -35,6 +35,22 @@ extension DXF.Entity {
             l.layer = layer
             l.color = color
             return .leader(l)
+        case .tolerance(var t):
+            t.layer = layer
+            t.color = color
+            return .tolerance(t)
+        case .solid(var s):
+            s.layer = layer
+            s.color = color
+            return .solid(s)
+        case .wipeout(var w):
+            w.layer = layer
+            w.color = color
+            return .wipeout(w)
+        case .face3D(var f):
+            f.layer = layer
+            f.color = color
+            return .face3D(f)
         }
     }
 
@@ -49,6 +65,10 @@ extension DXF.Entity {
         case .spline(let s): return s.color
         case .hatch(let h): return h.color
         case .leader(let l): return l.color
+        case .tolerance(let t): return t.color
+        case .solid(let s): return s.color
+        case .wipeout(let w): return w.color
+        case .face3D(let f): return f.color
         }
     }
 
@@ -66,6 +86,10 @@ extension DXF.Entity {
         case .spline: return "SPLINE"
         case .hatch: return "HATCH"
         case .leader: return "LEADER"
+        case .tolerance: return "TOLERANCE"
+        case .solid: return "SOLID"
+        case .wipeout: return "WIPEOUT"
+        case .face3D: return "3DFACE"
         }
     }
 
@@ -147,6 +171,25 @@ extension DXF.Entity {
         case .leader(var l):
             l.vertices = l.vertices.map(t.apply)
             return .leader(l)
+
+        case .tolerance(var tolerance):
+            tolerance.insertion = t.apply(tolerance.insertion)
+            let d = tolerance.direction
+            let (x, y) = t.applyVector(d.x, d.y)
+            tolerance.direction = DXF.Point(x, y, t.zScale * d.z)
+            return .tolerance(tolerance)
+
+        case .solid(var s):
+            s.corners = s.corners.map(t.apply)
+            return .solid(s)
+
+        case .wipeout(var w):
+            w.boundary = w.boundary.map(t.apply)
+            return .wipeout(w)
+
+        case .face3D(var f):
+            f.corners = f.corners.map(t.apply)
+            return .face3D(f)
         }
     }
 

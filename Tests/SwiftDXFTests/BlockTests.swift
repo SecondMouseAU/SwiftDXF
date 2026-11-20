@@ -282,12 +282,12 @@ struct BlockTests {
     @Test("block contents with no entity form are counted as skipped, per instance")
     func skippedInBlocks() throws {
         var b = DXFBuilder()
-        let solid: DXFBuilder.Record = [(0, "SOLID"), (8, "0"), (10, "0"), (20, "0")]
-        b.blocks = [("B", (0, 0), [solid, B.line((0, 0), (1, 0))])]
+        let trace: DXFBuilder.Record = [(0, "TRACE"), (8, "0"), (10, "0"), (20, "0")]
+        b.blocks = [("B", (0, 0), [trace, B.line((0, 0), (1, 0))])]
         b.entities = [B.insert("B", at: (0, 0), layer: "P"), B.insert("B", at: (5, 0), layer: "P")]
         let d = try Self.read(b)
-        #expect(d.skipped == ["SOLID": 2])
-        #expect(d.skippedByLayer["SOLID"] == ["P": 2])
+        #expect(d.skipped == ["TRACE": 2])
+        #expect(d.skippedByLayer["TRACE"] == ["P": 2])
     }
 
     @Test("an array count that would overflow, and one that is only huge, stop with a warning")
