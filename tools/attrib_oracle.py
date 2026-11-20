@@ -14,8 +14,8 @@ carries a nested reference's attributes through the blocks it sits in, as an exp
 With `--compare`, `dxfdump --attributes --expand-attributes --skip-paper-space` is run on the same
 files (ezdxf's `modelspace()` leaves out the paper-space entities) and the two are compared field
 by field (numbers to 1e-9, the references in file order, the blocks by name, the expanded texts as
-sets); each difference is printed, and the exit status is 1 when there is one. A file whose
-attributes have no handle is left out of the expanded comparison, which matches by handle.
+sets); each difference is printed, and the exit status is 1 when there is one. The constant
+attributes of a block are not in `expanded`: ezdxf does not turn them into texts.
 
 What is the value of an attribute: `plain_text` of the `TEXT` string, or, for an R2018 multiline
 attribute, the `MTextParser` tokens of its embedded `MTEXT` (both from `text_oracle.py`, so `%%c`
@@ -183,9 +183,7 @@ def differences(path, ours, theirs):
     kept = [b for b in ours["blocks"] if not b["name"].lower().startswith(LAYOUT_BLOCKS)]
     compare_list("blocks", sorted(kept, key=lambda b: b["name"]), theirs["blocks"], block)
 
-    attributes = [a for r in ours["references"] for a in r["attributes"]]
-    attributes += [a for b in ours["blocks"] for r in b["references"] for a in r["attributes"]]
-    if "expanded" in ours and all(a["handle"] is not None for a in attributes):
+    if "expanded" in ours:
         want, got = Counter(map(placed, theirs["expanded"])), Counter(map(placed, ours["expanded"]))
         for key in sorted((want - got).keys())[:5]:
             found.append(f"{path}: expanded: only in ezdxf {key!r}")

@@ -90,6 +90,15 @@ struct AttributeExpansionTests {
 
         let off = try Self.expanded(b, attributes: false)
         #expect(off.entities.isEmpty)
+
+        // A reference that carries the tag itself, visible or not, is not shown twice.
+        var carried = b
+        carried.entities = B.insert(
+            "TITLE", at: (10, 10),
+            attributes: [B.attrib("company", "OTHER", at: (50, 50), handle: "A2")], handle: "A1")
+        let once = try Self.expanded(carried)
+        #expect(once.entities.count == 1 && once.identities[0].id == "A1/A2")
+        #expect(AttributeTests.close(Self.texts(once)[0], 50, 50))
     }
 
     @Test("a reference inside a block has its attributes carried by the block's placement only")

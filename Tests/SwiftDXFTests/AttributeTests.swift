@@ -183,6 +183,24 @@ struct AttributeTests {
         #expect(attribute.layer == "TXT" && attribute.flags == .constant)
     }
 
+    @Test("an R12 definition has no subclass markers")
+    func legacyDefinition() throws {
+        var b = DXFBuilder()
+        b.version = "AC1009"
+        let legacy: DXFBuilder.Record = [
+            (0, "ATTDEF"), (5, "L2"), (8, "TXT"), (10, "1"), (20, "2"), (30, "0"), (40, "3"),
+            (1, "default"), (3, "Prompt?"), (2, "TAG"), (70, "9"), (74, "3"),
+        ]
+        b.blocks = [("B", (0, 0), [legacy])]
+        let d = try Self.read(b)
+        let definition = try #require(d.blocks.first { $0.name == "B" }?.attributeDefinitions.first)
+        #expect(definition.tag == "TAG" && definition.prompt == "Prompt?")
+        #expect(definition.defaultValue == "default" && definition.layer == "TXT")
+        #expect(Self.close(definition.position, 1, 2) && definition.height == 3)
+        #expect(definition.flags == [.invisible, .preset])
+        #expect(d.blocks.first { $0.name == "B" }?.skippedByLayer.isEmpty == true)
+    }
+
     @Test("a reference inside a block carries its attributes too")
     func nestedReference() throws {
         var b = Self.titleBlock()
@@ -342,14 +360,16 @@ struct AttributeTests {
     @Test("a paper-space reference takes its attributes with it when those are left out")
     func paperSpace() throws {
         var b = Self.titleBlock()
-        var paper = B.insert(
-            "TITLE", at: (0, 0), attributes: [B.attrib("A", "1", at: (0, 0))], handle: "P1")
+        // AutoCAD flags the attributes of a paper-space reference as paper space too.
+        var attribute = B.attrib("A", "1", at: (0, 0))
+        attribute.append((67, "1"))
+        var paper = B.insert("TITLE", at: (0, 0), attributes: [attribute], handle: "P1")
         paper[0].append((67, "1"))
         b.entities += paper
         b.entities.append(B.line((0, 0), (1, 1)))
         let kept = try Self.read(b)
         #expect(kept.references[0].attributes.count == 1)
-        #expect(kept.paperSpace == ["INSERT": 1])
+        #expect(kept.paperSpace == ["INSERT": 1])  // not the ATTRIB as well
 
         let left = try Self.read(b, options: .init(skipPaperSpace: true))
         #expect(left.references.isEmpty && left.skipped.isEmpty)

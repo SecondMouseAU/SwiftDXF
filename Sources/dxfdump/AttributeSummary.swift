@@ -63,13 +63,14 @@ func attributeSummary(for path: String, options: DXF.ReadOptions) -> [String: An
             "blocks": blocks,
         ]
         if options.expandAttributes {
-            // The texts an attribute became: the entities that carry an attribute's handle.
+            // The texts an attribute became: the entities that keep an attribute's locator, the
+            // position of its own record, which no other record shares.
             let attributes = dwg.references + dwg.blocks.flatMap(\.references)
-            let handles = Set(attributes.flatMap(\.attributes).compactMap(\.identity.handle))
+            let locators = Set(attributes.flatMap(\.attributes).map(\.identity.locator))
             out["expanded"] = dwg.entities.enumerated().compactMap {
                 (i, entity) -> [String: Any]? in
                 guard case .text(let at, let height, let rotation, let text, _, _) = entity,
-                    let handle = dwg.identity(ofEntityAt: i).handle, handles.contains(handle)
+                    locators.contains(dwg.identity(ofEntityAt: i).locator)
                 else { return nil }
                 return [
                     "text": text, "x": at.x, "y": at.y, "height": height, "rotation": rotation,

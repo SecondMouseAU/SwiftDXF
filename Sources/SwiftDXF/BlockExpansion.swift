@@ -115,10 +115,16 @@ extension DXF.Drawing {
             let aligned = block.identities.count == block.entities.count
             let lineTypesAligned = block.entityLineTypes.count == block.entities.count
             let textsAligned = block.textContents.count == block.entities.count
-            // The constant attributes of the block, and the visible ones of the reference.
+            // The constant attributes of the block, unless the reference carries that tag too,
+            // and the visible ones of the reference.
             let constants =
                 attributes
-                ? block.attributeDefinitions.filter { $0.isConstant && !$0.isInvisible } : []
+                ? block.attributeDefinitions.filter { definition in
+                    definition.isConstant && !definition.isInvisible
+                        && !ref.attributes.contains {
+                            $0.tag.caseInsensitiveCompare(definition.tag) == .orderedSame
+                        }
+                } : []
             let carried = attributes ? ref.attributes.filter { !$0.isInvisible } : []
             let home = DXF.Transform(reference: ref, base: block.basePoint, column: 0, row: 0)
             for row in 0..<ref.rows {
