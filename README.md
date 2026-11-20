@@ -172,14 +172,20 @@ for block in dwg.blocks {
 Expansion with `expandBlocks` leaves the attributes on their references, so `entities` still holds
 what the blocks draw. With `ReadOptions(expandAttributes: true)`, which expands the blocks too, the
 visible attributes come through as `.text` as well, each with an identity that keeps the attribute's
-handle and names the reference in `via` (`8E/9A`); an invisible attribute stays out. A reference
-inside a block has its attributes carried by the placement of that block only, since the file
-already drew them where its own reference is; an array repeats them per instance, as `ezdxf`'s
-`multi_insert()` does. An attribute on layer `0` in a block takes the layer of the reference to that
-block, and a `BYBLOCK` colour is the colour of the attribute's own reference. A constant attribute,
-which no reference carries, comes through from its block's definition, placed as the block's other
-entities are. A reference to a block the file does not define places nothing, attributes included,
-as before. `dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
+handle and names the reference in `via` (its `id` reads `8E/9A`); an invisible attribute stays out.
+
+- A reference inside a block has its attributes carried by the placement of that block only, since
+  the file already drew them where its own reference is.
+- An array repeats them per instance, as `ezdxf`'s `multi_insert()` does. Inside a block that is
+  scaled, `ezdxf` leaves the grid unscaled and SwiftDXF scales it, as it does for the block's own
+  entities.
+- An attribute on layer `0` in a block takes the layer of the reference to that block, and a
+  `BYBLOCK` colour is the colour of the attribute's own reference.
+- A constant attribute, which no reference carries, comes through from its block's definition,
+  placed as the block's other entities are. A reference to a block the file does not define places
+  nothing, attributes included, as before.
+
+`dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
 `dxfdump --expand-attributes` reads with `expandAttributes`.
 
 ### Extrusion

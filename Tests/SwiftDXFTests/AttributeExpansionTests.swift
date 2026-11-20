@@ -166,6 +166,27 @@ struct AttributeExpansionTests {
         #expect(Set(mirrored.map { "\($0.x),\($0.y)" }) == ["1.0,1.0", "-9.0,1.0"])
     }
 
+    @Test("an array inside a turned and scaled block is placed by that block's placement")
+    func expandsNestedArrays() throws {
+        var b = AttributeTests.titleBlock()
+        // The nested reference is turned a quarter, so its columns run along +y in SHEET: the
+        // attribute is at (11, 1) and (11, 6) there. SHEET is doubled, turned a quarter and
+        // moved, which puts (x, y) at (100 - 2y, 2x): (98, 22) and (88, 22).
+        b.blocks.append(
+            (
+                "SHEET", (0, 0),
+                B.insert(
+                    "TITLE", at: (10, 0), attributes: [B.attrib("A", "x", at: (11, 1))],
+                    rotation: 90, array: (columns: 2, rows: 1, dx: 5, dy: 0))
+            ))
+        b.entities = [B.insert("SHEET", at: (100, 0), scale: (2, 2), rotation: 90)]
+        let d = try Self.expanded(b)
+        let at = Self.texts(d)
+        #expect(at.count == 2)
+        #expect(at.contains { AttributeTests.close($0, 98, 22) })
+        #expect(at.contains { AttributeTests.close($0, 88, 22) })
+    }
+
     @Test("an attribute on layer 0 inside a block takes the enclosing reference's layer")
     func inheritsLayer() throws {
         var b = AttributeTests.titleBlock()
