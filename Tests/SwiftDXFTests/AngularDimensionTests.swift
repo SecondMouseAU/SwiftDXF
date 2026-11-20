@@ -360,4 +360,45 @@ struct AngularDimensionTests {
         let thousands = DXF.DimensionText("1,234%%d", numbers: .commaSeparatesThousands)
         #expect(thousands.typedAngles == [1234])
     }
+
+    // MARK: in a block
+
+    /// An angular and a linear dimension, each with a stored value, in a block inserted with
+    /// `scale`.
+    static func inserted(scale: (Double, Double), rotation: Double = 0) throws
+        -> (angular: DXF.Dimension, linear: DXF.Dimension)
+    {
+        let angular: DXFBuilder.Record = [
+            (0, "DIMENSION"), (8, "0"), (70, "5"), (42, "1.5707963267948966"), (10, "7"),
+            (20, "7"), (30, "0"), (11, "7"), (21, "7"), (31, "0"), (13, "10"), (23, "0"),
+            (33, "0"), (14, "0"), (24, "10"), (34, "0"), (15, "0"), (25, "0"), (35, "0"),
+        ]
+        let linear: DXFBuilder.Record = [
+            (0, "DIMENSION"), (8, "0"), (70, "0"), (42, "10"), (10, "5"), (20, "2"), (30, "0"),
+            (11, "5"), (21, "2"), (31, "0"), (13, "0"), (23, "0"), (33, "0"), (14, "10"),
+            (24, "0"), (34, "0"),
+        ]
+        var builder = DXFBuilder()
+        builder.blocks = [("B", (0, 0), [angular, linear])]
+        builder.entities = [DXFBuilder.insert("B", at: (3, 4), scale: scale, rotation: rotation)]
+        let dwg = try DXF.read(text: builder.text(), options: .init(expandBlocks: true))
+        let dims = DimensionTests.dimensions(dwg)
+        return (try #require(dims.first), try #require(dims.last))
+    }
+
+    @Test(
+        "a block inserted with a uniform scale keeps the angle of a dimension and scales a length")
+    func dimensionsInABlock() throws {
+        for scale in [(2.0, 2.0), (-1, 1), (1, -1), (-3, -3)] {
+            let (angular, linear) = try Self.inserted(scale: scale, rotation: 30)
+            let factor = abs(scale.0)
+            // The angle and the stored value that is one: neither is scaled.
+            #expect(Self.close(angular.computedMeasurement, 90), "\(scale)")
+            #expect(Self.close(angular.measurement, 1.5707963267948966), "\(scale)")
+            #expect(Self.close(linear.measurement, 10 * factor), "\(scale)")
+        }
+        // A scale that is not uniform turns the angle, so what the file stored is out of date.
+        let (angular, linear) = try Self.inserted(scale: (2, 1))
+        #expect(angular.measurement == nil && linear.measurement == nil)
+    }
 }

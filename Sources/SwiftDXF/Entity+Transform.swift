@@ -135,9 +135,16 @@ extension DXF.Entity {
             d.defPoint3 = d.defPoint3.map(t.apply)
             d.defPoint4 = d.defPoint4.map(t.apply)
             d.defPoint5 = d.defPoint5.map(t.apply)
-            // The stored value is a length: it scales with a uniform scale, and is dropped
-            // (the computed value still follows the points) when the scale is not uniform.
-            if let m = d.measurement { d.measurement = t.similarity.map { m * $0 } }
+            // The stored value of a length scales with a uniform scale, and is dropped (the
+            // computed value still follows the points) when the scale is not uniform. An angle
+            // keeps its value under a uniform scale, which does not turn it, and is dropped under
+            // any other.
+            if let m = d.measurement {
+                switch d.kind {
+                case .angular, .angular3Point: d.measurement = t.similarity == nil ? nil : m
+                default: d.measurement = t.similarity.map { m * $0 }
+                }
+            }
             d.carryRotation(through: t)
             return .dimension(d)
 
