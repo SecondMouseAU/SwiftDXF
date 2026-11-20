@@ -7,14 +7,14 @@ Builds `<out_dir>/angular.dxf` with ezdxf: three-point angular dimensions, two-l
 dimensions with the arc location in each of the four angles the two lines make, and ordinate
 dimensions of both types. Then it prints, as JSON, for each dimension:
 
-- `ezdxf`: what ezdxf's `Dimension.get_measurement()` gives. For an angular dimension that is the
-  angle counter-clockwise from the first line (or ray) to the second, in degrees, whichever side
-  the arc location is on; for an ordinate dimension it is the vector from the origin to the feature
-  location, and `ezdxf` here is its length along the measured axis.
+- `ezdxf`: for an angular dimension what ezdxf's `Dimension.get_measurement()` gives: the angle
+  counter-clockwise from the first line (or ray) to the second, in degrees, whichever side the arc
+  location is on. For an ordinate dimension it is the value in the text ezdxf's own renderer wrote,
+  divided by the style's linear scale: the distance along the measured axis, as ezdxf draws it.
 - `rendered`: the text ezdxf's own renderer wrote into the dimension's anonymous block.
 - `arcSide`: the angle on the side of the arc location, which is what AutoCAD displays. This is
   not ezdxf's number where the arc location is on the other side. It was checked against AutoCAD's
-  own anonymous blocks in two DWG files (8 three-point angular dimensions, 4 of which put the arc
+  own anonymous blocks in two DWG files (8 three-point angular dimensions, 2 of which put the arc
   on the side ezdxf's number does not): AutoCAD wrote 125 and 130 where counter-clockwise from the
   first ray to the second is 235 and 230. Here it is worked out with ezdxf's vector maths, from
   the definition points, as an independent check of the Swift code.
@@ -93,11 +93,16 @@ def build(out_dir):
     two_line("2l lines reversed", line1[::-1], line2[::-1], (10, 3))
     two_line("2l crossing off the origin", ((10, 10), (20, 10)), ((12, 11), (14, 15)), (24, 14))
 
-    # Ordinate dimensions: X type and Y type, towards the origin and away from it.
+    # Ordinate dimensions: X type and Y type, on either side of the origin, and in a coordinate
+    # system turned 30 degrees (group 51 is its negative).
     msp.add_ordinate_x_dim(feature_location=(12.5, 7), offset=(0, 10), origin=(2, 3)).render()
     msp.add_ordinate_y_dim(feature_location=(12.5, 7), offset=(10, 0), origin=(2, 3)).render()
     msp.add_ordinate_x_dim(feature_location=(-4, -1), offset=(0, -10), origin=(2, 3)).render()
     msp.add_ordinate_y_dim(feature_location=(-4, -1), offset=(-10, 0), origin=(2, 3)).render()
+    msp.add_ordinate_x_dim(
+        feature_location=(12.5, 7), offset=(0, 10), origin=(2, 3), rotation=30).render()
+    msp.add_ordinate_y_dim(
+        feature_location=(12.5, 7), offset=(10, 0), origin=(2, 3), rotation=30).render()
 
     path = os.path.join(out_dir, "angular.dxf")
     doc.saveas(path)
@@ -112,13 +117,13 @@ def build(out_dir):
             if entity.dxftype() in ("MTEXT", "TEXT"):
                 rendered = entity.dxf.text
         kind = e.dxf.dimtype & 15
-        measured = e.get_measurement()
         row = {"handle": e.dxf.handle, "type": e.dxf.dimtype, "rendered": rendered}
         if kind == 6:
-            x_type = bool(e.dxf.dimtype & 64)
-            row["ezdxf"] = abs(measured.x if x_type else measured.y)
+            scale = back.dimstyles.get(e.dxf.dimstyle).dxf.get("dimlfac", 1.0)
+            row["ezdxf"] = float(rendered) / scale
+            row["rotation"] = -e.dxf.get("horizontal_direction", 0.0)
         else:
-            row["ezdxf"] = measured
+            row["ezdxf"] = e.get_measurement()
         for name, group in (("p10", "defpoint"), ("p13", "defpoint2"), ("p14", "defpoint3"),
                             ("p15", "defpoint4"), ("p16", "defpoint5")):
             if e.dxf.hasattr(group):

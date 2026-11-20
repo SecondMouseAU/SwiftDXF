@@ -339,9 +339,13 @@ for case .dimension(let d) in dwg.entities {
     `DIMAUNIT`) are not modelled, and `measurement` (group 42) of an angular dimension is the
     file's number, not converted.
   - **An ordinate dimension** is the distance from its origin (group 10) to its feature location
-    (group 13) along x when `isXOrdinate` (bit 64 of group 70) and along y when not, always
-    positive, as `ezdxf` draws it. It is measured along the world axes: the rotation of the
-    coordinate system it was made in (group 51) is not read.
+    (group 13) along x when `isXOrdinate` (bit 64 of group 70) and along y when not. The axes are
+    those of the coordinate system the dimension was made in: `rotation` is the negative of group
+    51, and a block insertion or a `-z` plane turns it as it turns a linear dimension's. The value
+    is always positive, as `ezdxf` draws it, with the same value for a feature on either side of
+    the origin. It was checked against `ezdxf`'s own rendering only (`tools/angular_fixtures.py`):
+    there was no AutoCAD drawing with an ordinate dimension to check it against, so whether
+    AutoCAD shows a sign for the far side of the origin is not known.
 - **Style variables** come from the entity's own overrides in its extended data (`ACAD` /
   `DSTYLE`), then the `DIMSTYLE` record it names. A variable neither states is `nil`: SolidWorks
   styles often leave `DIMDEC` out, and the reader does not guess it. The header's own current

@@ -169,11 +169,12 @@ extension DXF.Entity {
 }
 
 extension DXF.Dimension {
-    /// Turns a linear dimension's ``rotation`` into the direction `t` gives its measuring axis.
+    /// Turns a linear or ordinate dimension's ``rotation`` into the direction `t` gives its
+    /// measuring axis.
     ///
     /// A horizontal axis stays `nil` when it was, whichever way it points.
     mutating func carryRotation(through t: DXF.Transform) {
-        guard kind == .linear else { return }
+        guard kind == .linear || kind == .ordinate else { return }
         let angle = t.directionAngle(degrees: rotation ?? 0)
         let horizontal = abs(sin(angle * .pi / 180)) < 1e-12
         if rotation != nil || !horizontal { rotation = angle }

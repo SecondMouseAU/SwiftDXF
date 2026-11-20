@@ -4,8 +4,12 @@ extension DXF.Reader {
     func dimension(_ f: Fields) -> DXF.Dimension {
         let textRaw = first(1, f)
         let type = ints(70, f) ?? 0
+        let kind = DXF.DimensionType(group70: type)
+        // An ordinate dimension has no group 50. Group 51 is the negative of the angle from the
+        // x axis of the coordinate system it was made in.
+        let rotation = kind == .ordinate ? dblOpt(51, f).map { $0 == 0 ? 0 : -$0 } : dblOpt(50, f)
         return DXF.Dimension(
-            kind: DXF.DimensionType(group70: type),
+            kind: kind,
             // Zero or negative means "none": some writers store -1.
             measurement: dblOpt(42, f).flatMap { $0 > 0 ? $0 : nil },
             textOverride: (textRaw?.isEmpty == false) ? textRaw : nil,
@@ -13,7 +17,7 @@ extension DXF.Reader {
             defPoint: point(f),
             defPoint2: pointOpt(13, f), defPoint3: pointOpt(14, f),
             defPoint4: pointOpt(15, f), defPoint5: pointOpt(16, f),
-            layer: layer(f), color: color(f), rotation: dblOpt(50, f),
+            layer: layer(f), color: color(f), rotation: rotation,
             obliqueAngle: dblOpt(52, f),
             styleName: first(3, f).map(trimmed).flatMap { $0.isEmpty ? nil : $0 },
             styleOverrides: styleOverrides(f), codePage: codePage,

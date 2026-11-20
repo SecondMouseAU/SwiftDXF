@@ -76,10 +76,13 @@ extension DXF {
         ///
         /// `false` for every other kind of dimension.
         public var isXOrdinate: Bool
-        /// Rotation of a linear dimension's measuring direction, in degrees (group 50).
+        /// Rotation of a linear dimension's measuring direction, in degrees (group 50), or of the
+        /// x axis an ordinate dimension measures along (the negative of group 51).
         ///
         /// `nil` when absent, which means horizontal. For a linear dimension this is what says
-        /// whether it measures horizontally, vertically or at another angle.
+        /// whether it measures horizontally, vertically or at another angle; an ordinate
+        /// dimension measures along this direction when ``isXOrdinate`` and across it when not.
+        /// It is not read for the other kinds.
         ///
         /// The file gives the angle from the x axis of the dimension's own coordinate system; on a
         /// `-z` plane that axis is the world `-x`, and this is the world direction, `180 - angle`.

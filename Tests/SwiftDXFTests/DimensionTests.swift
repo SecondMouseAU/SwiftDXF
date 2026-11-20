@@ -72,7 +72,9 @@ struct DimensionTests {
 
     // MARK: Computed value
 
-    @Test("the computed value equals ezdxf's measurement for every dimension type it computes")
+    @Test(
+        "the computed value equals ezdxf's measurement, but for an angle with its arc on the far side"
+    )
     func computedMatchesEzdxf() throws {
         let dims = Self.dimensions(try Self.fixture())
         // ezdxf Dimension.get_measurement(): linear 40, 25, 27.320508; aligned 36.055513;

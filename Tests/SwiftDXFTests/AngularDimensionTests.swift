@@ -71,16 +71,21 @@ struct AngularDimensionTests {
     @Test("an angular dimension is the angle on the side of its arc location, in degrees")
     func angularMatchesEzdxf() throws {
         let dims = try Self.fixture()
-        #expect(dims.count == Self.angles.count + 4)
+        #expect(dims.count == Self.angles.count + 6)
         for (dim, want) in zip(dims, Self.angles) {
             let got = try #require(dim.computedMeasurement, "\(want.name)")
             #expect(Self.close(got, want.arcSide), "\(want.name): \(got) != \(want.arcSide)")
-            // ezdxf agrees where the arc is on the side it measures, and gives the rest of the
-            // turn (three-point) or the supplement (two lines) where it is not.
-            let rest = dim.kind == .angular3Point ? 360.0 : 180.0
-            let ezdxf = Self.close(want.ezdxf, got) || Self.close(want.ezdxf, rest - got)
-            #expect(ezdxf, "\(want.name): ezdxf \(want.ezdxf), here \(got)")
         }
+        // ezdxf agrees where the arc is on the side it measures, and not in these five, where the
+        // arc is on the other side of the lines or rays: the angle there is what AutoCAD draws.
+        let differing = zip(dims, Self.angles).filter {
+            !Self.close($0.computedMeasurement, $1.ezdxf)
+        }
+        #expect(
+            differing.map(\.1.name) == [
+                "3p other side, over 180", "3p rays swapped, arc between", "3p obtuse, over 180",
+                "2l second angle", "2l fourth angle",
+            ])
         #expect(dims.prefix(7).allSatisfy { $0.kind == .angular3Point })
         #expect(dims[7..<13].allSatisfy { $0.kind == .angular })
     }
@@ -101,14 +106,19 @@ struct AngularDimensionTests {
 
     @Test("an ordinate dimension is the distance along its axis from the origin to the feature")
     func ordinateMatchesEzdxf() throws {
-        let dims = try Self.fixture().suffix(4)
-        // ezdxf: |12.5 - 2| and |7 - 3| (rendered 1050 and 400 under a scale of 100), then
-        // |-4 - 2| and |-1 - 3|.
-        let reference: [(Bool, Double)] = [(true, 10.5), (false, 4), (true, 6), (false, 4)]
-        #expect(dims.count == 4)
+        let dims = try Self.fixture().suffix(6)
+        // What ezdxf draws (1050 and 400 under a scale of 100): |12.5 - 2| and |7 - 3|, then
+        // |-4 - 2| and |-1 - 3|, then the same in a coordinate system turned 30 degrees, where
+        // ezdxf puts the feature at 10.5 along its x axis and 4 along its y axis.
+        let reference: [(isX: Bool, value: Double, rotation: Double)] = [
+            (true, 10.5, 0), (false, 4, 0), (true, 6, 0), (false, 4, 0), (true, 10.5, 30),
+            (false, 4, 30),
+        ]
+        #expect(dims.count == reference.count)
         for (dim, want) in zip(dims, reference) {
-            #expect(dim.kind == .ordinate && dim.isXOrdinate == want.0)
-            #expect(Self.close(dim.computedMeasurement, want.1), "\(want)")
+            #expect(dim.kind == .ordinate && dim.isXOrdinate == want.isX, "\(want)")
+            #expect(Self.close(dim.rotation ?? 0, want.rotation), "\(want)")
+            #expect(Self.close(dim.computedMeasurement, want.value, tolerance: 1e-6), "\(want)")
         }
     }
 
@@ -384,6 +394,54 @@ struct AngularDimensionTests {
         let dwg = try DXF.read(text: builder.text(), options: .init(expandBlocks: true))
         let dims = DimensionTests.dimensions(dwg)
         return (try #require(dims.first), try #require(dims.last))
+    }
+
+    @Test("an ordinate dimension in a block measures along its own axes, whatever the insertion")
+    func ordinateInABlock() throws {
+        for type in [6 + 64, 6] {
+            let ordinate: DXFBuilder.Record = [
+                (0, "DIMENSION"), (8, "0"), (70, "\(type)"), (42, "10"), (10, "0"), (20, "0"),
+                (30, "0"), (11, "5"), (21, "5"), (31, "0"), (13, "10"), (23, "3"), (33, "0"),
+                (14, "10"), (24, "9"), (34, "0"),
+            ]
+            let insertions = [((1.0, 1.0), 0.0), ((1, 1), 30), ((1, 1), 90), ((-1, 1), 200)]
+            for (scale, rotation) in insertions {
+                var builder = DXFBuilder()
+                builder.blocks = [("B", (0, 0), [ordinate])]
+                builder.entities = [
+                    DXFBuilder.insert("B", at: (3, 4), scale: scale, rotation: rotation)
+                ]
+                let dwg = try DXF.read(text: builder.text(), options: .init(expandBlocks: true))
+                let dimension = try #require(DimensionTests.dimensions(dwg).first)
+                // The feature is 10 along x and 3 along y from the origin, as it was drawn.
+                let want = type == 6 + 64 ? 10.0 : 3.0
+                #expect(
+                    Self.close(dimension.computedMeasurement, want, tolerance: 1e-9),
+                    "\(type) \(scale) \(rotation)")
+            }
+        }
+    }
+
+    @Test("an ordinate dimension on a -z plane turns its axes round with the plane")
+    func ordinateOnADownPlane() throws {
+        // The coordinate system is turned 20 degrees (group 51 is -20) in the plane's own system,
+        // whose x axis is the world's -x: so in the world its x axis points at 160 degrees. The
+        // feature is 10 along that axis and 3 along the one 90 degrees from it, and the definition
+        // points are world coordinates.
+        func world(_ degrees: Double, _ length: Double) -> (Double, Double) {
+            (length * cos(degrees * .pi / 180), length * sin(degrees * .pi / 180))
+        }
+        let (along, across) = (world(160, 10), world(250, 3))
+        let feature = (along.0 + across.0, along.1 + across.1)
+        for (type, want) in [(6 + 64, 10.0), (6, 3.0)] {
+            let tags: [(Int, String)] = [
+                (70, "\(type)"), (51, "-20"), (10, "0"), (20, "0"), (30, "0"), (13, "\(feature.0)"),
+                (23, "\(feature.1)"), (33, "0"), (210, "0"), (220, "0"), (230, "-1"),
+            ]
+            let dimension = DimensionTests.dimensions(try DimensionTests.inline(tags))[0]
+            #expect(Self.close(dimension.rotation, 160, tolerance: 1e-9))
+            #expect(Self.close(dimension.computedMeasurement, want, tolerance: 1e-9), "\(type)")
+        }
     }
 
     @Test(

@@ -1,5 +1,8 @@
 import Foundation
 
+/// Where an angle is wrapped into `0..<2 pi`.
+private typealias Wrap = DXF.Contour.Segment
+
 extension DXF.Dimension {
     /// The measurement the geometry gives, with no style scale applied: a length in drawing units,
     /// or an angle in **degrees** for an angular dimension, as ``rotation`` and the angles of an
@@ -8,20 +11,21 @@ extension DXF.Dimension {
     /// Linear: the distance between the extension-line origins along ``rotation`` (horizontal when
     /// absent). Aligned: the distance between them. Radius and diameter: the distance between the
     /// two definition points. Ordinate: the distance from the origin (``defPoint``) to the feature
-    /// location (``defPoint2``) along x, or along y unless ``isXOrdinate``, always positive.
+    /// location (``defPoint2``) along x when ``isXOrdinate`` and along y when not, where ``rotation``
+    /// turns the axes (horizontal when absent), and always positive: which side of the origin the
+    /// feature is on is not part of it.
     ///
     /// Angular: the angle between the first line, ``defPoint2`` to ``defPoint3``, and the second,
     /// ``defPoint4`` to ``defPoint``, where the two lines cross. Two crossing lines make four
     /// angles, two and their supplements; it is the one on the side of the arc location
     /// ``defPoint5``, so it is between 0 and 180, and `nil` for lines that are parallel or an arc
-    /// location on their crossing. Three-point angular: the angle at the vertex ``defPoint4``
+    /// location exactly on their crossing. Three-point angular: the angle at the vertex ``defPoint4``
     /// between the rays to ``defPoint2`` and ``defPoint3``, on the side of the arc location
     /// ``defPoint``, so it is between 0 and 360 and may be more than 180. `nil` for a ray of no
-    /// length, two rays that are one, and an arc location on the vertex.
+    /// length, two rays that are one, and an arc location exactly on the vertex.
     ///
     /// `nil` for an unrecognised type, or when a definition point is missing. Only `x` and `y` are
-    /// used, and ordinate dimensions are measured along the world axes: the rotation of a
-    /// coordinate system the dimension was made in (group 51) is not read.
+    /// used.
     ///
     /// Group 42 is often `-1` or missing, so this is the number every consumer can rely on; see
     /// ``measurement`` for what the file stored.
@@ -46,7 +50,11 @@ extension DXF.Dimension {
             return Self.angle(at: vertex, from: a, to: b, arcAt: defPoint)
         case .ordinate:
             guard let feature = defPoint2 else { return nil }
-            return abs(isXOrdinate ? feature.x - defPoint.x : feature.y - defPoint.y)
+            // Along the x axis of the coordinate system the dimension was made in (``rotation``),
+            // or across it.
+            let (c, s) = ArcPieces.cosSin(degrees: rotation ?? 0)
+            let (dx, dy) = (feature.x - defPoint.x, feature.y - defPoint.y)
+            return abs(isXOrdinate ? dx * c + dy * s : dy * c - dx * s)
         case .unknown:
             return nil
         }
@@ -76,10 +84,10 @@ extension DXF.Dimension {
         guard let a = direction(from: vertex, to: first),
             let b = direction(from: vertex, to: second), let w = direction(from: vertex, to: arc)
         else { return nil }
-        let turn = normalised(b - a)
+        let turn = Wrap.wrap(b - a)
         // Rays that are one are an angle of 0 or 360, and the points do not say which.
         guard turn > 1e-12, turn < 2 * .pi - 1e-12 else { return nil }
-        let angle = normalised(w - a) <= turn ? turn : 2 * .pi - turn
+        let angle = Wrap.wrap(w - a) <= turn ? turn : 2 * .pi - turn
         return angle * 180 / .pi
     }
 
@@ -102,8 +110,8 @@ extension DXF.Dimension {
         // The four rays from the crossing, in turn: the angle is the gap that holds the arc.
         let a1 = atan2(d1y, d1x)
         let a2 = atan2(d2y, d2x)
-        let rays = [a1, a2, a1 + .pi, a2 + .pi].map(normalised).sorted()
-        let at = normalised(w)
+        let rays = [a1, a2, a1 + .pi, a2 + .pi].map(Wrap.wrap).sorted()
+        let at = Wrap.wrap(w)
         var (lower, upper) = (rays[3], rays[0] + 2 * .pi)
         for i in 0..<3 where rays[i] <= at && at < rays[i + 1] {
             (lower, upper) = (rays[i], rays[i + 1])
@@ -119,9 +127,4 @@ extension DXF.Dimension {
         return atan2(dy, dx)
     }
 
-    /// `angle` turned into `0..<2π`.
-    private static func normalised(_ angle: Double) -> Double {
-        let turn = angle.truncatingRemainder(dividingBy: 2 * .pi)
-        return turn < 0 ? turn + 2 * .pi : turn
-    }
 }
