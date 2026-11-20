@@ -242,17 +242,17 @@ def header_summary(path):
     """The header variables of `path` in the shape `dxfdump --header` prints."""
     # The header as the file has it: ezdxf's Drawing adds and updates variables once it has loaded
     # (the creation time, the extents), so read the HEADER section itself, as recover.readfile does.
+    variables = {}
     try:
         with open(path, "rb") as fp:
             sections = recover.Recover.run(fp).section_dict
+        header = sections.get("HEADER")
+        for name, var in (HeaderSection.load(header[0]).hdrvars.items() if header else []):
+            # A 2D point has no z, which SwiftDXF reads as 0.
+            value = list(var.value) + [0.0] * (3 - len(var.value)) if var.ispoint else var.value
+            variables[name] = [var.code, value]
     except Exception as exc:  # noqa: BLE001
         return {"file": os.path.basename(path), "error": str(exc)}
-    header = sections.get("HEADER")
-    variables = {}
-    for name, var in (HeaderSection.load(header[0]).hdrvars.items() if header else []):
-        # A 2D point has no z, which SwiftDXF reads as 0.
-        value = list(var.value) + [0.0] * (3 - len(var.value)) if var.ispoint else var.value
-        variables[name] = [var.code, value]
 
     def value(name, code):
         entry = variables.get(name)

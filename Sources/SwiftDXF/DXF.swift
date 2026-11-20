@@ -136,7 +136,9 @@ public enum DXF {
         /// `$MEASUREMENT` (group 70): `0` for an imperial drawing and `1` for a metric one, or `nil`
         /// when the file declares none.
         ///
-        /// It is the file's own answer for a drawing whose ``insUnits`` is `0` or missing.
+        /// It is the file's own answer for a drawing whose ``insUnits`` is `0` or missing. It can
+        /// disagree with ``insUnits`` when that is set: it says what the drawing's writer chose,
+        /// not what its numbers are in.
         public var measurement: Int?
         /// `$DIMSTYLE` (group 2): the name of the dimension style that is current, or `nil` when the
         /// file declares none.

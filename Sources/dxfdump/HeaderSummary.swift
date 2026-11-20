@@ -7,7 +7,8 @@ private func number(_ x: Double) -> Any { x.isFinite ? x : "\(x)" }
 /// A header value as JSON, by what its group code says it is: an integer, a real number or text.
 private func typed(_ value: DXF.HeaderVariable.Value) -> Any {
     switch value.code {
-    case 60...79, 90...99, 160...179, 270...299, 370...389, 400...409, 420...429, 440...449:
+    case 60...79, 90...99, 160...179, 270...299, 370...389, 400...409, 420...429, 440...459,
+        1060...1071:
         return value.integer ?? value.text
     case 10...59, 110...149, 210...239, 460...469, 1010...1059:
         return value.real.map(number) ?? value.text

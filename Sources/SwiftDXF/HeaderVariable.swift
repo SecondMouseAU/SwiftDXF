@@ -25,6 +25,9 @@ extension DXF {
             public var integer: Int? { Int(text.trimmingCharacters(in: .whitespaces)) }
 
             /// ``text`` as a real number, or `nil` when it is not one.
+            ///
+            /// It is read as Swift reads a `Double`, so `nan`, `inf` and a hexadecimal float are
+            /// accepted as written.
             public var real: Double? { Double(text.trimmingCharacters(in: .whitespaces)) }
         }
 

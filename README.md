@@ -457,7 +457,7 @@ entities actually read. Five more say how to read the drawing's numbers, each `n
 lacks it (an R12 file has no `$INSUNITS` or `$MEASUREMENT`):
 
 ```swift
-dwg.measurement                // $MEASUREMENT: 0 imperial, 1 metric; the file's own answer when insUnits is 0
+dwg.measurement                // $MEASUREMENT: 0 imperial, 1 metric; the file's answer when insUnits is 0 or nil
 dwg.currentDimensionStyleName  // $DIMSTYLE: the style the dimension defaults below belong to
 dwg.currentDimensionStyle      // its record in dimensionStyles (case-insensitive), or nil
 dwg.dimensionScale             // $DIMSCALE: the overall dimension scale (sizes, not measured values)

@@ -207,6 +207,12 @@ struct HeaderVariablesTests {
         #expect(vars["$EXTMIN"]?.point == DXF.Point(-5.5, -7, 0))
         #expect(vars["$LIMMIN"]?.point == DXF.Point(0, 1.5, 0))
         #expect(vars["$MEASUREMENT"]?.point == nil)
+        // A coordinate that is missing or not a number is 0.
+        let broken = DXF.HeaderVariable(values: [
+            .init(code: 10, text: "x"), .init(code: 30, text: "2"),
+        ])
+        #expect(broken.point == DXF.Point(0, 0, 2))
+        #expect(DXF.HeaderVariable(values: [.init(code: 20, text: "5")]).point == nil)
 
         // A variable this package does not name is still read, every group of it.
         let future = try #require(vars["$SOMEFUTUREVAR"])
