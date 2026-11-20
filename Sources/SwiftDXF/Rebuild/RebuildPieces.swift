@@ -117,7 +117,10 @@ extension DXF {
             }
         }
 
-        init(_ drawing: Drawing, tolerance requested: Double?) {
+        init(
+            _ drawing: Drawing, tolerance requested: Double?,
+            numbers: DimensionText.NumberConvention? = nil
+        ) {
             var heights: [Double] = []
             var rawTexts: [(Int, Text)] = []
             // The values of dimensions already rebuilt are not rebuilt again.
@@ -143,9 +146,10 @@ extension DXF {
                 for token in tokens {
                     let value =
                         split.isEmpty
-                        ? (content.flatMap(DimensionRebuild.Value.read)
-                            ?? (content == nil ? DimensionRebuild.Value.read(string) : nil))
-                        : DimensionRebuild.Value.read(token.text)
+                        ? (content.flatMap { DimensionRebuild.Value.read($0, numbers: numbers) }
+                            ?? (content == nil
+                                ? DimensionRebuild.Value.read(string, numbers: numbers) : nil))
+                        : DimensionRebuild.Value.read(token.text, numbers: numbers)
                     guard let value else { continue }
                     let advance = height * 0.6
                     let width = Double(token.text.count) * advance
