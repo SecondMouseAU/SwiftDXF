@@ -15,7 +15,8 @@ import SwiftDXF
 // entities flagged as paper space. Both work with the digest and with --contours.
 // --expand-attributes is --expand with the attributes the references carry flattened too, as TEXT.
 // --attributes prints the ATTRIB values of each block reference and the ATTDEF of each block, for
-// diffing against tools/attrib_oracle.py (with --skip-paper-space, as ezdxf's modelspace() reads).
+// diffing against tools/attrib_oracle.py (with --skip-paper-space, as ezdxf's modelspace() reads;
+// with --expand-attributes it adds the texts the attributes became, which the oracle also lists).
 // It cannot be combined with --contours, --texts or --rebuild.
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
@@ -216,7 +217,7 @@ func textSummary(for path: String) -> [String: Any] {
 /// The attributes of each block reference and the attribute definitions of each block.
 ///
 /// Only the references and blocks that have any are listed. With `--skip-paper-space`, as ezdxf's
-/// `modelspace()` reads.
+/// `modelspace()` reads. With `--expand-attributes`, also the texts the attributes became.
 func attributeSummary(for path: String) -> [String: Any] {
     let url = URL(fileURLWithPath: path)
     do {
@@ -258,10 +259,25 @@ func attributeSummary(for path: String) -> [String: Any] {
                 },
             ]
         }
-        return [
+        var out: [String: Any] = [
             "file": url.lastPathComponent, "references": references(dwg.references),
             "blocks": blocks,
         ]
+        if readOptions.expandAttributes {
+            // The texts an attribute became: the entities that carry an attribute's handle.
+            let attributes = dwg.references + dwg.blocks.flatMap(\.references)
+            let handles = Set(attributes.flatMap(\.attributes).compactMap(\.identity.handle))
+            out["expanded"] = dwg.entities.enumerated().compactMap {
+                (i, entity) -> [String: Any]? in
+                guard case .text(let at, let height, let rotation, let text, _, _) = entity,
+                    let handle = dwg.identity(ofEntityAt: i).handle, handles.contains(handle)
+                else { return nil }
+                return [
+                    "text": text, "x": at.x, "y": at.y, "height": height, "rotation": rotation,
+                ]
+            }
+        }
+        return out
     } catch {
         return ["file": url.lastPathComponent, "error": "\(error)"]
     }

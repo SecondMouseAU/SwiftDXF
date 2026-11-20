@@ -7,12 +7,15 @@
 Prints, per file, one JSON line in the shape `dxfdump --attributes` prints: the block references
 of model space that carry attributes (`Insert.attribs`), and for each block that has any, its
 attribute definitions (`ATTDEF`) and the nested references that carry attributes. Only what has
-attributes is listed.
+attributes is listed. `expanded` lists the visible attributes of every reference, nested ones
+included, as the texts `dxfdump --expand-attributes` makes of them: ezdxf's `virtual_entities()`
+carries a nested reference's attributes through the blocks it sits in, as an expansion does.
 
-With `--compare`, `dxfdump --attributes --skip-paper-space` is run on the same files (ezdxf's
-`modelspace()` leaves out the paper-space entities) and the two are compared field
-by field (numbers to 1e-9, the references in file order, the blocks by name); each difference is
-printed, and the exit status is 1 when there is one.
+With `--compare`, `dxfdump --attributes --expand-attributes --skip-paper-space` is run on the same
+files (ezdxf's `modelspace()` leaves out the paper-space entities) and the two are compared field
+by field (numbers to 1e-9, the references in file order, the blocks by name, the expanded texts as
+sets); each difference is printed, and the exit status is 1 when there is one. A file whose
+attributes have no handle is left out of the expanded comparison, which matches by handle.
 
 What is the value of an attribute: `plain_text` of the `TEXT` string, or, for an R2018 multiline
 attribute, the `MTextParser` tokens of its embedded `MTEXT` (both from `text_oracle.py`, so `%%c`
@@ -27,6 +30,7 @@ import math
 import os
 import subprocess
 import sys
+from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -36,6 +40,9 @@ from ezdxf.tools.text import plain_text  # noqa: E402
 
 from oracle import SWIFT_WHITESPACES  # noqa: E402
 from text_oracle import diameter, joined, mtext  # noqa: E402
+
+INVISIBLE = 1
+LAYOUT_BLOCKS = ("*model_space", "*paper_space")
 
 
 def fields(a):
@@ -77,6 +84,39 @@ def references(layout):
     ]
 
 
+def expanded(doc):
+    """The visible attributes of the model-space references, as texts in the world."""
+    out = []
+
+    def add(insert):
+        for a in insert.attribs:
+            if not a.dxf.get("flags", 0) & INVISIBLE:
+                f = fields(a)
+                out.append({k: f[k] for k in ("text", "x", "y", "height", "rotation")})
+
+    def walk(insert, depth=0):
+        if depth > 32:
+            return
+        for one in insert.multi_insert() if insert.mcount > 1 else [insert]:
+            for e in one.virtual_entities():
+                if e.dxftype() == "INSERT":
+                    add(e)
+                    walk(e, depth + 1)
+
+    for insert in doc.modelspace().query("INSERT"):
+        if insert.dxf.name not in doc.blocks:
+            continue  # a reference to a block the file lacks places nothing
+        add(insert)
+        walk(insert)
+    return out
+
+
+def placed(t):
+    """An expanded text as a key two readers can agree on: rounded, the angle in 0..<360."""
+    return (t["text"], round(t["x"], 5), round(t["y"], 5), round(t["height"], 5),
+            round(t["rotation"] % 360, 4) % 360)
+
+
 def summarize(path):
     try:
         doc, _ = recover.readfile(path)
@@ -84,7 +124,7 @@ def summarize(path):
         return {"file": os.path.basename(path), "error": str(exc)}
     blocks = []
     for block in doc.blocks:
-        if block.name.lower().startswith(("*model_space", "*paper_space")):
+        if block.name.lower().startswith(LAYOUT_BLOCKS):
             continue  # the layouts' blocks hold their entities here; the file's are in ENTITIES
         nested = references(block)
         definitions = [fields(e) for e in block if e.dxftype() == "ATTDEF"]
@@ -94,6 +134,7 @@ def summarize(path):
         "file": os.path.basename(path),
         "references": references(doc.modelspace()),
         "blocks": sorted(blocks, key=lambda b: b["name"]),
+        "expanded": sorted(expanded(doc), key=placed),
     }
 
 
@@ -133,8 +174,18 @@ def differences(path, ours, theirs):
         same("error", ours.get("error"), theirs.get("error"))
         return found
     compare_list("references", ours["references"], theirs["references"], reference)
-    compare_list(
-        "blocks", sorted(ours["blocks"], key=lambda b: b["name"]), theirs["blocks"], block)
+    # The layouts' blocks hold nothing here, whatever dxfdump lists of them.
+    kept = [b for b in ours["blocks"] if not b["name"].lower().startswith(LAYOUT_BLOCKS)]
+    compare_list("blocks", sorted(kept, key=lambda b: b["name"]), theirs["blocks"], block)
+
+    attributes = [a for r in ours["references"] for a in r["attributes"]]
+    attributes += [a for b in ours["blocks"] for r in b["references"] for a in r["attributes"]]
+    if "expanded" in ours and all(a["handle"] is not None for a in attributes):
+        want, got = Counter(map(placed, theirs["expanded"])), Counter(map(placed, ours["expanded"]))
+        for key in sorted((want - got).keys())[:5]:
+            found.append(f"{path}: expanded: only in ezdxf {key!r}")
+        for key in sorted((got - want).keys())[:5]:
+            found.append(f"{path}: expanded: only in dxfdump {key!r}")
     return found
 
 
@@ -151,7 +202,7 @@ def main(argv):
         return 0
     status = 0
     for path in argv:
-        command = [compare, "--attributes", "--skip-paper-space", path]
+        command = [compare, "--attributes", "--expand-attributes", "--skip-paper-space", path]
         run = subprocess.run(command, capture_output=True, check=False)
         if run.returncode != 0 or not run.stdout.strip():
             print(f"{path}: dxfdump failed ({run.returncode})")

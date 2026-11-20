@@ -7,6 +7,14 @@ import Testing
 struct AttributeExpansionTests {
     typealias B = DXFBuilder
 
+    /// The insertion points of the text entities of `d`.
+    static func texts(_ d: DXF.Drawing) -> [DXF.Point] {
+        d.entities.compactMap { entity in
+            if case .text(let p, _, _, _, _, _) = entity { return p }
+            return nil
+        }
+    }
+
     /// `builder` read with its blocks expanded, and its attributes too unless `attributes` is off.
     static func expanded(_ builder: DXFBuilder, attributes: Bool = true) throws -> DXF.Drawing {
         try AttributeTests.read(
@@ -117,10 +125,7 @@ struct AttributeExpansionTests {
             "TITLE", at: (0, 0), attributes: [B.attrib("A", "x", at: (1, 1), handle: "A2")],
             handle: "A1", array: (columns: 2, rows: 2, dx: 10, dy: 20))
         let d = try Self.expanded(b)
-        let at = d.entities.compactMap { entity -> DXF.Point? in
-            if case .text(let p, _, _, _, _, _) = entity { return p }
-            return nil
-        }
+        let at = Self.texts(d)
         #expect(at.count == 4)
         #expect(
             Set(at.map { "\($0.x),\($0.y)" }) == ["1.0,1.0", "11.0,1.0", "1.0,21.0", "11.0,21.0"])
@@ -128,19 +133,57 @@ struct AttributeExpansionTests {
         #expect(Set(d.identities.map(\.id)).count == d.identities.count)
     }
 
-    @Test("an attribute on layer 0 inside a block takes the outer reference's layer")
+    @Test("an array follows the reference's rotation, and the mirror of a -z plane")
+    func expandsRotatedArrays() throws {
+        var b = AttributeTests.titleBlock()
+        // Rotated by 90 degrees, the columns run along +y and the rows along -x.
+        b.entities += B.insert(
+            "TITLE", at: (0, 0), attributes: [B.attrib("A", "x", at: (1, 1))], rotation: 90,
+            array: (columns: 2, rows: 2, dx: 10, dy: 20))
+        let rotated = Self.texts(try Self.expanded(b))
+        #expect(
+            Set(rotated.map { "\($0.x),\($0.y)" }) == [
+                "1.0,1.0", "1.0,11.0", "-19.0,1.0", "-19.0,11.0",
+            ])
+
+        // On a -z plane the block's x axis is the world -x, so the columns run that way.
+        var down = AttributeTests.titleBlock()
+        var insert = B.insert(
+            "TITLE", at: (0, 0), attributes: [B.attrib("A", "x", at: (-1, 1), normal: (0, 0, -1))],
+            array: (columns: 2, rows: 1, dx: 10, dy: 0))
+        insert[0] += [(210, "0"), (220, "0"), (230, "-1")]
+        down.entities += insert
+        let mirrored = Self.texts(try Self.expanded(down))
+        #expect(Set(mirrored.map { "\($0.x),\($0.y)" }) == ["1.0,1.0", "-9.0,1.0"])
+    }
+
+    @Test("an attribute on layer 0 inside a block takes the enclosing reference's layer")
     func inheritsLayer() throws {
         var b = AttributeTests.titleBlock()
+        // SHEET is drawn on PARTS, and holds a reference on INNER. The attribute is in SHEET's
+        // space, not TITLE's, so it takes PARTS, not INNER.
         b.blocks.append(
             (
                 "SHEET", (0, 0),
-                B.insert("TITLE", at: (0, 0), attributes: [B.attrib("A", "x", at: (1, 1))])
+                B.insert(
+                    "TITLE", at: (0, 0), attributes: [B.attrib("A", "x", at: (1, 1))],
+                    layer: "INNER")
             ))
         b.entities = [B.insert("SHEET", at: (0, 0), layer: "PARTS")]
         b.entities += B.insert("TITLE", at: (0, 0), attributes: [B.attrib("A", "x", at: (1, 1))])
         let d = try Self.expanded(b)
         let texts = d.entities.filter { if case .text = $0 { true } else { false } }
         #expect(texts.map(\.layer) == ["PARTS", "0"])
+    }
+
+    @Test("a reference to a block the file does not define places no attributes")
+    func missingBlock() throws {
+        var b = AttributeTests.titleBlock()
+        b.entities += B.insert("GONE", at: (0, 0), attributes: [B.attrib("A", "x", at: (1, 1))])
+        let d = try Self.expanded(b)
+        #expect(d.entities.isEmpty && d.skipped == ["INSERT": 1])
+        #expect(d.references[0].attributes.count == 1)
+        #expect(d.warnings.contains(.missingBlock(name: "GONE", count: 1)))
     }
 
     @Test("expanding attributes counts against the limit")

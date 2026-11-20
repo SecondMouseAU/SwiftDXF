@@ -174,9 +174,10 @@ draw. With `ReadOptions(expandBlocks: true, expandAttributes: true)` the visible
 through as `.text` too, each with an identity that keeps the attribute's handle and names the
 reference in `via` (`8E/9A`); an invisible attribute stays out. A reference inside a block has its
 attributes carried by the placement of that block only, since the file already drew them where its
-own reference is; an array repeats them per instance. A constant attribute, which no reference
-carries, comes through from its block's definition, placed as the block's other entities are.
-`dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
+own reference is; an array repeats them per instance, as `ezdxf`'s `multi_insert()` does. A
+constant attribute, which no reference carries, comes through from its block's definition, placed as
+the block's other entities are. A reference to a block the file does not define places nothing,
+attributes included, as before. `dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
 `dxfdump --expand-attributes` reads with `expandBlocks` and `expandAttributes`.
 
 ### Extrusion
@@ -528,7 +529,9 @@ entities actually read.
   they are read (see *Attributes*). `BlockReference` gains `attributes`, `Block` gains
   `attributeDefinitions` and `ReadOptions` gains `expandAttributes`, all defaulted, so nothing
   changes for a caller that ignores them. The `SEQEND` after an `INSERT`'s attributes is read with
-  them. A record that follows an `INSERT`'s attributes keeps the locator it had.
+  them. A record that follows an `INSERT`'s attributes keeps the locator it had. The attributes of
+  a paper-space `INSERT` are no longer counted in `dwg.paperSpace["ATTRIB"]` either, and are left
+  out with it by `skipPaperSpace`.
 - **`Dimension` has a new property**, `rebuilt`, `nil` for a dimension the file holds and set by
   `rebuildingDimensions()`; it is defaulted in `init`. `Dimension.text` reads `%%nnn` through its
   `codePage`, a new property read from the drawing.
@@ -717,9 +720,9 @@ Over the 170 drawings of a local corpus that hold an `ATTRIB` or an `ATTDEF` (a 
 car and people symbols: 165 of R12, 5 of R2013), every one of the 7,020 attributes of 309
 model-space references, the 3,634 attributes of 158 references inside blocks and the 6,680
 definitions has the same tag, value, position, height, rotation, layer, flags and handle in both.
-Expansion was checked against `ezdxf`'s virtual entities on the same files: all 441 visible
-attributes, those of references inside blocks carried through their blocks' placement, come out
-at the same position, height and rotation. The R2000 title block and the R2018 multiline
+Expansion is compared too, against `ezdxf`'s `virtual_entities()`: on the same files all 441 visible
+attributes, those of references inside blocks carried through their blocks' placement, come out at
+the same position, height and rotation. The R2000 title block and the R2018 multiline
 attribute of `Tests/SwiftDXFTests/Fixtures/attributes*.dxf` are written and read back by `ezdxf`
 (`tools/attrib_fixtures.py`). No drawing of the corpus is a title block written by AutoCAD with
 R2000 attribute records filled in, or has a multiline attribute: those two forms are tested on

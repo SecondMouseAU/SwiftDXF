@@ -1,11 +1,10 @@
 extension DXF {
     /// A block definition from the `BLOCKS` section.
     ///
-    /// The block's own entities are read. `INSERT` references to a block are read too, and
-    /// expanded into the drawing when ``ReadOptions/expandBlocks`` is set, and its `ATTDEF`s are
-    /// ``attributeDefinitions``. Every drawing also
-    /// holds the built-in blocks such as `*Model_Space` and the anonymous `*D` blocks that carry
-    /// the drawn form of a dimension.
+    /// The block's own entities are read, and its `ATTDEF`s are ``attributeDefinitions``.
+    /// `INSERT` references to a block are read too, and expanded into the drawing when
+    /// ``ReadOptions/expandBlocks`` is set. Every drawing also holds the built-in blocks such as
+    /// `*Model_Space` and the anonymous `*D` blocks that carry the drawn form of a dimension.
     public struct Block: Sendable {
         public var name: String
         public var identity: Identity

@@ -25,13 +25,15 @@ extension DXFBuilder {
     /// An `ATTDEF` as AutoCAD writes it from R13 on.
     static func attdef(
         _ tag: String, prompt: String, value: String, at p: (Double, Double), height: Double = 2.5,
-        layer: String = "0", handle: String? = nil, flags: Int = 0
+        layer: String = "0", handle: String? = nil, flags: Int = 0,
+        normal: (Double, Double, Double) = (0, 0, 1)
     ) -> Record {
         var r: Record = [(0, "ATTDEF")]
         if let handle { r.append((5, handle)) }
         r += [
             (100, "AcDbEntity"), (8, layer), (100, "AcDbText"), (10, "\(p.0)"), (20, "\(p.1)"),
-            (30, "0.0"), (40, "\(height)"), (1, value), (71, "4"), (100, "AcDbAttributeDefinition"),
+            (30, "0.0"), (40, "\(height)"), (1, value), (71, "4"), (210, "\(normal.0)"),
+            (220, "\(normal.1)"), (230, "\(normal.2)"), (100, "AcDbAttributeDefinition"),
             (280, "0"), (3, prompt), (2, tag), (70, "\(flags)"),
         ]
         return r
@@ -261,6 +263,69 @@ struct AttributeTests {
         #expect(abs(attributes[0].rotation - 150) < 1e-9)
         #expect(Self.close(attributes[1].position, 1, 1))
         #expect(d.warnings.contains(.extrusionNotApplied(type: "ATTRIB", count: 1)))
+    }
+
+    @Test("a definition on a -z plane is read in the world, one on a tilted plane is counted")
+    func definitionExtrusion() throws {
+        var b = DXFBuilder()
+        b.blocks = [
+            (
+                "B", (0, 0),
+                [
+                    B.attdef("A", prompt: "", value: "x", at: (3, 4), normal: (0, 0, -1)),
+                    B.attdef("B", prompt: "", value: "y", at: (1, 1), normal: (0, 1, 0)),
+                ]
+            )
+        ]
+        let d = try Self.read(b)
+        let definitions = try #require(d.blocks.first { $0.name == "B" }?.attributeDefinitions)
+        #expect(Self.close(definitions[0].position, -3, 4))
+        #expect(Self.close(definitions[1].position, 1, 1))
+        #expect(d.warnings.contains(.extrusionNotApplied(type: "ATTDEF", count: 1)))
+    }
+
+    @Test("an attribute is carried by a map as a TEXT is")
+    func movesLikeText() throws {
+        let attribute = DXF.Attribute(
+            tag: "T", content: DXF.TextContent("v", syntax: .text), position: DXF.Point(3, 4, 1),
+            height: 2, rotation: 30, identity: DXF.Identity(locator: "ENTITIES:0"))
+        func map(_ build: (inout DXF.Transform) -> Void) -> DXF.Transform {
+            var t = DXF.Transform()
+            build(&t)
+            return t
+        }
+        let maps = [
+            DXF.Transform(),
+            map {
+                $0.a = 0
+                $0.b = 2
+                $0.c = -2
+                $0.d = 0
+                $0.tx = 5
+                $0.ty = -1
+            },  // turn, scale
+            map {
+                $0.a = -1
+                $0.tx = 7
+            },  // mirror
+            map {
+                $0.a = 3
+                $0.d = 0.5
+                $0.tz = 2
+                $0.zScale = -1
+            },  // non-uniform
+        ]
+        for t in maps {
+            guard
+                case .text(let p, let h, let r, _, _, _)? = attribute.textEntity.transformed(by: t)
+            else {
+                Issue.record("a TEXT did not survive the map")
+                continue
+            }
+            let moved = attribute.transformed(by: t)
+            #expect(moved.position == p && moved.height == h && moved.rotation == r)
+            #expect(moved.tag == "T" && moved.value == "v" && moved.identity == attribute.identity)
+        }
     }
 
     @Test("a paper-space reference takes its attributes with it when those are left out")
