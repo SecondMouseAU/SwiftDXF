@@ -20,9 +20,13 @@ import Foundation
 /// print(dwg.entities.count, dwg.bounds as Any)
 /// ```
 ///
-/// Text is decoded from the file's code page: a `$DWGCODEPAGE` of `ANSI_932` (or the absence of one,
-/// for DXF emitted by Japanese tools such as Jw_cad) is read as **CP932 / Shift-JIS**; UTF-8 DXF is
-/// also handled. The codes inside a text string are decoded too; see ``TextContent``.
+/// A drawing whose dimensions are loose pieces (a Jw_cad export, a PDF) gets them back with
+/// ``Drawing/rebuildingDimensions(_:)``.
+///
+/// Text is decoded from the file's code page: UTF-8 when the bytes are valid UTF-8, otherwise the
+/// page `$DWGCODEPAGE` names (``CodePage``), and **CP932 / Shift-JIS** when it names none, for DXF
+/// emitted by Japanese tools such as Jw_cad. The codes inside a text string are decoded too, and
+/// `%%nnn` through the page when the header names one; see ``TextContent``.
 public enum DXF {
 
     // MARK: Model
@@ -114,6 +118,11 @@ public enum DXF {
         }
         /// Per-type entity counts, for verification against reference tools (ezdxf, IxMilia.Dxf).
         public var counts: Counts
+        /// The code page `$DWGCODEPAGE` names, or `nil` when the header has none or names a page
+        /// that is not read (see ``CodePage``).
+        ///
+        /// `%%nnn` in the text of the drawing is read through it.
+        public var codePage: CodePage?
         /// `$INSUNITS` header code (0 = unitless, 1 = inches, 2 = feet, 4 = mm, 5 = cm, 6 = m, …),
         /// or `nil` when the file declares none.
         public var insUnits: Int?
@@ -179,9 +188,10 @@ public enum DXF {
             lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = [],
             dimensionDefaults: DimensionStyle.Variables = .init(),
             references: [BlockReference] = [], warnings: [Warning] = [],
-            paperSpace: [String: Int] = [:]
+            paperSpace: [String: Int] = [:], codePage: CodePage? = nil
         ) {
             self.version = version
+            self.codePage = codePage
             self.entities = entities
             self.counts = counts
             self.insUnits = insUnits
@@ -330,24 +340,41 @@ public enum DXF {
 
     /// Decode DXF bytes to text.
     ///
-    /// ASCII and UTF-8 pass through; otherwise the bytes are treated as **CP932 / Shift-JIS** (the
-    /// common code page for DXF exported by Japanese CAD tools). Because CP932 is an ASCII
-    /// superset, the group-code/value structure is unaffected either way.
+    /// ASCII and UTF-8 pass through. Otherwise the bytes are in the code page `$DWGCODEPAGE`
+    /// names, or in **CP932 / Shift-JIS** when it names none that is read (the common code page
+    /// for DXF exported by Japanese CAD tools). Every supported page is an ASCII superset, so the
+    /// group-code/value structure is unaffected either way.
+    ///
+    /// A byte the page cannot decode is U+FFFD, and the rest of the file is read in the page.
     static func decode(_ data: Data) -> String {
         if let s = String(data: data, encoding: .utf8) { return s }
-        return decodeCP932([UInt8](data))
+        // R2007 and later write UTF-8 whatever `$DWGCODEPAGE` says, so a stray byte is one
+        // character lost and not a reason to read the file in a code page.
+        if let version = headerVersion(in: data), Self.isUTF8Version(version) {
+            return String(decoding: data, as: UTF8.self)
+        }
+        let page = headerCodePage(in: data) ?? .shiftJIS
+        let bytes = [UInt8](data)
+        return page.decode(bytes) ?? page.decodeLines(bytes)
+    }
+
+    /// Whether `version` (`$ACADVER`, such as `AC1032`) is R2007 or later, which is UTF-8.
+    ///
+    /// Only `AC` and four digits count: an older name such as `AC2.10` is not.
+    static func isUTF8Version(_ version: String) -> Bool {
+        let digits = version.dropFirst(2)
+        guard version.hasPrefix("AC"), digits.count == 4,
+            digits.allSatisfy({ $0.isASCII && $0.isNumber }),
+            let number = Int(digits)
+        else { return false }
+        return number >= 1021
     }
 
     /// Decode CP932 (Shift-JIS / Windows-31J) bytes to a Swift String, via CoreFoundation on Apple
     /// platforms, falling back to `.shiftJIS` then a lossy UTF-8 decode.
     public static func decodeCP932(_ bytes: [UInt8]) -> String {
-        let data = Data(bytes)
-        #if canImport(CoreFoundation)
-            let cp932 = String.Encoding(
-                rawValue: CFStringConvertEncodingToNSStringEncoding(
-                    CFStringEncoding(CFStringEncodings.dosJapanese.rawValue)))
-            if let s = String(data: data, encoding: cp932) { return s }
-        #endif
-        return String(data: data, encoding: .shiftJIS) ?? String(decoding: bytes, as: UTF8.self)
+        if let s = CodePage.shiftJIS.decode(bytes) { return s }
+        return String(data: Data(bytes), encoding: .shiftJIS)
+            ?? String(decoding: bytes, as: UTF8.self)
     }
 }

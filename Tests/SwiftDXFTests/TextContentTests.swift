@@ -152,7 +152,7 @@ struct TextContentTests {
     @Test("a code that is not understood is kept as written")
     func unknownCodes() {
         #expect(Self.mtext(#"a\zb"#).plain == #"a\zb"#)
-        #expect(Self.mtext(#"\M+18342"#).plain == #"\M+18342"#)
+        #expect(Self.mtext(#"\M+68342"#).plain == #"\M+68342"#)
         #expect(Self.text(#"\U+D800 \U+000A"#).plain == #"\U+D800 \U+000A"#)
         // A `\U+` without its four hex digits is kept whole, as one code.
         #expect(Self.mtext(#"\U+GGGG \U+12"#).plain == #"\U+GGGG \U+12"#)
@@ -160,9 +160,12 @@ struct TextContentTests {
             DXF.TextCodes.tokens(#"\U+12x"#, syntax: .mtext) == [.code(#"\U+12"#), .text("x")])
         #expect(
             DXF.TextCodes.tokens(#"\U+GGGG"#, syntax: .mtext) == [.code(#"\U+"#), .text("GGGG")])
+        // The digit after `\M+` is the code page, 1 to 5. Korean Johab (4) is not decoded, so it is
+        // kept; the others are decoded, `\M+18342` being the katakana `\u{30A3}`.
         #expect(
-            DXF.TextCodes.tokens(#"\M+18342"#, syntax: .mtext) == [.code(#"\M+18342"#)])
-        // The digit after `\M+` is the code page, 1 to 5; anything else is not a character code.
+            DXF.TextCodes.tokens(#"\M+48342"#, syntax: .mtext) == [.code(#"\M+48342"#)])
+        #expect(DXF.TextCodes.tokens(#"\M+18342"#, syntax: .mtext) == [.text("\u{30A3}")])
+        // Anything else is not a character code.
         #expect(
             DXF.TextCodes.tokens(#"\M+A1234"#, syntax: .mtext) == [.code(#"\M"#), .text("+A1234")])
         #expect(

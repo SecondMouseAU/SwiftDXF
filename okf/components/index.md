@@ -4,7 +4,7 @@ title: Components index
 resource: https://github.com/SecondMouseAU/SwiftDXF
 tags: [index]
 description: Public modules / API surfaces exposed by SwiftDXF.
-timestamp: 2026-11-18
+timestamp: 2026-11-19
 ---
 
 # Components
@@ -38,10 +38,14 @@ timestamp: 2026-11-18
   (polyline and edge types); `.leader` the vertices, arrowhead and annotation handle. `Layer` and
   `LineType` carry the table fields, and `Drawing.effectiveLineType(ofEntityAt:)` resolves BYLAYER
   and BYBLOCK. Read by `Reader+Hatch.swift` and `Reader+Tables.swift`.
-- **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `Drawing+Text.swift`): the
+- **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `CodePage.swift`,
+  `Drawing+Text.swift`): the
   `string` of `.text` is the text as it reads. `Drawing.textContent(ofEntityAt:)` gives a
   `DXF.TextContent`: the string as written (`raw`), its `syntax` (`TEXT` or `MTEXT`), its `parts`
-  and `plain` text, and its `stacks`. `%%c`, `%%d`, `%%p` and `%%nnn` are decoded in both; in
+  and `plain` text, and its `stacks`. `%%c`, `%%d`, `%%p` and `%%nnn` are decoded in both, `%%nnn`
+  through the drawing's `DXF.CodePage`
+  (`Drawing.codePage`, from `$DWGCODEPAGE`), which also reads the bytes of a file that is not UTF-8,
+  and `\M+nXXXX` through the multibyte page `n` names; in
   `MTEXT` the formatting codes and groups are removed and a `\S` stack is a `DXF.StackedText`
   (upper, lower, tolerance or fraction). `Drawing.textContents` and `Block.textContents` are
   parallel to the entities. `TextCodes` is the one scanner, shared with `DimensionText`;
@@ -54,6 +58,15 @@ timestamp: 2026-11-18
   `DIMSTYLE` record, and `displayedMeasurement(of:)` applies `DIMLFAC`. `DimensionText` splits the
   override into measurement, number, words, line-break and stack parts, with the codes decoded as
   in `MTEXT`. Read by `Reader+Dimension.swift`.
+- **Rebuilding dimensions** (`Sources/SwiftDXF/Rebuild/`): `Drawing.rebuildingDimensions(_:)`
+  rebuilds `.dimension`s from loose pieces (`Drawing+RebuildDimensions.swift`), starting from each
+  value text: `RebuildValue.swift` reads the number (a comma as a decimal mark or thousands
+  separator), `RebuildPieces.swift` collects the texts, segments, circles and end marks,
+  `RebuildLinear.swift` finds the spans of a dimension line beside a text, `RebuildRadial.swift`
+  the diameters and radii, and the scale is inferred per layer group. The result is a
+  `DXF.DimensionRebuild` (dimensions with `Dimension.rebuilt` set, `ScaleEstimate`s, `Warning`s)
+  that `applied(to:)` adds to the drawing; `dxfdump --rebuild` prints it, and
+  `tools/rebuild_corpus.py` summarises a folder of drawings.
 - **Curve fit** (`CurveFit.swift`, `CurveFit+Fitting.swift`): `Entity.fitted(tolerance:source:)`,
   `Spline.fitted(tolerance:source:)` and `Drawing.fittedCurve(at:tolerance:)` turn one `SPLINE` or
   `ELLIPSE` into a `DXF.CurveFit` of `Contour.Segment` pieces (each stamped with the entity's
@@ -70,4 +83,5 @@ timestamp: 2026-11-18
   README (entities on a tilted plane are read as written, `INSERT` flattened only on request).
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
   `--contours` prints the contour summary as JSON; `--texts` prints each text string as it reads,
-  with its stacks; `--expand` and `--skip-paper-space` read with those `ReadOptions`.
+  with its stacks; `--rebuild [--scale N]` prints the dimensions rebuilt from loose pieces, the
+  scales and the warnings; `--expand` and `--skip-paper-space` read with those `ReadOptions`.

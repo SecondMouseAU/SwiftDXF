@@ -258,13 +258,16 @@ for (i, entity) in dwg.entities.enumerated() {
 ```
 
 - **Special characters**, in both: `%%c` is `⌀` (the diameter sign, U+2300), `%%d` is `°`, `%%p`
-  is `±`, `%%%` is `%`, and `%%nnn`, with three digits, is the Unicode character nnn up to 255,
-  so `%%176` is `°`.
-  The drawing's code page is not consulted, so from 128 to 159, where Windows-1252 has the euro
-  sign and other letters, the code is kept as written.
+  is `±`, `%%%` is `%`, and `%%nnn`, with three digits, is the character numbered nnn in the
+  drawing's code page (`Drawing.codePage`, from `$DWGCODEPAGE`): in Windows-1252 `%%176` is `°`
+  and `%%128` the euro sign, and in Shift-JIS `%%177` is the half-width katakana `ｱ`. A drawing with
+  no code page takes nnn as a Unicode code point up to 255.
   `%%u`, `%%o` and `%%k`, which switch underline, overline and strike-through, are dropped.
-  `\U+XXXX` is the Unicode character. Of the caret notation of DXF strings, `^ ` is a caret, `^I` a
-  tab and `^J` a line break.
+  `\U+XXXX` is the Unicode character, and two that make a surrogate pair, `\U+D83D\U+DE00`, are
+  one character. `\M+nXXXX` is the character whose two bytes XXXX are in the multibyte code page
+  that `n` names, as `ezdxf` reads it: 1 is Shift-JIS, 2 Big5, 3 Korean Wansung and 5 GB 2312,
+  whatever the drawing's own code page. Of the caret notation of DXF strings, `^ ` is a caret,
+  `^I` a tab and `^J` a line break.
 - **MTEXT formatting codes are removed** with their arguments up to the `;`: `\A` (alignment), `\C`
   and `\c` (colour), `\F` and `\f` (font), `\H` (height), `\Q` (oblique angle), `\T` (tracking),
   `\W` (width) and `\p` (paragraph). So are the switches `\L`, `\l`, `\O`, `\o`, `\K` and `\k`,
@@ -279,10 +282,12 @@ for (i, entity) in dwg.entities.enumerated() {
   order.
 - **A backslash in `TEXT` is a character.** `TEXT` has no formatting codes, so a file path such as
   `C:\DRAWINGS\PLAN.DWG` stays whole.
-- **A code that is not understood is kept as written**: an unknown backslash code, `\M+nXXXX` (a
-  character of a multibyte code page), and a `%%nnn` or `\U+XXXX` that names a control character,
-  a number above 255 or half a surrogate pair. A `}` ends a stack as it ends the group around
-  it, so a `\S` whose `;` is missing ends there, or at the end of the text.
+- **A code that is not understood is kept as written**: an unknown backslash code, a `\M+nXXXX`
+  whose `n` is not 1, 2, 3 or 5 (Korean Johab, 4, is not decoded) or whose bytes are not a
+  character of its page, a `%%nnn` that names a control character, a number above 255, or a byte
+  the code page leaves unassigned or uses to start a double-byte character, and a `\U+XXXX` that
+  names a control character or is half a surrogate pair. A `}` ends a stack as it ends the group
+  around it, so a `\S` whose `;` is missing ends there, or at the end of the text.
 
 `dwg.textContents` is parallel to `entities` like `identities`, and is cleared when `entities`
 changes. A block's are in `Block.textContents`, and an expansion carries them through.
@@ -330,6 +335,93 @@ for case .dimension(let d) in dwg.entities {
   a tolerance stack, whose numbers are not typed numbers. `d.textOverride` is the override as the
   file writes it.
 
+### Rebuilding dimensions from loose pieces
+
+A drawing from a Jw_cad export, a vector PDF or a scan holds a dimension as separate pieces: a value
+text, a dimension line, extension lines, and marks at the ends. `rebuildingDimensions()` puts them
+back together, without any format's flags:
+
+```swift
+let result = dwg.rebuildingDimensions()
+for d in result.dimensions {
+    d.textOverride                    // "1,829": the text as written
+    d.measurement                     // 22.863: the length the geometry gives, in drawing units
+    dwg.displayedMeasurement(of: d)   // 1829.04: that times the scale (`styleOverrides.linearScale`)
+    d.rebuilt?.scale                  // 80
+    d.rebuilt?.pieces                 // the identities it was built from, the value text first
+}
+result.scales                         // per layer group: scale 80, 29 supporting, 0 contradicting
+result.warnings                       // each value it could not explain, and what disagrees
+let withDimensions = result.applied(to: dwg)   // the dimensions added after the entities
+```
+
+It starts from each text that states a number and works out the rest, like SwiftJWW's
+`recoveringDimensions()`, which uses Jw_cad's attribute flags and stays as it is:
+
+- **Ends.** A dimension line is a line beside the text, or a chain of collinear pieces (broken
+  around the text is fine). Its ends are where an extension line meets it, or a `POINT`, a small
+  closed triangle (an arrowhead, whose tip is the end) or a small shape such as a dot or a tick
+  lies on it. An extension line gives the exact place; a mark is used where there is none. A
+  dimension is a span between two ends that the line covers, near the text, with at most two
+  other ends inside it (an arrowhead has a base) or the whole line. A dimension line is read up to
+  512 collinear pieces. `Options(tolerance:)` is how
+  far apart pieces may be and still meet, 3% of the text height by default; a length may differ
+  from its value by twice that, times the scale.
+- **Scale.** Every candidate span and reading implies a scale, the value over the length. The scale
+  that explains the most texts is refined to the least-squares scale of the ones it explains, and
+  made a round scale (80, 1/2) when it is within what the values can tell apart. Each layer group
+  has its own, a group being the `0` of a Jw_cad layer `0-E` and otherwise the layer. Groups that
+  differ are reported with `.scalesDisagree`, never averaged. A scale counts only when it is
+  between 1/20 and 1,000,000 and explains at least three values and more than it leaves, or two
+  when they are all the values of the group and the scale is round: a numbered sequence beside
+  lines (the ports of a panel, a scale bar, a border) is explained by some scale too, and is
+  usually left unexplained: a dimension is between neighbouring ends, with at most two others
+  inside it. A
+  value votes only when it is ten units of its last place (`5` does not, `50` and `2.5` do): it
+  can be explained once the scale is known. Of scales that explain as much, the one whose
+  geometry is nearest its texts wins, then a reduction over an enlargement. `Options(scale:)`
+  states the scale instead; anything but a positive number is no scale.
+- **Values.** A comma or a point is a decimal mark or a thousands separator, whichever the geometry
+  bears out: `1,829` is 1.829 or 1829, and `1.234,5` is 1234.5. Full-width digits, a diameter or
+  radius symbol before the number and a trailing `mm` are read; a tolerance stack is ignored.
+  Angles, other units, texts with several numbers and numbers that are not read (`1.2.3`) are
+  listed as not rebuilt, with the reason. Numbers a text assembler ran
+  together (`200 629`) are read as the values they are, so a space as a thousands separator
+  (`1 600`) is read as two.
+- **Diameters and radii** come from the geometry, not the symbol: a line through the centre of a
+  circle or arc that ends on it at both ends is a diameter, and one that ends on it at one end
+  (from the centre, or along a leader) is a radius. The symbol is a check: `.symbolDisagrees` says
+  where it does not bear the geometry out, or a radius symbol is on a straight dimension (a
+  diameter symbol there is ordinary), and the geometry decides.
+- **Marked, and flagged.** Each dimension has `rebuilt` set. A value text that no dimension
+  explains, on a layer where one was rebuilt or (an angle, or a value in another unit) beside a
+  dimension line, is a
+  `.valueNotExplained` warning with its reason. A drawing with `DIMENSION` entities and no loose
+  pieces gains nothing and warns of nothing.
+- **Pieces are on the layer of the text** unless `Options(pieceLayers: .any)`, and are read from
+  `entities`: read a drawing with `expandBlocks` when its pieces are in blocks, and with
+  `skipPaperSpace` to leave a sheet's paper space out, as model and paper space are one plane
+  here. The text's direction is a preference, not a rule: Jw_cad writes a vertical text's angle as
+  5156.62, and an AutoCAD style may keep a text horizontal beside a vertical line. A text is
+  placed from its insertion point (the left of the baseline for a `TEXT`, the top left for an
+  `MTEXT`) and its length is estimated from its characters: justification is not read.
+
+On Jw_cad's own DXF export of the 2120 it gives all 29 dimensions at 1:80 with all 29 supporting,
+the same values SwiftJWW gives for the JWW. So it does for a DXF of the JWW's loose pieces, and for
+the PDF through OCCTSwiftPDF, whose positions are noisy to about 0.1 mm: 29 at 1:80 (the least
+squares scale is 80.04). Over 2,855 DXF files on one machine, the 38 that have real
+dimensions (22 of them McMaster-Carr sheets) gained none, 35 of them with no warning and 3 with
+warnings for numbers beside lines, and the other Jw_cad railway drawings (`dd12`,
+`ka2000`, `tmf1`, `to1`) found 1:80.
+
+It is an inference. It does not rebuild angular or ordinate dimensions, a text on a dimension
+line that is not beside it (a leader), or two scales in one layer group; an arrowhead drawn as a
+filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] file.dxf`
+prints the result as JSON. The 2120 and the drawings with real dimensions are checked by tests that
+need the files: `DXF_REBUILD_FILE` (a drawing that gives 29 at 1:80) and `DXF_REBUILD_CORPUS` (a
+folder in which every drawing with real dimensions gains none). `tools/rebuild_corpus.py <folder>`
+prints what each drawing of a folder gives, with totals, as the figures above were taken.
+
 ### Splines
 
 ```swift
@@ -362,10 +454,16 @@ entities actually read.
 
 ### Behaviours worth knowing
 
-- **Encoding.** Files are decoded as UTF-8 when valid, otherwise **CP932 / Shift-JIS**: the common
-  code page for DXF exported by Japanese CAD tools (e.g. Jw_cad). Because CP932 is an ASCII superset,
-  the group-code structure is unaffected either way. The codes inside text are decoded too; see
-  *Text*.
+- **Encoding.** Files are decoded as UTF-8 when valid, and a file of R2007 or later (`$ACADVER`
+  `AC1021` and after) always is, with a stray byte as U+FFFD. Otherwise the bytes are in the code
+  page that `$DWGCODEPAGE` names (`ANSI_932`, `ANSI_936`, `ANSI_949`, `ANSI_950`, `ANSI_874` and
+  `ANSI_1250` to `ANSI_1258`; `Drawing.codePage` says which), or in **CP932 / Shift-JIS** when it
+  names none or one that is not read (`DOS437`, `ISO8859-1`, `ANSI_1361`): the common code page
+  for DXF exported by Japanese CAD tools (e.g. Jw_cad). Each is an ASCII superset, so the
+  group-code structure is unaffected. A byte its page cannot decode is shown as U+FFFD, and the
+  rest of the file is still read in the page. Without CoreFoundation, only Shift-JIS and
+  `ANSI_1250` to `ANSI_1254` are decoded. The codes inside text are decoded too, and `%%nnn`
+  through the code page when the header names one; see *Text*.
 - **Line endings & padding.** Handles LF / CRLF / CR and R12-style space-padded group codes (`  0`).
 - **Ellipse normalisation.** DXF requires `ratio = minor/major ≤ 1`. Files that emit `ratio > 1`
   (a swapped major axis) are normalised to the canonical form (same curve, valid axis), so consumers
@@ -378,6 +476,10 @@ entities actually read.
 
 ### Upgrading from 0.4
 
+- **`Dimension` has a new property**, `rebuilt`, `nil` for a dimension the file holds and set by
+  `rebuildingDimensions()`; it is defaulted in `init`. `Dimension.text` reads `%%nnn` through its
+  `codePage`, a new property read from the drawing.
+
 - **The `string` of `.text` is the text as it reads.** It used to drop only the backslash of each
   MTEXT code and keep the rest (`36{H2.400000;S+0,011^ -0,005;}`), and to leave `%%c`, `%%d` and
   `%%p` as written. The codes are now decoded or removed (`36 +0,011/-0,005`), and
@@ -387,6 +489,18 @@ entities actually read.
   backslash was dropped, which broke file paths. `\U+XXXX` is still decoded, and needs its four hex
   digits; one that names a control character is kept as written. An MTEXT code that is not
   understood keeps its backslash.
+- **A file is read through its `$DWGCODEPAGE`.** A file that is not UTF-8 used to be read as
+  Shift-JIS whatever its header said, so a drawing that names `ANSI_1252` (McMaster-Carr's, for
+  one) read `é`, `°` and `Ø` as other characters, or as replacement characters. It now reads them
+  in the page it names. A file with no `$DWGCODEPAGE` is still read as Shift-JIS.
+  `DXF.CodePage`, `Drawing.codePage` and `Dimension.codePage` are new, and `TextContent.init` and
+  `DimensionText.init` take a `codePage`, defaulted to none.
+- **A file of R2007 or later is read as UTF-8.** One with bytes that are not valid UTF-8 used to
+  be read as Shift-JIS; its `$DWGCODEPAGE` is not used for the bytes of such a file, and a stray
+  byte is U+FFFD.
+- **`%%nnn`, `\M+nXXXX` and surrogate pairs.** `%%128` in an `ANSI_1252` drawing is the euro sign,
+  where it was kept as written; `\M+nXXXX` is decoded, where it was kept as written; and two
+  `\U+` escapes that make a surrogate pair are one character, where each was kept.
 - **`DimensionText.Part` has a new case**, `.stack`, so an exhaustive `switch` over the parts needs
   it. `.words` no longer holds formatting codes, `%%c` in it is `⌀`, and `\X` is a `.lineBreak`. A
   sign after a line break now belongs to the number that follows. `Dimension.textOverride` is
@@ -540,11 +654,14 @@ texts of blocks, which the oracle does not list.
 The oracle writes `%%c` as `⌀`, a stack as `upper/lower` after a space, `\~` as a no-break space and
 `\X` as a line break, as SwiftDXF does, so the diff shows only where the two read a string
 differently. Over 23,429 strings in 3,109 real drawings, given to both with their non-ASCII
-characters written as `\U+XXXX` (ezdxf reads a file through its `$DWGCODEPAGE`, SwiftDXF as UTF-8
-or else CP932), the two agree on all but 25, each a Jw_cad superscript mark from the third case
-below. They read a string differently in these cases, on purpose:
+characters written as `\U+XXXX`, the two agree on all but 25, each a Jw_cad superscript mark from
+the third case below. Both read a file through its `$DWGCODEPAGE`; with none, `ezdxf` reads
+Windows-1252 and SwiftDXF Shift-JIS, so a Japanese file with no header reads differently in the
+two. Over the 96 files of a local corpus that are not UTF-8, the strings of 86 are the same in
+both, and the other 10 are Japanese files with no `$DWGCODEPAGE`. They read a string
+differently in these cases, on purpose:
 
-- `%%nnn` is decoded; `ezdxf` leaves it.
+- `%%nnn` is decoded, through the drawing's code page; `ezdxf` leaves it.
 - `^J` in a `TEXT` is a line break; `ezdxf` keeps a `TEXT` on one line and drops it.
 - A caret other than `^ `, `^I` and `^J` is text; `ezdxf` reads every caret as a control
   character, so the Jw_cad superscript mark in `m^u3` becomes `m53`.
@@ -553,8 +670,9 @@ below. They read a string differently in these cases, on purpose:
   without its space still divides (`ezdxf` reads `^-` as a control character). A `\S` with no
   divider is read as text, where `ezdxf` gives a stack with an empty lower part, and a `}` ends a
   stack, where `ezdxf` runs it on to its `;`.
-- `\M+nXXXX`, and a `\U+XXXX` of a control character or of half a surrogate pair, are kept as
-  written; `ezdxf` decodes them. A `%%` or a
+- `\M+4XXXX` (Korean Johab) is kept as written; `ezdxf` decodes it. A `\U+XXXX` of a control
+  character, or of half a surrogate pair, is kept as written; `ezdxf` decodes it. `ezdxf` leaves
+  a surrogate pair as two code points, and the oracle joins them as SwiftDXF does. A `%%` or a
   backslash at the very end is kept; `ezdxf` drops it.
 
 ## Install

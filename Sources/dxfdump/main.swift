@@ -8,6 +8,7 @@ import SwiftDXF
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
 //   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
 //   dxfdump --texts file.dxf [...]
+//   dxfdump --rebuild [--scale N] file.dxf [...]
 //
 // --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
 // entities flagged as paper space. Both work with the digest and with --contours.
@@ -16,6 +17,9 @@ import SwiftDXF
 // --texts prints each TEXT and MTEXT string and each dimension's text override as it reads, with
 // its stacks, for diffing against tools/text_oracle.py (with --skip-paper-space, as ezdxf's
 // modelspace() reads). It cannot be combined with --contours.
+// --rebuild prints the dimensions rebuilt from the loose pieces of each drawing (value texts, dimension
+// lines, extension lines and marks), the scale found for each layer group, and what it could not
+// explain; --scale N states the scale instead of inferring one.
 
 /// How the files are read, set by `--expand` and `--skip-paper-space`.
 var readOptions = DXF.ReadOptions()
@@ -204,6 +208,35 @@ func textSummary(for path: String) -> [String: Any] {
     }
 }
 
+/// The dimensions rebuilt from the loose pieces of the file, what scale they were found at, and
+/// what could not be explained.
+func rebuildSummary(for path: String, options: DXF.DimensionRebuild.Options) -> [String: Any] {
+    let url = URL(fileURLWithPath: path)
+    do {
+        let dwg = try DXF.read(contentsOf: url, options: readOptions)
+        let result = dwg.rebuildingDimensions(options)
+        let dimensions: [[String: Any]] = result.dimensions.map { d in
+            [
+                "text": d.textOverride ?? "", "kind": "\(d.kind)", "layer": d.layer,
+                "measurement": d.measurement ?? 0, "scale": d.rebuilt?.scale ?? 0,
+                "pieces": d.rebuilt?.pieces.map(\.id) ?? [],
+            ]
+        }
+        let scales: [[String: Any]] = result.scales.map {
+            [
+                "group": $0.group, "scale": $0.scale, "supporting": $0.supporting,
+                "contradicting": $0.contradicting,
+            ]
+        }
+        return [
+            "file": url.lastPathComponent, "dimensions": dimensions, "scales": scales,
+            "warnings": result.warnings.map(\.description),
+        ]
+    } catch {
+        return ["file": url.lastPathComponent, "error": "\(error)"]
+    }
+}
+
 var arguments = Array(CommandLine.arguments.dropFirst())
 if let flag = arguments.firstIndex(of: "--expand") {
     arguments.remove(at: flag)
@@ -217,6 +250,22 @@ var listTexts = false
 if let flag = arguments.firstIndex(of: "--texts") {
     arguments.remove(at: flag)
     listTexts = true
+}
+var rebuild = false
+var rebuildOptions = DXF.DimensionRebuild.Options()
+if let flag = arguments.firstIndex(of: "--rebuild") {
+    arguments.remove(at: flag)
+    rebuild = true
+    if let at = arguments.firstIndex(of: "--scale") {
+        guard at + 1 < arguments.count, let scale = Double(arguments[at + 1]), scale > 0,
+            scale.isFinite
+        else {
+            FileHandle.standardError.write(Data("--scale needs a positive number\n".utf8))
+            exit(2)
+        }
+        rebuildOptions.scale = scale
+        arguments.removeSubrange(at...(at + 1))
+    }
 }
 var contourOptions: DXF.Contour.Options?
 if let flag = arguments.firstIndex(of: "--contours") {
@@ -244,8 +293,13 @@ if let flag = arguments.firstIndex(of: "--contours") {
     }
     contourOptions = options
 }
-if listTexts, contourOptions != nil {
-    FileHandle.standardError.write(Data("--texts and --contours cannot be used together\n".utf8))
+if !rebuild, arguments.contains("--scale") {
+    FileHandle.standardError.write(Data("--scale goes with --rebuild\n".utf8))
+    exit(2)
+}
+if [listTexts, contourOptions != nil, rebuild].filter({ $0 }).count > 1 {
+    FileHandle.standardError.write(
+        Data("--texts, --contours and --rebuild cannot be used together\n".utf8))
     exit(2)
 }
 let paths = arguments
@@ -253,7 +307,8 @@ guard !paths.isEmpty else {
     FileHandle.standardError.write(
         Data(
             ("usage: dxfdump [--expand] [--skip-paper-space]"
-                + " [--contours [--layers A,B] [--units inch|mm] | --texts] <file.dxf> [...]\n")
+                + " [--contours [--layers A,B] [--units inch|mm] | --texts"
+                + " | --rebuild [--scale N]] <file.dxf> [...]\n")
                 .utf8)
     )
     exit(2)
@@ -268,6 +323,16 @@ if listTexts {
     for path in paths {
         let data = try JSONSerialization.data(
             withJSONObject: textSummary(for: path), options: options)
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
+
+if rebuild {
+    for path in paths {
+        let data = try JSONSerialization.data(
+            withJSONObject: rebuildSummary(for: path, options: rebuildOptions),
+            options: [.sortedKeys])
         print(String(decoding: data, as: UTF8.self))
     }
     exit(0)

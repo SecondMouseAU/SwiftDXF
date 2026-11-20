@@ -28,5 +28,5 @@ extension DXF.Dimension {
     }
 
     /// The text override split into what it shows; see ``DXF/DimensionText``.
-    public var text: DXF.DimensionText { DXF.DimensionText(textOverride) }
+    public var text: DXF.DimensionText { DXF.DimensionText(textOverride, codePage: codePage) }
 }

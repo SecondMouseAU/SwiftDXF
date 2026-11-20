@@ -34,8 +34,9 @@ extension DXF {
         /// The decoded text in order, with each stack as a part of its own.
         public var parts: [Part]
 
-        /// Decodes `raw`, written with the codes of `syntax`.
-        public init(_ raw: String, syntax: Syntax) {
+        /// Decodes `raw`, written with the codes of `syntax`, reading `%%nnn` through `codePage`
+        /// (as a Unicode code point when it is `nil`).
+        public init(_ raw: String, syntax: Syntax, codePage: CodePage? = nil) {
             self.raw = raw
             self.syntax = syntax
             var parts: [Part] = []
@@ -46,7 +47,7 @@ extension DXF {
                     parts.append(.text(text))
                 }
             }
-            for token in TextCodes.tokens(raw, syntax: syntax) {
+            for token in TextCodes.tokens(raw, syntax: syntax, codePage: codePage) {
                 switch token {
                 case .text(let text), .code(let text): add(text)
                 case .lineBreak: add("\n")

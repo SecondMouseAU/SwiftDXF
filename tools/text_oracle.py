@@ -20,8 +20,11 @@ U+2300 (ezdxf gives U+00D8), a stack reads as `upper/lower` after a space (ezdxf
 with the divider and no space), `\\~` is a no-break space (ezdxf gives a space), and `\\X` is a line
 break (ezdxf drops it). The README lists where the two still read a string differently.
 
-ezdxf decodes a file's characters through its `$DWGCODEPAGE`, and SwiftDXF as UTF-8 or else CP932,
-so a file whose text is in neither reads differently in the two before any code is decoded.
+Both read a file's characters through its `$DWGCODEPAGE` when it is not UTF-8. With none, ezdxf
+reads Windows-1252 and SwiftDXF Shift-JIS, so a Japanese file with no `$DWGCODEPAGE` reads
+differently in the two before any code is decoded. ezdxf leaves a surrogate pair written as two
+`\\U+` escapes as two code points; the oracle joins them, as SwiftDXF does. ezdxf does not decode
+`%%nnn`, which SwiftDXF reads through the drawing's code page.
 
 A string ezdxf fails to parse gets an entry with an `error` in place of `plain` and `stacks`, so
 the run goes on and the diff shows it.
@@ -73,6 +76,15 @@ def mtext(raw):
     return out, stacks
 
 
+def joined(text):
+    """`text` with each surrogate pair made one character."""
+    return text.encode("utf-16", "surrogatepass").decode("utf-16", "surrogatepass")
+
+
+def joined_stacks(stacks):
+    return [[joined(upper), joined(lower), kind] for upper, lower, kind in stacks]
+
+
 def summarize(path):
     try:
         doc, _ = recover.readfile(path)
@@ -90,7 +102,8 @@ def summarize(path):
                 plain, stacks = plain_text(diameter(e.dxf.text)), []
             else:
                 plain, stacks = mtext(e.text if kind == "MTEXT" else e.dxf.text)
-            texts.append({"type": kind, "plain": plain, "stacks": stacks})
+            texts.append(
+                {"type": kind, "plain": joined(plain), "stacks": joined_stacks(stacks)})
         except Exception as exc:  # noqa: BLE001
             # ezdxf failed on this string (1.4.5 raises TypeError on `\S1/2\`). The entry
             # says so, and shows up in the diff, instead of ending the run.

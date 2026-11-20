@@ -15,7 +15,7 @@ extension DXF.Reader {
             layer: layer(f), color: color(f), rotation: dblOpt(50, f),
             obliqueAngle: dblOpt(52, f),
             styleName: first(3, f).map(trimmed).flatMap { $0.isEmpty ? nil : $0 },
-            styleOverrides: styleOverrides(f))
+            styleOverrides: styleOverrides(f), codePage: codePage)
     }
 
     /// The variables a `DIMSTYLE` record states, by their group codes.

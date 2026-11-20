@@ -14,8 +14,13 @@ extension DXF {
             case stack(StackedText)
         }
 
-        static func tokens(_ raw: String, syntax: TextContent.Syntax) -> [Token] {
-            var scanner = Scanner(Array(raw.unicodeScalars), mtext: syntax == .mtext)
+        /// The tokens of `raw`, reading `%%nnn` through `codePage`, or as a Unicode code point when
+        /// it is `nil`.
+        static func tokens(
+            _ raw: String, syntax: TextContent.Syntax, codePage: CodePage? = nil
+        ) -> [Token] {
+            var scanner = Scanner(
+                Array(raw.unicodeScalars), mtext: syntax == .mtext, codePage: codePage)
             return scanner.run()
         }
 
@@ -48,13 +53,15 @@ extension DXF {
         private struct Scanner {
             let s: [Unicode.Scalar]
             let mtext: Bool
+            let codePage: CodePage?
             var i = 0
             var tokens: [Token] = []
             var buffer = String.UnicodeScalarView()
 
-            init(_ s: [Unicode.Scalar], mtext: Bool) {
+            init(_ s: [Unicode.Scalar], mtext: Bool, codePage: CodePage?) {
                 self.s = s
                 self.mtext = mtext
+                self.codePage = codePage
             }
 
             func at(_ k: Int) -> Unicode.Scalar? { k < s.count ? s[k] : nil }
@@ -101,9 +108,9 @@ extension DXF {
 
             /// The special character that starts at `k`, and how many scalars it takes, or `nil`
             /// when none starts there: `%%c`, `%%d`, `%%p`, `%%%`, `%%nnn`, the underline, overline
-            /// and strike-through toggles `%%u`, `%%o` and `%%k`, `\U+XXXX`, `\M+nXXXX` (kept as
-            /// written), and the control characters `^ ` (a caret), `^I` (a tab) and `^J` (a line
-            /// break).
+            /// and strike-through toggles `%%u`, `%%o` and `%%k`, `\U+XXXX` (a surrogate pair of two
+            /// is one character), `\M+nXXXX`, and the control characters `^ ` (a caret), `^I` (a
+            /// tab) and `^J` (a line break).
             func special(at k: Int) -> (Piece, Int)? {
                 switch s[k] {
                 case "%":
@@ -125,21 +132,23 @@ extension DXF {
                     }
                 case "\\":
                     guard at(k + 2) == "+" else { return nil }
-                    if at(k + 1) == "M", let page = at(k + 3), ("1"..."5").contains(page),
-                        hexDigits(from: k + 4) == 4
-                    {
-                        // `\M+` with the number of a multibyte code page (1 to 5) and four hex
-                        // digits, such as `\M+18342`: kept as written.
-                        return (.code(string(k..<(k + 8))), 8)
-                    }
+                    if at(k + 1) == "M" { return multibyteCharacter(at: k) }
                     guard at(k + 1) == "U" else { return nil }
                     let count = hexDigits(from: k + 3)
-                    guard count == 4, let value = UInt32(string((k + 3)..<(k + 7)), radix: 16),
-                        let scalar = Unicode.Scalar(value), Self.canBeShown(scalar)
-                    else {
-                        // Short, or not a character that can be shown: `\U+` and its hex digits
-                        // are one code, kept as written.
+                    guard count == 4, let value = unicodeEscape(at: k) else {
+                        // Short: `\U+` and its hex digits are one code, kept as written.
                         return (.code(string(k..<(k + 3 + count))), 3 + count)
+                    }
+                    if (0xD800...0xDBFF).contains(value), let low = unicodeEscape(at: k + 7),
+                        (0xDC00...0xDFFF).contains(low),
+                        let scalar = Unicode.Scalar(
+                            0x10000 + ((value - 0xD800) << 10) + (low - 0xDC00))
+                    {
+                        return (.text(String(scalar)), 14)
+                    }
+                    guard let scalar = Unicode.Scalar(value), Self.canBeShown(scalar) else {
+                        // Not a character that can be shown: kept as written.
+                        return (.code(string(k..<(k + 7))), 7)
                     }
                     return (.text(String(scalar)), 7)
                 default:
@@ -147,24 +156,61 @@ extension DXF {
                 }
             }
 
-            /// `%%nnn`: the character numbered by three digits, read as a Unicode code point up to
-            /// 255, when it can be shown; any other number is kept as written.
+            /// `%%nnn`: the character numbered by three digits, when it can be shown; any other number
+            /// is kept as written.
             ///
-            /// The drawing's code page is not consulted, so from 128 to 159 this differs from
-            /// Windows-1252, which puts the euro sign at 128.
+            /// The number is a byte of the drawing's code page, so in Windows-1252 `%%128` is the
+            /// euro sign, and in Shift-JIS `%%177` is a half-width katakana. Without a code page it
+            /// is a Unicode code point up to 255.
             func characterNumber(at k: Int) -> (Piece, Int)? {
                 var end = k + 2
                 while end < k + 5, let digit = at(end), ("0"..."9").contains(digit) { end += 1 }
                 guard end == k + 5 else { return nil }
-                guard let value = UInt32(string((k + 2)..<end)), value <= 255,
-                    let scalar = Unicode.Scalar(value), Self.canBeShown(scalar)
-                else { return (.code(string(k..<end)), end - k) }
-                return (.text(String(scalar)), end - k)
+                let kept = (Piece.code(string(k..<end)), end - k)
+                guard let value = UInt8(string((k + 2)..<end)) else { return kept }
+                if let codePage, value >= 0x80 {
+                    guard let text = codePage.decode([value]), Self.canBeShown(text) else {
+                        return kept
+                    }
+                    return (.text(text), end - k)
+                }
+                let scalar = Unicode.Scalar(value)
+                return Self.canBeShown(scalar) ? (.text(String(scalar)), end - k) : kept
+            }
+
+            /// The value of the `\U+XXXX` escape that starts at `j`, or `nil` when none does.
+            func unicodeEscape(at j: Int) -> UInt32? {
+                guard at(j) == "\\", at(j + 1) == "U", at(j + 2) == "+", hexDigits(from: j + 3) == 4
+                else { return nil }
+                return UInt32(string((j + 3)..<(j + 7)), radix: 16)
+            }
+
+            /// `\M+nXXXX`: the character whose bytes XXXX are in a multibyte code page.
+            ///
+            /// `n` chooses the page (see ``CodePage/multibyte(_:)``). The code is kept as written
+            /// when the page is not read, the bytes are not valid in it, or the character cannot
+            /// be shown, and `nil` when the text is too short to hold one.
+            func multibyteCharacter(at k: Int) -> (Piece, Int)? {
+                guard let digit = at(k + 3), ("1"..."5").contains(digit),
+                    hexDigits(from: k + 4) == 4
+                else { return nil }
+                let kept = (Piece.code(string(k..<(k + 8))), 8)
+                guard let n = Int(String(digit)), let page = CodePage.multibyte(n),
+                    let bytes = UInt16(string((k + 4)..<(k + 8)), radix: 16),
+                    let text = page.decode([UInt8(bytes >> 8), UInt8(bytes & 0xFF)]),
+                    Self.canBeShown(text)
+                else { return kept }
+                return (.text(text), 8)
             }
 
             /// Whether an escape may stand for `scalar`: anything but a control character.
             static func canBeShown(_ scalar: Unicode.Scalar) -> Bool {
                 scalar.properties.generalCategory != .control
+            }
+
+            /// Whether an escape may stand for `text`: it holds no control character.
+            static func canBeShown(_ text: String) -> Bool {
+                !text.isEmpty && text.unicodeScalars.allSatisfy(canBeShown)
             }
 
             /// An MTEXT backslash code at `i`.
