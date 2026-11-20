@@ -7,11 +7,19 @@ section). TEXT/MTEXT and LWPOLYLINE/POLYLINE are folded together the same way Sw
 
     python3 tools/oracle.py file1.dxf [file2.dxf ...]
 
+`--header` prints instead the header variables of each file, in the shape `dxfdump --header` prints:
+the ones SwiftDXF names (`header`) and every variable with its first group-coded value
+(`variables`), both as ezdxf's `doc.header` has them. `--against DXFDUMP` runs that `dxfdump` on
+each file and lists where the two differ, numbers compared as numbers:
+
+    python3 tools/oracle.py --header --against .build/debug/dxfdump file1.dxf [file2.dxf ...]
+
 Requires: pip install ezdxf
 """
 import json
 import math
 import os
+import subprocess
 import sys
 import unicodedata
 from collections import Counter
@@ -19,6 +27,7 @@ from collections import Counter
 import ezdxf
 from ezdxf import recover
 from ezdxf.math import Vec3
+from ezdxf.sections.header import HeaderSection
 from ezdxf.upright import upright_all
 
 
@@ -216,12 +225,142 @@ def summarize(path):
     }
 
 
+# The code pages SwiftDXF reads from $DWGCODEPAGE (CodePage.swift): ANSI_ and one of these numbers.
+CODE_PAGES = {874, 932, 936, 949, 950, 1250, 1251, 1252, 1253, 1254, 1255, 1256, 1257, 1258}
+
+
+def code_page_name(text):
+    """The code page `text` names as SwiftDXF reads it, such as ANSI_932, or None."""
+    upper = text.strip(SWIFT_WHITESPACES).upper()
+    number = upper[len("ANSI_"):]
+    if not (upper.startswith("ANSI_") and number.isascii() and number.isdecimal()):
+        return None
+    return upper if str(int(number)) == number and int(number) in CODE_PAGES else None
+
+
+def header_summary(path):
+    """The header variables of `path` in the shape `dxfdump --header` prints."""
+    # The header as the file has it: ezdxf's Drawing adds and updates variables once it has loaded
+    # (the creation time, the extents), so read the HEADER section itself, as recover.readfile does.
+    try:
+        with open(path, "rb") as fp:
+            sections = recover.Recover.run(fp).section_dict
+    except Exception as exc:  # noqa: BLE001
+        return {"file": os.path.basename(path), "error": str(exc)}
+    header = sections.get("HEADER")
+    variables = {}
+    for name, var in (HeaderSection.load(header[0]).hdrvars.items() if header else []):
+        # A 2D point has no z, which SwiftDXF reads as 0.
+        value = list(var.value) + [0.0] * (3 - len(var.value)) if var.ispoint else var.value
+        variables[name] = [var.code, value]
+
+    def value(name, code):
+        entry = variables.get(name)
+        return entry[1] if entry and entry[0] == code else None
+
+    def integer(name):
+        v = value(name, 70)
+        return v if isinstance(v, int) else None
+
+    def real(name, code):
+        v = value(name, code)
+        return float(v) if isinstance(v, (int, float)) else None
+
+    def text(name, code, trim=True):
+        v = value(name, code)
+        if not isinstance(v, str):
+            return None
+        v = v.strip(SWIFT_WHITESPACES) if trim else v
+        return v or None
+
+    def point(name):
+        entry = variables.get(name)
+        if not entry or entry[0] != 10:
+            return None
+        return [float(c) for c in entry[1]]
+
+    version = variables.get("$ACADVER")
+    return {
+        "file": os.path.basename(path),
+        "header": {
+            "version": version[1].strip(SWIFT_WHITESPACES) if version else "",
+            "codePage": code_page_name(value("$DWGCODEPAGE", 3) or ""),
+            "insUnits": integer("$INSUNITS"),
+            "extMin": point("$EXTMIN"),
+            "extMax": point("$EXTMAX"),
+            "measurement": integer("$MEASUREMENT"),
+            "currentDimensionStyleName": text("$DIMSTYLE", 2),
+            "dimensionScale": real("$DIMSCALE", 40),
+            "linearUnitFormat": integer("$LUNITS"),
+            "linearUnitPrecision": integer("$LUPREC"),
+            "dimDec": integer("$DIMDEC"),
+            "dimZin": integer("$DIMZIN"),
+            "dimLfac": real("$DIMLFAC", 40),
+            "dimPost": text("$DIMPOST", 1, trim=False),
+        },
+        "variables": variables,
+    }
+
+
+def differences(ours, theirs):
+    """Where two `--header` summaries of one file differ, as short strings."""
+    if "error" in ours or "error" in theirs:
+        if ours.get("error") and theirs.get("error"):
+            return []
+        return ["error: dxfdump %s, ezdxf %s" % (ours.get("error"), theirs.get("error"))]
+    out = []
+    for key in sorted(set(ours["header"]) | set(theirs["header"])):
+        a, b = ours["header"].get(key), theirs["header"].get(key)
+        if a != b:
+            out.append("header %s: dxfdump %r, ezdxf %r" % (key, a, b))
+    for name in sorted(set(ours["variables"]) | set(theirs["variables"])):
+        a, b = ours["variables"].get(name), theirs["variables"].get(name)
+        if a is None or b is None:
+            out.append("variable %s: only in %s" % (name, "ezdxf" if a is None else "dxfdump"))
+        elif a != b:
+            out.append("variable %s: dxfdump %r, ezdxf %r" % (name, a, b))
+    return out
+
+
+def compare_header(dxfdump, paths):
+    """Lists where `dxfdump --header` and ezdxf differ over `paths`; returns the exit status."""
+    differing = 0
+    for path in paths:
+        run = subprocess.run([dxfdump, "--header", path], capture_output=True, text=True)
+        try:
+            ours = json.loads(run.stdout)
+        except ValueError:
+            ours = {"file": os.path.basename(path), "error": "dxfdump failed: " + run.stderr[:200]}
+        diff = differences(ours, header_summary(path))
+        if diff:
+            differing += 1
+            print(path)
+            for line in diff:
+                print("   ", line)
+    print("%d of %d files differ" % (differing, len(paths)))
+    return 1 if differing else 0
+
+
 def main(argv):
+    argv = list(argv)
+    header = "--header" in argv
+    if header:
+        argv.remove("--header")
+    against = None
+    if "--against" in argv:
+        i = argv.index("--against")
+        if not header or i + 1 >= len(argv):
+            sys.stderr.write("usage: oracle.py --header --against <dxfdump> <file.dxf> [...]\n")
+            return 2
+        against = argv[i + 1]
+        del argv[i:i + 2]
     if not argv:
-        sys.stderr.write("usage: oracle.py <file.dxf> [...]\n")
+        sys.stderr.write("usage: oracle.py [--header [--against <dxfdump>]] <file.dxf> [...]\n")
         return 2
+    if against:
+        return compare_header(against, argv)
     for path in argv:
-        print(json.dumps(summarize(path), sort_keys=True))
+        print(json.dumps(header_summary(path) if header else summarize(path), sort_keys=True))
     return 0
 
 
