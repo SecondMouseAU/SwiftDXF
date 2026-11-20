@@ -9,6 +9,7 @@ import SwiftDXF
 //   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
 //   dxfdump --texts file.dxf [...]
 //   dxfdump --rebuild [--scale N] [--numbers thousands|decimal|plain] file.dxf [...]
+//   dxfdump --header file.dxf [...]
 //
 // --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
 // entities flagged as paper space. Both work with the digest and with --contours.
@@ -23,6 +24,8 @@ import SwiftDXF
 // writes a comma in a number: `thousands` (Jw_cad's `10,439` is 10439), `decimal` (`0,125` is
 // 0.125) or `plain` (a comma is not part of a number). Without it a comma is read every way it can
 // be, and the geometry chooses.
+// --header prints the header variables SwiftDXF names (as the drawing has them) and every header
+// variable with its first value, for diffing against tools/oracle.py --header.
 
 /// How the files are read, set by `--expand` and `--skip-paper-space`.
 var readOptions = DXF.ReadOptions()
@@ -283,6 +286,11 @@ if let flag = arguments.firstIndex(of: "--rebuild") {
         arguments.removeSubrange(at...(at + 1))
     }
 }
+var listHeader = false
+if let flag = arguments.firstIndex(of: "--header") {
+    arguments.remove(at: flag)
+    listHeader = true
+}
 var contourOptions: DXF.Contour.Options?
 if let flag = arguments.firstIndex(of: "--contours") {
     arguments.remove(at: flag)
@@ -313,9 +321,9 @@ for flag in ["--scale", "--numbers"] where !rebuild && arguments.contains(flag) 
     FileHandle.standardError.write(Data("\(flag) goes with --rebuild\n".utf8))
     exit(2)
 }
-if [listTexts, contourOptions != nil, rebuild].filter({ $0 }).count > 1 {
+if [listTexts, contourOptions != nil, rebuild, listHeader].filter({ $0 }).count > 1 {
     FileHandle.standardError.write(
-        Data("--texts, --contours and --rebuild cannot be used together\n".utf8))
+        Data("--texts, --contours, --rebuild and --header cannot be used together\n".utf8))
     exit(2)
 }
 let paths = arguments
@@ -324,8 +332,8 @@ guard !paths.isEmpty else {
         Data(
             ("usage: dxfdump [--expand] [--skip-paper-space]"
                 + " [--contours [--layers A,B] [--units inch|mm] | --texts"
-                + " | --rebuild [--scale N] [--numbers thousands|decimal|plain]]"
-                + " <file.dxf> [...]\n")
+                + " | --rebuild [--scale N] [--numbers thousands|decimal|plain]"
+                + " | --header] <file.dxf> [...]\n")
                 .utf8)
     )
     exit(2)
@@ -340,6 +348,19 @@ if listTexts {
     for path in paths {
         let data = try JSONSerialization.data(
             withJSONObject: textSummary(for: path), options: options)
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
+
+if listHeader {
+    var options: JSONSerialization.WritingOptions = [.sortedKeys]
+    if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
+        options.insert(.withoutEscapingSlashes)
+    }
+    for path in paths {
+        let data = try JSONSerialization.data(
+            withJSONObject: headerSummary(for: path, options: readOptions), options: options)
         print(String(decoding: data, as: UTF8.self))
     }
     exit(0)
