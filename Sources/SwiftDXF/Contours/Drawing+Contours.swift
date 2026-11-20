@@ -34,6 +34,7 @@ extension DXF.Drawing {
         var points = 0
         var hatches = 0
         var leaders = 0
+        var otherIgnored: [String: Int] = [:]
         for entity in entities {
             let layer = entity.layer
             guard included(layer) else { continue }
@@ -43,6 +44,8 @@ extension DXF.Drawing {
             case .point: points += 1
             case .hatch: hatches += 1
             case .leader: leaders += 1
+            case .tolerance, .solid, .wipeout, .face3D:
+                otherIgnored[entity.typeName, default: 0] += 1
             default:
                 let index =
                     layerIndex[layer]
@@ -74,6 +77,9 @@ extension DXF.Drawing {
         if points > 0 { warnings.append(.ignoredPoints(count: points)) }
         if hatches > 0 { warnings.append(.ignoredHatches(count: hatches)) }
         if leaders > 0 { warnings.append(.ignoredLeaders(count: leaders)) }
+        for (type, count) in otherIgnored.sorted(by: { $0.key < $1.key }) {
+            warnings.append(.ignoredEntities(type: type, count: count))
+        }
 
         let join = max(options.joinTolerance, 0)
         let chained = ContourChainer(tolerance: join).chain(extractor.segments)
@@ -143,6 +149,10 @@ extension DXF.Entity {
         case .spline(let s): return s.layer
         case .hatch(let h): return h.layer
         case .leader(let l): return l.layer
+        case .tolerance(let t): return t.layer
+        case .solid(let s): return s.layer
+        case .wipeout(let w): return w.layer
+        case .face3D(let f): return f.layer
         }
     }
 }

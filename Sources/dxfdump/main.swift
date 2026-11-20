@@ -42,7 +42,8 @@ func summary(for path: String) -> [String: Any] {
                 "LINE": c.line, "CIRCLE": c.circle, "ARC": c.arc, "ELLIPSE": c.ellipse,
                 "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline,
                 "DIMENSION": c.dimension, "SPLINE": c.spline, "HATCH": c.hatch, "LEADER": c.leader,
-                "total": c.total,
+                "TOLERANCE": c.tolerance, "SOLID": c.solid, "WIPEOUT": c.wipeout,
+                "3DFACE": c.face3D, "total": c.total,
             ],
             "skipped": dwg.skipped,
             "skippedByLayer": dwg.skippedByLayer,
@@ -97,6 +98,15 @@ func summary(for path: String) -> [String: Any] {
                 for p in s.fitPoints { add("SPLINE", p.x, p.y) }
             case .leader(let l):
                 for p in l.vertices { add("LEADER", p.x, p.y) }
+            case .tolerance(let t):
+                add("TOLERANCE", t.insertion.x, t.insertion.y, t.direction.x, t.direction.y)
+            case .solid(let s):
+                for p in s.corners { add("SOLID", p.x, p.y, p.z) }
+            case .wipeout(let w):
+                for p in w.boundary { add("WIPEOUT", p.x, p.y, p.z) }
+            case .face3D(let f):
+                for p in f.corners { add("3DFACE", p.x, p.y, p.z) }
+                add("3DFACE", Double(f.invisibleEdges))
             case .hatch(let h):
                 for path in h.paths {
                     switch path.geometry {
@@ -123,6 +133,12 @@ func summary(for path: String) -> [String: Any] {
         obj["dimensions"] = dwg.entities.compactMap { e -> Any? in
             guard case .dimension(let d) = e else { return nil }
             return d.computedMeasurement ?? NSNull()
+        }
+        // The frame string of each TOLERANCE in order, as the file writes it, for diffing against
+        // ezdxf's `content`.
+        obj["tolerances"] = dwg.entities.compactMap { e -> Any? in
+            guard case .tolerance(let t) = e else { return nil }
+            return t.text
         }
         obj["geom"] = ["sum": sum, "scalars": n]
         obj["geomByType"] = byType.mapValues { ["sum": $0[0], "scalars": Int($0[1])] }

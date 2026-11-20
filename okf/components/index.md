@@ -11,7 +11,7 @@ timestamp: 2026-11-21
 
 - **`SwiftDXF`** (library): `DXF.read(contentsOf:)` parses an ASCII DXF file into a `Sendable`
   drawing model: the DXF version, entity counts, and the model-space `DXF.Entity` cases
-  (line, arc, circle, polyline, text, spline, …) with their layer, text decoded.
+  (line, arc, circle, polyline, text, spline, tolerance, solid, …) with their layer, text decoded.
   `DXF.Dimension` carries rotation, style name and overrides, a computed measurement and
   `DimensionText` parts; `Drawing.identities` gives each entity its handle or position;
   `Drawing.dimensionStyles` is the `DIMSTYLE` table. Unmodelled entity types are tallied in
@@ -49,6 +49,18 @@ timestamp: 2026-11-21
   (polyline and edge types); `.leader` the vertices, arrowhead and annotation handle. `Layer` and
   `LineType` carry the table fields, and `Drawing.effectiveLineType(ofEntityAt:)` resolves BYLAYER
   and BYBLOCK. Read by `Reader+Hatch.swift` and `Reader+Tables.swift`.
+- **Tolerances, solids, wipeouts and faces** (`Tolerance.swift`, `ToleranceFrame.swift`,
+  `ToleranceText.swift`, `Solid.swift`, `Wipeout.swift`, `Face3D.swift`): `.tolerance` carries the
+  insertion, direction, dimension style and string of a feature control frame, and
+  `Tolerance.frames` reads the string into rows (`^J`) of boxes (`%%v`): the characteristic from the
+  GDT-font letter (`gdt.shx`), two tolerance boxes with their diameter and material condition, and
+  the datums in order; what it cannot map is kept as written (`.unrecognised`, `Frame.unread`).
+  `.solid` is three or four corners in outline order (the file's third and fourth swapped, read in
+  the object coordinate system), `.face3D` four corners with their z and the invisible edges, and
+  `.wipeout` the clip boundary carried from image pixels into the world as `ezdxf` does. The contour
+  layer ignores all four with `Warning.ignoredEntities`. Read by `Reader+Tolerance.swift`,
+  `Reader+Solid.swift` and `Reader+Wipeout.swift`; `tools/solid_fixtures.py` builds the fixture and
+  the `ezdxf` reference values.
 - **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `CodePage.swift`,
   `Drawing+Text.swift`): the
   `string` of `.text` is the text as it reads. `Drawing.textContent(ofEntityAt:)` gives a
@@ -100,4 +112,6 @@ timestamp: 2026-11-21
   with its stacks; `--rebuild [--scale N]` prints the dimensions rebuilt from loose pieces, the
   scales and the warnings; `--header` prints the header properties and every variable with its
   first value, for diffing against `tools/oracle.py --header` (`--against` runs `dxfdump` itself);
-  `--expand` and `--skip-paper-space` read with those `ReadOptions`.
+  `--expand` and `--skip-paper-space` read with those `ReadOptions`. The digest has a `tolerances`
+  list of the frame strings, and `tools/oracle_diff.py` compares it with `tools/oracle.py` over a
+  list of drawings.

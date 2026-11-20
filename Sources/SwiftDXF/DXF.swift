@@ -6,14 +6,15 @@ import Foundation
 ///
 /// The reader is a clean-room implementation of the public DXF group-code reference. It targets the
 /// 2D entity set that dominates real-world drawings: `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `POINT`,
-/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, `SPLINE`, `HATCH` and `LEADER`, and
-/// skips entities it does not model rather than failing, recording them in
-/// ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space) section, matching what a
-/// tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is read for block
-/// definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is read into
-/// ``Drawing/references`` and flattened into the entities when ``ReadOptions/expandBlocks`` is
-/// set. An entity written in a coordinate system with a `-z` extrusion is read as its world
-/// geometry; one on a tilted plane is read as written and reported in ``Drawing/warnings``.
+/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, `SPLINE`, `HATCH`, `LEADER`,
+/// `TOLERANCE`, `SOLID`, `WIPEOUT` and `3DFACE`, and skips entities it does not model rather than
+/// failing, recording them in ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space)
+/// section, matching what a tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is
+/// read for block definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is
+/// read into ``Drawing/references`` and flattened into the entities when
+/// ``ReadOptions/expandBlocks`` is set. An entity written in a coordinate system with a `-z`
+/// extrusion is read as its world geometry; one on a tilted plane is read as written and reported
+/// in ``Drawing/warnings``.
 ///
 /// ```swift
 /// let dwg = try DXF.read(contentsOf: url)
@@ -93,6 +94,15 @@ public enum DXF {
         case hatch(Hatch)
         /// `LEADER`: the line from an annotation to the feature it refers to; see ``Leader``.
         case leader(Leader)
+        /// `TOLERANCE`: a geometric tolerance, the feature control frame of GD&T; see
+        /// ``Tolerance``.
+        case tolerance(Tolerance)
+        /// `SOLID`: a filled triangle or quadrilateral; see ``Solid``.
+        case solid(Solid)
+        /// `WIPEOUT`: a masking area; see ``Wipeout``.
+        case wipeout(Wipeout)
+        /// `3DFACE`: a triangle or quadrilateral of a surface, with its z; see ``Face3D``.
+        case face3D(Face3D)
     }
 
     /// One polyline vertex: a point plus the bulge of the segment leaving it (`0` = straight).
@@ -169,7 +179,7 @@ public enum DXF {
         public var headerVariables: [String: HeaderVariable]
         /// Unmodelled entity types in the `ENTITIES` section, with a count of each.
         ///
-        /// For example `["INSERT": 3, "SOLID": 1]`; empty when nothing was skipped. Skipping is
+        /// For example `["INSERT": 3, "TRACE": 1]`; empty when nothing was skipped. Skipping is
         /// never an error.
         public var skipped: [String: Int]
         /// The same skipped entities broken down by layer: type name, then layer name, then count.
@@ -275,11 +285,12 @@ public enum DXF {
         public struct Counts: Sendable, Equatable {
             public var line = 0, circle = 0, arc = 0, ellipse = 0, point = 0, text = 0, polyline = 0
             public var dimension = 0, spline = 0, hatch = 0, leader = 0
+            public var tolerance = 0, solid = 0, wipeout = 0, face3D = 0
             public init() {}
             /// Total modelled entities.
             public var total: Int {
                 line + circle + arc + ellipse + point + text + polyline + dimension + spline + hatch
-                    + leader
+                    + leader + tolerance + solid + wipeout + face3D
             }
         }
 
@@ -333,6 +344,13 @@ public enum DXF {
                     for p in h.extentPoints { acc(p) }
                 case .leader(let l):
                     for p in l.vertices { acc(p) }
+                case .tolerance(let t): acc(t.insertion)
+                case .solid(let s):
+                    for p in s.corners { acc(p) }
+                case .wipeout(let w):
+                    for p in w.boundary { acc(p) }
+                case .face3D(let f):
+                    for p in f.corners { acc(p) }
                 }
             }
             return any ? (lo, hi) : nil
