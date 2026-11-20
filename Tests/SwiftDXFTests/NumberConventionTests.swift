@@ -225,4 +225,22 @@ struct NumberConventionTests {
         }
         #expect(withComma == 17)
     }
+
+    /// The README's figures for the 2120 (a Jw_cad export, 1:80): set `DXF_REBUILD_FILE`.
+    @Test(
+        "the 2120 rebuilds as the README says under each convention",
+        .enabled(if: ProcessInfo.processInfo.environment["DXF_REBUILD_FILE"] != nil))
+    func realRebuild() throws {
+        let path = try #require(ProcessInfo.processInfo.environment["DXF_REBUILD_FILE"])
+        let dwg = try DXF.read(contentsOf: URL(fileURLWithPath: path))
+        let thousands = dwg.rebuildingDimensions(.init(numbers: .commaSeparatesThousands))
+        #expect(thousands.dimensions.count == 29 && thousands.scales.map(\.scale) == [80])
+        #expect(thousands.warnings.isEmpty)
+        let decimal = dwg.rebuildingDimensions(.init(numbers: .commaIsDecimalMark))
+        #expect(decimal.dimensions.count == 17)
+        #expect(decimal.scales.map { abs($0.scale - 0.08) < 1e-3 } == [true])
+        #expect(dwg.rebuildingDimensions(.init(numbers: .plain)).dimensions.count == 12)
+        // Without a convention it is what it was before the setting.
+        #expect(dwg.rebuildingDimensions().dimensions.count == 29)
+    }
 }

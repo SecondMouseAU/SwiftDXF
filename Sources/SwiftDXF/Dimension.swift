@@ -82,7 +82,8 @@ extension DXF {
         /// `nil` when absent, which means horizontal. For a linear dimension this is what says
         /// whether it measures horizontally, vertically or at another angle; an ordinate
         /// dimension measures along this direction when ``isXOrdinate`` and across it when not.
-        /// It is not read for the other kinds.
+        /// Group 50 of any other kind is read as it is written, and used by none but a linear
+        /// dimension.
         ///
         /// The file gives the angle from the x axis of the dimension's own coordinate system; on a
         /// `-z` plane that axis is the world `-x`, and this is the world direction, `180 - angle`.

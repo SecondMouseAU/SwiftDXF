@@ -54,7 +54,8 @@ extension DXF.Dimension {
             // or across it.
             let (c, s) = ArcPieces.cosSin(degrees: rotation ?? 0)
             let (dx, dy) = (feature.x - defPoint.x, feature.y - defPoint.y)
-            return abs(isXOrdinate ? dx * c + dy * s : dy * c - dx * s)
+            let distance = abs(isXOrdinate ? dx * c + dy * s : dy * c - dx * s)
+            return distance.isFinite ? distance : nil
         case .unknown:
             return nil
         }

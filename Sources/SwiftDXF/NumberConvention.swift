@@ -39,9 +39,7 @@ extension DXF.DimensionText.NumberConvention {
             i += 1
         }
         guard !integer.isEmpty else { return nil }
-        if self == .commaSeparatesThousands, (1...3).contains(integer.count),
-            integer.first != "0"
-        {
+        if self == .commaSeparatesThousands, Self.canStartGroups(integer) {
             while let group = Self.group(chars, at: i) {
                 integer += group
                 i += 4
@@ -59,6 +57,13 @@ extension DXF.DimensionText.NumberConvention {
             return nil
         }
         return Scanned(end: i, value: value, decimals: fraction.count)
+    }
+
+    /// Whether `digits` can be the first group of a number with thousands groups.
+    ///
+    /// They are one to three digits with no leading zero, and every group after them has three.
+    static func canStartGroups<S: StringProtocol>(_ digits: S) -> Bool {
+        (1...3).contains(digits.count) && digits.first != "0"
     }
 
     private func isDecimalMark(_ c: Character) -> Bool {

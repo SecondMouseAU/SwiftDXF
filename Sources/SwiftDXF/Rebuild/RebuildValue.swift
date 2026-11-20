@@ -168,7 +168,7 @@ extension DXF.DimensionRebuild {
         /// Whether `parts` are thousands groups: one to three digits, then groups of three, and no
         /// leading zero.
         private static func isGrouping<S: StringProtocol>(_ parts: [S]) -> Bool {
-            guard let first = parts.first, (1...3).contains(first.count), first.first != "0"
+            guard let first = parts.first, DXF.DimensionText.NumberConvention.canStartGroups(first)
             else { return false }
             return parts.dropFirst().allSatisfy { $0.count == 3 || $0.isEmpty }
         }

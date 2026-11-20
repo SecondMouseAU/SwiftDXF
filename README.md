@@ -300,7 +300,7 @@ A `DIMENSION` says what it measures, and how the number is to be stated:
 for case .dimension(let d) in dwg.entities {
     d.measurement                         // the stored value (group 42); nil when absent, 0 or -1
     d.computedMeasurement                 // the value the geometry gives: units, or degrees for an angle
-    d.rotation, d.obliqueAngle            // groups 50 and 52, in degrees
+    d.rotation, d.obliqueAngle            // groups 50 (51, negated, for ordinate) and 52, in degrees
     d.isXOrdinate                         // bit 64 of group 70: an ordinate dimension of the X type
     dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale (not an angle)
     let style = dwg.styleVariables(of: d)
@@ -331,11 +331,11 @@ for case .dimension(let d) in dwg.entities {
     supplements, so a two-line angle is between 0 and 180. `ezdxf`'s `get_measurement()` is the
     angle counter-clockwise from the first line to the second whichever side the arc is on, so it
     differs where the arc is on the other side. Checked against AutoCAD's own anonymous blocks in
-    two DWG files, all 8 three-point angular dimensions in them (2 of which put the arc on the side
-    `ezdxf`'s number does not: AutoCAD drew 125 and 130 where `ezdxf` gives 235 and 230), and
-    against `ezdxf`'s numbers where the side is the same (`tools/angular_fixtures.py`). A
-    dimension with a point missing, lines that are parallel, a ray of no length, or an arc
-    location on the vertex has none. The decimal places and unit of an angle (`DIMADEC`,
+    two DWG files: all 8 three-point angular dimensions in them, of which 7 are different (the
+    tests hold those) and 2 put the arc on the side `ezdxf`'s number does not (AutoCAD drew 125 and
+    130 where `ezdxf` gives 235 and 230); and against `ezdxf`'s numbers where the side is the same
+    (`tools/angular_fixtures.py`). A dimension with a point missing, lines that are parallel, a ray
+    of no length, or an arc location exactly on the vertex or the crossing has none. The decimal places and unit of an angle (`DIMADEC`,
     `DIMAUNIT`) are not modelled, and `measurement` (group 42) of an angular dimension is the
     file's number, not converted.
   - **An ordinate dimension** is the distance from its origin (group 10) to its feature location

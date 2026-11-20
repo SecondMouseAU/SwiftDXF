@@ -14,10 +14,11 @@ dimensions of both types. Then it prints, as JSON, for each dimension:
 - `rendered`: the text ezdxf's own renderer wrote into the dimension's anonymous block.
 - `arcSide`: the angle on the side of the arc location, which is what AutoCAD displays. This is
   not ezdxf's number where the arc location is on the other side. It was checked against AutoCAD's
-  own anonymous blocks in two DWG files (8 three-point angular dimensions, 2 of which put the arc
-  on the side ezdxf's number does not): AutoCAD wrote 125 and 130 where counter-clockwise from the
-  first ray to the second is 235 and 230. Here it is worked out with ezdxf's vector maths, from
-  the definition points, as an independent check of the Swift code.
+  own anonymous blocks in two DWG files (8 three-point angular dimensions, 7 of them different,
+  and 2 put the arc on the side ezdxf's number does not): AutoCAD wrote 125 and 130 where
+  counter-clockwise from the first ray to the second is 235 and 230. Here it is worked out with
+  ezdxf's vector maths from the definition points, as a check of the Swift code's arithmetic; the
+  choice of side is the AutoCAD evidence.
 
 The values are pasted into Tests/SwiftDXFTests/AngularDimensionTests.swift.
 

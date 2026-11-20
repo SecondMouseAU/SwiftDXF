@@ -371,6 +371,22 @@ struct AngularDimensionTests {
         #expect(thousands.typedAngles == [1234])
     }
 
+    @Test("an angular dimension on a -z plane takes its arc location from the plane's own system")
+    func angularOnADownPlane() throws {
+        // Two lines crossing at the origin, along +x and at 53.13 degrees. The arc location is at
+        // 135 degrees in the world, in the gap of 126.87; group 16 is in the plane's own system, so
+        // the file writes its x as 5. Read as a world point it would be at 45 degrees, in the gap
+        // of 53.13.
+        let tags: [(Int, String)] = [
+            (70, "2"), (10, "6"), (20, "8"), (30, "0"), (13, "0"), (23, "0"), (33, "0"),
+            (14, "10"), (24, "0"), (34, "0"), (15, "0"), (25, "0"), (35, "0"), (16, "5"),
+            (26, "5"), (36, "0"), (210, "0"), (220, "0"), (230, "-1"),
+        ]
+        let dimension = DimensionTests.dimensions(try DimensionTests.inline(tags))[0]
+        #expect(Self.close(dimension.defPoint5?.x, -5) && Self.close(dimension.defPoint5?.y, 5))
+        #expect(Self.close(dimension.computedMeasurement, 126.86989764584402))
+    }
+
     // MARK: in a block
 
     /// An angular and a linear dimension, each with a stored value, in a block inserted with
