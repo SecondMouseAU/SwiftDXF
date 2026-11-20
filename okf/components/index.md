@@ -96,4 +96,6 @@ timestamp: 2026-11-21
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
   `--contours` prints the contour summary as JSON; `--texts` prints each text string as it reads,
   with its stacks; `--rebuild [--scale N]` prints the dimensions rebuilt from loose pieces, the
-  scales and the warnings; `--expand` and `--skip-paper-space` read with those `ReadOptions`.
+  scales and the warnings; `--expand` and `--skip-paper-space` read with those `ReadOptions`. The
+  digest has a `tolerances` list of the frame strings, and `tools/oracle_diff.py` compares it with
+  `tools/oracle.py` over a list of drawings.

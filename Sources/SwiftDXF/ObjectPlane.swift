@@ -2,9 +2,10 @@ extension DXF {
     /// The plane an entity's object coordinate system (OCS) lies in, from its extrusion direction
     /// (groups 210, 220, 230).
     ///
-    /// Arcs, circles, polylines, text, hatches and the text point of a dimension are written in
-    /// their own OCS. For a normal along z the OCS differs from the world by at most a mirror, which
-    /// a planar entity can carry; any other normal tips the entity out of the drawing plane.
+    /// Arcs, circles, polylines, text, hatches, solids and the text point of a dimension are
+    /// written in their own OCS. For a normal along z the OCS differs from the world by at most a
+    /// mirror, which a planar entity can carry; any other normal tips the entity out of the drawing
+    /// plane.
     enum ObjectPlane: Equatable {
         /// The normal is `+z`, or absent: the OCS is the world.
         case up

@@ -5,8 +5,9 @@ import Testing
 
 /// SOLID, 3DFACE and WIPEOUT.
 ///
-/// The reference values come from `ezdxf` reading `Fixtures/solids.dxf` (`tools/solid_fixtures.py`):
-/// `Solid.vertices()` after `upright`, the stored corners of a 3DFACE, and `boundary_path_wcs()`.
+/// The reference values come from `ezdxf` reading `Fixtures/solids.dxf`
+/// (`tools/solid_fixtures.py`): `Solid.vertices()` after `upright`, the stored corners of a 3DFACE,
+/// and `boundary_path_wcs()`.
 @Suite("SOLID, 3DFACE and WIPEOUT")
 struct SolidTests {
 
@@ -154,9 +155,7 @@ struct SolidTests {
         #expect((0..<4).allSatisfy(face.isEdgeVisible))
     }
 
-    @Test(
-        "a 3DFACE is not read through an extrusion, and a record with no fourth corner is a triangle"
-    )
+    @Test("a 3DFACE is already in the world, and a record with no fourth corner is a triangle")
     func faceInTheWorld() throws {
         let dwg = try Self.read([
             RawDXF.record(
@@ -167,6 +166,31 @@ struct SolidTests {
         #expect(face.corners.count == 4 && face.isTriangle)
         #expect(face.corners[0] == DXF.Point(1, 2, 3) && face.corners[2] == DXF.Point(7, 8, 9))
         #expect(dwg.warnings.isEmpty)
+    }
+
+    @Test("a TOLERANCE and a WIPEOUT hold world coordinates, so a -z extrusion converts nothing")
+    func worldTypesOnAFlippedPlane() throws {
+        let down: [(Int, String)] = [(210, "0"), (220, "0"), (230, "-1")]
+        let dwg = try Self.read([
+            RawDXF.record(
+                "TOLERANCE",
+                [(10, "5"), (20, "6"), (30, "7"), (1, "x"), (11, "1"), (21, "0")] + down),
+            RawDXF.record(
+                "WIPEOUT",
+                [
+                    (10, "2"), (20, "3"), (30, "4"), (11, "1"), (21, "0"), (31, "0"), (12, "0"),
+                    (22, "1"), (32, "0"), (13, "1"), (23, "1"), (14, "-0.5"), (24, "-0.5"),
+                    (14, "0.5"), (24, "0.5"),
+                ] + down),
+        ])
+        #expect(dwg.warnings.isEmpty)
+        let tolerance = try #require(ToleranceTests.tolerances(dwg).first)
+        #expect(tolerance.insertion == DXF.Point(5, 6, 7) && tolerance.direction.x == 1)
+        // The pixel grid is read as written: the same corners as without the extrusion.
+        #expect(
+            Self.wipeouts(dwg).first?.boundary == [
+                DXF.Point(2, 4, 4), DXF.Point(3, 4, 4), DXF.Point(3, 3, 4), DXF.Point(2, 3, 4),
+            ])
     }
 
     // MARK: WIPEOUT

@@ -137,8 +137,8 @@ same curve.
 
 ### Extrusion
 
-Arcs, circles, polylines, text, hatches and the text point of a dimension are written in their own
-coordinate system (OCS), whose z axis is the entity's extrusion direction (groups 210, 220, 230).
+Arcs, circles, polylines, text, hatches, solids and the text point of a dimension are written in
+their own coordinate system (OCS), whose z axis is the entity's extrusion direction (groups 210, 220, 230).
 For an extrusion of `(0, 0, -1)`, which is what a drawing made on a flipped plane or mirrored in
 a CAD program holds, the OCS x axis is the world `-x`. The reader gives you world coordinates:
 
@@ -148,10 +148,11 @@ a CAD program holds, the OCS x axis is the world `-x`. The reader gives you worl
 | `ELLIPSE` | centre and axis are world coordinates already; the parameter range is reversed, so it still runs counter-clockwise |
 | `TEXT` | insertion point mirrored, rotation `180 - rotation` |
 | `HATCH` | boundary paths mirrored; a path that travelled an arc counter-clockwise now travels it clockwise |
+| `SOLID` | corners mirrored (x and z change sign), in outline order |
 | `DIMENSION` | the text point (group 11) and the arc point (group 16), and the rotation (group 50), an angle in the OCS, becomes `180 - rotation`. The definition points are world coordinates already, and the oblique angle (group 52) is left as written, as in `ezdxf` |
 
-`MTEXT`, `POINT`, `SPLINE`, `LEADER` and a 3D polyline hold world coordinates and are never
-converted (an `MTEXT`'s rotation is read as written). An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
+`MTEXT`, `POINT`, `SPLINE`, `LEADER`, `TOLERANCE`, `WIPEOUT`, `3DFACE` and a 3D polyline hold world
+coordinates and are never converted (an `MTEXT`'s rotation is read as written). An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
 with `ezdxf.upright`, `ezdxf`'s own, on a drawing with one of each.
 
 A normal that is not along z cannot be held by a planar entity, so such an entity is read as written
@@ -696,8 +697,8 @@ fixtures from `tools/contour_fixtures.py` with analytic areas and bounds, and it
 and splines are measured against the exact curves. `SOLID`, `3DFACE` and `WIPEOUT` are checked on
 `Fixtures/solids.dxf` (`tools/solid_fixtures.py`), which has a triangle and quadrilaterals, a
 `-z` plane, invisible edges, and a clip on a rotated, scaled grid of pixels, and by `dxfdump` against
-`tools/oracle.py` over every drawing on one machine whose model space holds them
-(`tools/oracle_diff.py`): 365 `SOLID` in 35
+`tools/oracle.py` (`tools/oracle_diff.py`) over the 341 drawings on one machine that hold one of
+them in any section (a survey of its `.dxf` files, leaving out iCloud folders): the 365 `SOLID` in 35
 drawings and 13,106 `3DFACE` in 170 agree on every count and every coordinate. No drawing there held
 a `TOLERANCE` or a `WIPEOUT`, so those two rest on the fixture, whose frames are asserted from the
 format (`ezdxf` has no parser for the string).

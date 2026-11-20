@@ -38,11 +38,14 @@ def compare(path, mine, ref):
         a, b = mine["counts"].get(kind, 0), ref["counts"].get(kind, 0)
         if a != b:
             problems.append(f"count {kind}: {a} against {b}")
+    if mine["tolerances"] != ref["tolerances"]:
+        problems.append("TOLERANCE strings differ")
     for kind in sorted(set(mine["geomByType"]) | set(ref["geomByType"])):
         a, b = mine["geomByType"].get(kind), ref["geomByType"].get(kind)
         if a is None or b is None:
             problems.append(f"digest {kind}: {a} against {b}")
-        elif a["scalars"] != b["scalars"] or abs(a["sum"] - b["sum"]) > 1e-6 * max(1.0, abs(b["sum"])):
+        elif a["scalars"] != b["scalars"] or abs(a["sum"] - b["sum"]) > 1e-6 * max(
+                1.0, abs(b["sum"])):
             problems.append(f"digest {kind}: {a} against {b}")
     return problems
 

@@ -143,8 +143,8 @@ extension DXF.Tolerance {
 
     /// A box read into the parts a tolerance or a datum is made of.
     private struct Box {
-        /// The decoded text of the box, without the diameter, material condition and projection read
-        /// from it.
+        /// The decoded text of the box, without the diameter, material condition and projection
+        /// read from it.
         var text = ""
         var isDiameter = false
         var isProjected = false

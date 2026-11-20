@@ -72,7 +72,8 @@ extension DXF.Tolerance {
         ///
         /// A comma is read as the decimal mark when there is no point.
         public var value: Double?
-        /// The text of the box without the diameter, material condition and projection read from it.
+        /// The text of the box without the diameter, material condition and projection read from
+        /// it.
         public var text: String
         public var materialCondition: MaterialCondition?
         /// Whether the zone is projected (`{\Fgdt;p}` after the value).
