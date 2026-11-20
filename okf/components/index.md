@@ -28,6 +28,18 @@ timestamp: 2026-11-19
   reference into the entities (nested blocks, scale, rotation, mirroring, arrays), with the
   references it came through in `Identity.via` and what it could not do in `Drawing.warnings`.
   `ReadOptions(skipPaperSpace:)` leaves out group-67 entities, which `Drawing.paperSpace` counts.
+- **Attributes** (`Attribute.swift`, `Reader+Attributes.swift`): the `ATTRIB`s that follow an
+  `INSERT` with group 66 are `BlockReference.attributes` (tag, value as `TextContent`, position,
+  height, rotation, layer, `AttributeFlags`, `Identity`), the `ATTDEF`s of a block are
+  `Block.attributeDefinitions` (plus prompt and default); neither is in `skipped` any more. The
+  reader slices a record by its `100` markers (`AcDbText`, `AcDbAttribute` or
+  `AcDbAttributeDefinition`) and reads the R2018 embedded `MTEXT` after a `101` as the value.
+  `ReadOptions(expandAttributes:)`, with `expandBlocks`, adds each visible attribute and each
+  constant definition to the entities as `.text` (identity `via` names the reference). An attribute
+  is already placed in its container's space, so expansion applies only the transform of the block
+  it sits in, plus the array offset.
+  `tools/attrib_oracle.py` (`--compare`) is the ezdxf reference for `dxfdump --attributes`, and
+  `tools/attrib_fixtures.py` builds the fixtures.
 - **Identity** (`Identity.swift`, `Block.swift`, `Tables.swift`): `Drawing.identities` holds a
   `DXF.Identity` (the file's handle plus a section-and-position locator) for each entity, index
   aligned with `entities`; `Drawing.blocks`, `layers`, `lineTypes` and `dimensionStyles` carry the
@@ -84,4 +96,6 @@ timestamp: 2026-11-19
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
   `--contours` prints the contour summary as JSON; `--texts` prints each text string as it reads,
   with its stacks; `--rebuild [--scale N]` prints the dimensions rebuilt from loose pieces, the
-  scales and the warnings; `--expand` and `--skip-paper-space` read with those `ReadOptions`.
+  scales and the warnings; `--expand`, `--expand-attributes` and `--skip-paper-space` read with
+  those `ReadOptions`; `--attributes` prints the attributes and definitions, for
+  `tools/attrib_oracle.py`.

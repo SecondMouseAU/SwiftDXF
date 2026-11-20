@@ -77,7 +77,7 @@ Blocks and tables carry identities too:
 
 | Property | Holds |
 |---|---|
-| `dwg.blocks` | each `BLOCKS` definition: `name`, `handle`, `basePoint`, and its own `entities` with `identities` (locators read `BLOCKS:<block>/<n>`) |
+| `dwg.blocks` | each `BLOCKS` definition: `name`, `handle`, `basePoint`, and its own `entities` with `identities` (locators read `BLOCKS:<block>/<n>`), and its `attributeDefinitions` |
 | `dwg.layers`, `dwg.lineTypes` | the `LAYER` and `LTYPE` records: `name` and `handle` |
 | `dwg.dimensionStyles` | the `DIMSTYLE` records: `name` and `handle` (group 105) |
 
@@ -130,6 +130,54 @@ as before. `skipPaperSpace: true` leaves them out, as `ezdxf`'s `modelspace()` d
 locators of the rest. Expansion was checked against `ezdxf` on a drawing with nested, arrayed,
 rotated, mirrored and non-uniformly scaled references: every one of the 56 expanded entities is the
 same curve.
+
+### Attributes
+
+The values a block reference carries, such as the drawing number, title and scale a title block is
+filled in with, are `ATTRIB` records that follow the `INSERT`. They are read onto the reference, and
+the `ATTDEF` records of a block onto the block:
+
+```swift
+let dwg = try DXF.read(contentsOf: url)
+for reference in dwg.references {
+    for attribute in reference.attributes {   // in file order
+        attribute.tag                         // "DWG_NO" (group 2)
+        attribute.value                       // "D-1234": group 1, its codes decoded
+        attribute.position, attribute.height, attribute.rotation, attribute.layer
+        attribute.flags                       // .invisible, .constant, .verify, .preset (group 70)
+        attribute.identity                    // the handle (group 5), and its place in ENTITIES
+    }
+}
+for block in dwg.blocks {
+    for definition in block.attributeDefinitions {   // each ATTDEF
+        definition.tag, definition.prompt, definition.defaultValue, definition.flags
+    }
+}
+```
+
+- An attribute belongs to an `INSERT` only when the `INSERT` says so (group 66), as in `ezdxf`;
+  `ATTRIB` is then no longer in `dwg.skipped`. A stray `ATTRIB` stays there, and so does an `ATTDEF`
+  in model space, which defines nothing. In a block the `ATTDEF`s are `attributeDefinitions`
+  and the nested `INSERT`s are `Block.references`, with their attributes.
+- The value goes through the drawing's code page like any text (`%%d`, `%%c`, `%%nnn`, `\U+XXXX`);
+  `attribute.content` is the `TextContent`, with the string as written. An R2018 multiline
+  attribute, which stores an `MTEXT` as an embedded object after the `AcDbAttribute` group, reads
+  that text, with `isMultiline` set and the `MTEXT` syntax.
+- An attribute's position, height and rotation are where the file drew it: in the world for a
+  reference in model space, in the block's coordinates for one inside a block. Like a `TEXT`, an
+  attribute on a `-z` plane is mirrored into the world, and one on a tilted plane is read as
+  written and counted in `extrusionNotApplied`. Justification and the text style are not read.
+- An attribute definition's position is in the block's coordinates.
+
+Expansion leaves the attributes on their references, so `entities` still holds what the blocks
+draw. With `ReadOptions(expandBlocks: true, expandAttributes: true)` the visible attributes come
+through as `.text` too, each with an identity that keeps the attribute's handle and names the
+reference in `via` (`8E/9A`); an invisible attribute stays out. A reference inside a block has its
+attributes carried by the placement of that block only, since the file already drew them where its
+own reference is; an array repeats them per instance. A constant attribute, which no reference
+carries, comes through from its block's definition, placed as the block's other entities are.
+`dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
+`dxfdump --expand-attributes` reads with `expandBlocks` and `expandAttributes`.
 
 ### Extrusion
 
@@ -476,6 +524,11 @@ entities actually read.
 
 ### Upgrading from 0.4
 
+- **`ATTRIB` is no longer in `dwg.skipped`**, and `ATTDEF` no longer in a block's `skippedByLayer`:
+  they are read (see *Attributes*). `BlockReference` gains `attributes`, `Block` gains
+  `attributeDefinitions` and `ReadOptions` gains `expandAttributes`, all defaulted, so nothing
+  changes for a caller that ignores them. The `SEQEND` after an `INSERT`'s attributes is read with
+  them. A record that follows an `INSERT`'s attributes keeps the locator it had.
 - **`Dimension` has a new property**, `rebuilt`, `nil` for a dimension the file holds and set by
   `rebuildingDimensions()`; it is defaulted in `init`. `Dimension.text` reads `%%nnn` through its
   `codePage`, a new property read from the drawing.
@@ -650,6 +703,27 @@ diff <(swift run dxfdump --texts --skip-paper-space drawing.dxf) \
 
 `--skip-paper-space` leaves out what `ezdxf`'s `modelspace()` leaves out; `--expand` would add the
 texts of blocks, which the oracle does not list.
+
+Attributes are checked with `tools/attrib_oracle.py`, which prints, from `ezdxf`, the shape that
+`dxfdump --attributes` prints: the model-space references that carry attributes (`Insert.attribs`)
+and, for each block, its `ATTDEF`s and the nested references that carry attributes. With
+`--compare` it runs `dxfdump` itself and prints each field that differs:
+
+```bash
+python3 tools/attrib_oracle.py --compare .build/debug/dxfdump drawing.dxf
+```
+
+Over the 170 drawings of a local corpus that hold an `ATTRIB` or an `ATTDEF` (a library of furniture,
+car and people symbols: 165 of R12, 5 of R2013), every one of the 7,020 attributes of 309
+model-space references, the 3,634 attributes of 158 references inside blocks and the 6,680
+definitions has the same tag, value, position, height, rotation, layer, flags and handle in both.
+Expansion was checked against `ezdxf`'s virtual entities on the same files: all 441 visible
+attributes, those of references inside blocks carried through their blocks' placement, come out
+at the same position, height and rotation. The R2000 title block and the R2018 multiline
+attribute of `Tests/SwiftDXFTests/Fixtures/attributes*.dxf` are written and read back by `ezdxf`
+(`tools/attrib_fixtures.py`). No drawing of the corpus is a title block written by AutoCAD with
+R2000 attribute records filled in, or has a multiline attribute: those two forms are tested on
+`ezdxf`'s own output.
 
 The oracle writes `%%c` as `⌀`, a stack as `upper/lower` after a space, `\~` as a no-break space and
 `\X` as a line break, as SwiftDXF does, so the diff shows only where the two read a string
