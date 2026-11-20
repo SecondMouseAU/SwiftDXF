@@ -715,6 +715,26 @@ differently in these cases, on purpose:
   a surrogate pair as two code points, and the oracle joins them as SwiftDXF does. A `%%` or a
   backslash at the very end is kept; `ezdxf` drops it.
 
+The header is checked with `tools/oracle.py --header`, which reads the `HEADER` section with
+`ezdxf` and prints the shape `dxfdump --header` prints: the variables SwiftDXF names, and every
+variable of the file with its first group-coded value. `--against` runs `dxfdump` on each file and
+lists where the two differ, numbers compared as numbers:
+
+```bash
+swift build && python3 tools/oracle.py --header --against .build/debug/dxfdump drawing.dxf [...]
+```
+
+Over 2,943 real drawings (R10 to R2013, from Jw_cad exports to McMaster-Carr sheets and CAD block
+libraries) the two agree on every variable of every file, and so on the named properties. In that
+set 412 drawings declare `$MEASUREMENT` (383 metric, 29 imperial) and 2,651 declare the other
+four; the 292 that lack `$DIMSTYLE`, `$DIMSCALE`, `$LUNITS` and `$LUPREC` are R12 or R10 files or
+have no `$ACADVER`. 2,530 have no `$INSUNITS`, and of the 413 that do, 31 say `0` (unitless),
+25 of them with an imperial `$MEASUREMENT`. Eleven have no header variable at all.
+`$MEASUREMENT` is not a statement of the units: 354 drawings declare inches and a metric
+`$MEASUREMENT`. Only one file has a non-ASCII header string (`$CLAYER` in an `ANSI_1252` file),
+which both readers read alike; the `$DIMSTYLE` and `$DIMPOST` cases are tested on constructed files
+in `HeaderVariablesTests`.
+
 ## Install
 
 ```swift
