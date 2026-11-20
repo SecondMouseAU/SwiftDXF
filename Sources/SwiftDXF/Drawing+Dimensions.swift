@@ -10,8 +10,16 @@ extension DXF.Drawing {
 
     /// The computed measurement times the style's linear scale, before rounding.
     ///
-    /// `nil` where ``DXF/Dimension/computedMeasurement`` is.
+    /// An angle is not scaled, and stays in degrees: the style states its decimal places and unit
+    /// apart from a length's, and they are not modelled. `nil` where
+    /// ``DXF/Dimension/computedMeasurement`` is.
     public func displayedMeasurement(of dimension: DXF.Dimension) -> Double? {
-        dimension.computedMeasurement.map { $0 * styleVariables(of: dimension).effectiveScale }
+        switch dimension.kind {
+        case .angular, .angular3Point: return dimension.computedMeasurement
+        default:
+            return dimension.computedMeasurement.map {
+                $0 * styleVariables(of: dimension).effectiveScale
+            }
+        }
     }
 }

@@ -34,14 +34,22 @@ extension DXF {
     ///   are the two extension-line origins (the witness points, groups 13/14).
     /// - `.radius` / `.diameter`: `defPoint` and `defPoint4` are the two ends of the measured
     ///   radius/diameter (group 10 and 15); `defPoint2`/`defPoint3` are unused.
-    /// - `.angular` / `.angular3Point`: `defPoint`…`defPoint4` bound the two measured lines/rays,
-    ///   and `defPoint5` (group 16) is the dimension arc's location.
+    /// - `.angular`: the first line runs from `defPoint2` to `defPoint3` (groups 13 and 14) and the
+    ///   second from `defPoint4` to `defPoint` (groups 15 and 10); `defPoint5` (group 16) is a point
+    ///   on the dimension arc.
+    /// - `.angular3Point`: `defPoint4` (group 15) is the vertex, `defPoint2` and `defPoint3` are on
+    ///   the two rays, and `defPoint` is a point on the dimension arc.
+    /// - `.ordinate`: `defPoint` is the origin, `defPoint2` the feature location and `defPoint3` the
+    ///   end of the leader (groups 10, 13 and 14).
     public struct Dimension: Sendable {
         public var kind: DimensionType
         /// The measurement stored in the file (group 42), in drawing units.
         ///
         /// `nil` when the group is absent, zero or negative. Some writers store `-1` to mean
         /// "none"; use ``computedMeasurement`` for the value the geometry gives.
+        ///
+        /// An angular dimension's is an angle as the file wrote it, not converted to degrees, which
+        /// ``computedMeasurement`` is in.
         public var measurement: Double?
         /// User-entered text override (group 1).
         ///
@@ -63,6 +71,11 @@ extension DXF {
         /// Group 16/26/36, dimension-arc location (angular dimensions only), in the world like
         /// ``textPosition``.
         public var defPoint5: Point?
+        /// Whether an ordinate dimension is of the X type, bit 64 of group 70: it states the x
+        /// coordinate of its feature, where the Y type states the y coordinate.
+        ///
+        /// `false` for every other kind of dimension.
+        public var isXOrdinate: Bool
         /// Rotation of a linear dimension's measuring direction, in degrees (group 50).
         ///
         /// `nil` when absent, which means horizontal. For a linear dimension this is what says
@@ -95,7 +108,7 @@ extension DXF {
             defPoint3: Point? = nil, defPoint4: Point? = nil, defPoint5: Point? = nil,
             layer: String, color: Int, rotation: Double? = nil, obliqueAngle: Double? = nil,
             styleName: String? = nil, styleOverrides: DimensionStyle.Variables = .init(),
-            codePage: CodePage? = nil, rebuilt: Rebuilt? = nil
+            codePage: CodePage? = nil, rebuilt: Rebuilt? = nil, isXOrdinate: Bool = false
         ) {
             self.kind = kind
             self.measurement = measurement
@@ -114,6 +127,7 @@ extension DXF {
             self.styleOverrides = styleOverrides
             self.codePage = codePage
             self.rebuilt = rebuilt
+            self.isXOrdinate = isXOrdinate
         }
     }
 }

@@ -8,8 +8,9 @@ oblique), aligned, radius, diameter and angular dimensions, dimension styles tha
 decimal places, zero suppression, linear scale and unit suffix, per-entity DSTYLE overrides, and
 dimensions whose stored measurement is positive, zero and negative. Then it prints, as JSON, what
 ezdxf reads back: its own measurement (`Dimension.get_measurement()`, geometry with no scale
-applied), the rotation, the style name and the overrides. The values are pasted into
-Tests/SwiftDXFTests/DimensionTests.swift.
+applied; the angular dimension's is the angle counter-clockwise from its first line to its
+second, which is not SwiftDXF's where the arc location is on the other side), the rotation, the
+style name and the overrides. The values are pasted into Tests/SwiftDXFTests/DimensionTests.swift.
 
 Requires: pip install ezdxf
 """
@@ -37,7 +38,9 @@ def build(out_dir):
     # Radius and diameter.
     msp.add_radius_dim(center=(100, 20), radius=7.5, angle=45, dimstyle="PLAIN").render()
     msp.add_diameter_dim(center=(130, 20), radius=6, angle=135, dimstyle="PLAIN").render()
-    # Angular: no computed value.
+    # Angular, with the arc location on the far side of the lines: ezdxf's measurement is the
+    # angle counter-clockwise from the first line to the second, and the angle on the arc's side,
+    # which is SwiftDXF's and AutoCAD's, is its supplement (see tools/angular_fixtures.py).
     msp.add_angular_dim_2l(
         base=(0, 100), line1=((0, 80), (20, 80)), line2=((0, 80), (10, 95)),
         dimstyle="PLAIN").render()
@@ -71,7 +74,7 @@ def build(out_dir):
             continue
         out.append({
             "handle": e.dxf.handle, "type": e.dxf.dimtype & 15,
-            "measurement": e.get_measurement() if (e.dxf.dimtype & 15) != 2 else None,
+            "measurement": e.get_measurement(),
             "stored": e.dxf.get("actual_measurement", None),
             "rotation": e.dxf.angle if e.dxf.hasattr("angle") else None,
             "oblique": e.dxf.oblique_angle if e.dxf.hasattr("oblique_angle") else None,

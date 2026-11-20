@@ -3,8 +3,9 @@ import Foundation
 extension DXF.Reader {
     func dimension(_ f: Fields) -> DXF.Dimension {
         let textRaw = first(1, f)
+        let type = ints(70, f) ?? 0
         return DXF.Dimension(
-            kind: DXF.DimensionType(group70: ints(70, f) ?? 0),
+            kind: DXF.DimensionType(group70: type),
             // Zero or negative means "none": some writers store -1.
             measurement: dblOpt(42, f).flatMap { $0 > 0 ? $0 : nil },
             textOverride: (textRaw?.isEmpty == false) ? textRaw : nil,
@@ -15,7 +16,8 @@ extension DXF.Reader {
             layer: layer(f), color: color(f), rotation: dblOpt(50, f),
             obliqueAngle: dblOpt(52, f),
             styleName: first(3, f).map(trimmed).flatMap { $0.isEmpty ? nil : $0 },
-            styleOverrides: styleOverrides(f), codePage: codePage)
+            styleOverrides: styleOverrides(f), codePage: codePage,
+            isXOrdinate: type & 15 == 6 && type & 64 != 0)
     }
 
     /// The variables a `DIMSTYLE` record states, by their group codes.

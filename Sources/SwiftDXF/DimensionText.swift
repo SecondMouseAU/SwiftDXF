@@ -11,7 +11,14 @@ extension DXF {
             /// `<>`: the measured value.
             case measurement
             /// A number typed into the text, with the characters it was written with.
+            ///
+            /// A number typed as an angle is an ``angle(_:text:)``, not a number: `45°` is not a
+            /// length of 45.
             case number(Double, text: String)
+            /// An angle typed into the text, in degrees, with the characters it was written with,
+            /// the degree sign included: `45°`, however the sign is written (`°`, `%%d` or
+            /// `\U+00B0`).
+            case angle(Double, text: String)
             /// Other text, decoded as ``TextContent`` decodes `MTEXT`: `%%c` is `⌀`, and the
             /// formatting codes are removed. A code that is not understood is kept as written, and
             /// its digits are not read as typed numbers.
@@ -49,13 +56,22 @@ extension DXF {
         /// `true` for the single space AutoCAD uses to hide the dimension text.
         public var isSuppressed: Bool { raw == " " }
 
-        /// The numbers typed into the text, in order.
+        /// The numbers typed into the text, in order, other than angles.
         ///
         /// A range such as `40 - 60` gives two. Which marks are part of a number is up to the
-        /// ``NumberConvention`` the text was split with.
+        /// ``NumberConvention`` the text was split with. The `45` of `45°` is not one: see
+        /// ``typedAngles``.
         public var typedNumbers: [Double] {
             parts.compactMap {
                 if case .number(let value, _) = $0 { return value } else { return nil }
+            }
+        }
+
+        /// The angles typed into the text, in degrees, in order: a number with a degree sign right
+        /// after it, such as `45°` or `45%%d`.
+        public var typedAngles: [Double] {
+            parts.compactMap {
+                if case .angle(let value, _) = $0 { return value } else { return nil }
             }
         }
 
@@ -83,7 +99,7 @@ extension DXF {
             for part in parts {
                 switch part {
                 case .measurement: out += "<>"
-                case .number(_, let text), .words(let text): out += text
+                case .number(_, let text), .angle(_, let text), .words(let text): out += text
                 case .lineBreak: out += "\n"
                 case .stack(let stack): TextCodes.append(stack, to: &out)
                 }
@@ -96,7 +112,7 @@ extension DXF {
         ) -> [Part] {
             var parts: [Part] = []
             var buffer = ""
-            // The character before the current text, for the sign rule of `numberEnd`.
+            // The character before the current text, for the sign rule of `number`.
             var previous: Character?
             func flush() {
                 if !buffer.isEmpty { parts.append(.words(buffer)) }
@@ -116,9 +132,16 @@ extension DXF {
                             chars, from: i, after: previous, numbers: numbers)
                         {
                             flush()
-                            parts.append(
-                                .number(found.value, text: String(chars[i..<found.end])))
-                            i = found.end
+                            // A degree sign right after the number makes it an angle.
+                            if found.end < chars.count, chars[found.end] == "\u{00B0}" {
+                                let text = String(chars[i...found.end])
+                                parts.append(.angle(found.value, text: text))
+                                i = found.end + 1
+                            } else {
+                                parts.append(
+                                    .number(found.value, text: String(chars[i..<found.end])))
+                                i = found.end
+                            }
                         } else {
                             buffer.append(chars[i])
                             i += 1

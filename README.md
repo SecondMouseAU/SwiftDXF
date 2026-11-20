@@ -299,9 +299,10 @@ A `DIMENSION` says what it measures, and how the number is to be stated:
 ```swift
 for case .dimension(let d) in dwg.entities {
     d.measurement                         // the stored value (group 42); nil when absent, 0 or -1
-    d.computedMeasurement                 // the value the geometry gives, in drawing units
+    d.computedMeasurement                 // the value the geometry gives: units, or degrees for an angle
     d.rotation, d.obliqueAngle            // groups 50 and 52, in degrees
-    dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale
+    d.isXOrdinate                         // bit 64 of group 70: an ordinate dimension of the X type
+    dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale (not an angle)
     let style = dwg.styleVariables(of: d)
     style.decimalPlaces                   // DIMDEC: 1 if stated to one place, nil if unstated
     style.suppressesTrailingZeros         // DIMZIN: "8.1" may be 8.100 with its zeros hidden
@@ -316,10 +317,31 @@ for case .dimension(let d) in dwg.entities {
 - **`computedMeasurement`** is the same number for every consumer: for a linear dimension the
   distance between the two extension-line origins along `rotation` (horizontal when absent), for an
   aligned one the distance between them, for a radius or diameter the distance between its two
-  definition points. Angular and ordinate dimensions have none. It matches `ezdxf`'s
-  `Dimension.get_measurement()`, which also applies no scale. Group 50 absent means horizontal, as
-  the DXF default says, and agreed with the direction worked out from the dimension-line point on
-  every one of 339 real dimensions checked.
+  definition points. For these it matches `ezdxf`'s `Dimension.get_measurement()`, which also
+  applies no scale. Group 50 absent means horizontal, as the DXF default says, and agreed with the
+  direction worked out from the dimension-line point on every one of 339 real dimensions checked.
+  The rest are as follows.
+  - **Angular and three-point angular dimensions are in degrees**, as `rotation` and the angles of
+    an `ARC` are, and are not scaled by `DIMLFAC`: `displayedMeasurement(of:)` leaves them alone. A
+    three-point dimension is the angle at its vertex (group 15) between the rays to groups 13 and
+    14; a two-line one is the angle between the line from group 13 to 14 and the line from 15 to
+    10, where the lines cross. Either is the angle **on the side of the arc location** (group 16,
+    or group 10 for a three-point one), which is what AutoCAD displays: three-point angles are
+    between 0 and 360 and can be over 180; two crossing lines make two angles and their
+    supplements, so a two-line angle is between 0 and 180. `ezdxf`'s `get_measurement()` is the
+    angle counter-clockwise from the first line to the second whichever side the arc is on, so it
+    differs where the arc is on the other side. Checked against AutoCAD's own anonymous blocks in
+    two DWG files, all 8 three-point angular dimensions in them (2 of which put the arc on the side
+    `ezdxf`'s number does not: AutoCAD drew 125 and 130 where `ezdxf` gives 235 and 230), and
+    against `ezdxf`'s numbers where the side is the same (`tools/angular_fixtures.py`). A
+    dimension with a point missing, lines that are parallel, a ray of no length, or an arc
+    location on the vertex has none. The decimal places and unit of an angle (`DIMADEC`,
+    `DIMAUNIT`) are not modelled, and `measurement` (group 42) of an angular dimension is the
+    file's number, not converted.
+  - **An ordinate dimension** is the distance from its origin (group 10) to its feature location
+    (group 13) along x when `isXOrdinate` (bit 64 of group 70) and along y when not, always
+    positive, as `ezdxf` draws it. It is measured along the world axes: the rotation of the
+    coordinate system it was made in (group 51) is not read.
 - **Style variables** come from the entity's own overrides in its extended data (`ACAD` /
   `DSTYLE`), then the `DIMSTYLE` record it names. A variable neither states is `nil`: SolidWorks
   styles often leave `DIMDEC` out, and the reader does not guess it. The header's own current
@@ -329,7 +351,9 @@ for case .dimension(let d) in dwg.entities {
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
   `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`
   and `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a
-  limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces;
+  limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces, and an
+  angle (`45°`, `45%%d`) is in `typedAngles`, in degrees, and not in `typedNumbers` where a length
+  would be read;
   `isSuppressed` is the single space that hides the text. The codes are decoded as in an `MTEXT`
   (see *Text*), so `%%c<>` gives the words `⌀` and `<>{\H0.7x;\S+0.1^ -0.2;}` the measurement and
   a tolerance stack, whose numbers are not typed numbers. `d.textOverride` is the override as the
