@@ -228,11 +228,12 @@ font (`{\Fgdt;j}`), read as the font `gdt.shx` defines it: `a` angularity, `b` p
 `c` flatness, `d` profile of a surface, `e` circularity, `f` parallelism, `g` cylindricity, `h`
 circular runout, `i` symmetry, `j` position, `k` profile of a line, `r` concentricity, `t` total
 runout, `u` straightness. A tolerance box states a `value` (a comma is read as the decimal mark), a
-diameter (`%%c`, or `{\Fgdt;n}`) and a material condition (`{\Fgdt;m}`, `l`, `s`); a datum box its
-reference and a material condition. A first box that is none of those symbols is
-`.unrecognised(raw)`, and a symbol in another box that is not a diameter or a material condition
-stays in the box's `text` and is listed in `Frame.unread`, as is a box after the sixth: they are kept
-as written and not guessed at, and `isFullyRead` is `false`. The rest of the text is decoded as
+diameter (`%%c`, or `{\Fgdt;n}`), a material condition (`{\Fgdt;m}`, `l`, `s`) and a projected zone
+(`{\Fgdt;p}`, `isProjected`); a datum box its reference and a material condition. A first box that
+is none of those symbols is `.unrecognised(raw)`, and a symbol in another box that is not one of
+those stays in the box's `text` and is listed in `Frame.unread`, as is a box after the sixth: they
+are kept as written and not guessed at. `isFullyRead` is `false` for them, and for a tolerance box
+that holds no number (`0.05/25`). The rest of the text is decoded as
 `MTEXT` is, `%%nnn` through the drawing's code page. The size of a frame comes from its dimension
 style, which is not read.
 
@@ -695,7 +696,8 @@ fixtures from `tools/contour_fixtures.py` with analytic areas and bounds, and it
 and splines are measured against the exact curves. `SOLID`, `3DFACE` and `WIPEOUT` are checked on
 `Fixtures/solids.dxf` (`tools/solid_fixtures.py`), which has a triangle and quadrilaterals, a
 `-z` plane, invisible edges, and a clip on a rotated, scaled grid of pixels, and by `dxfdump` against
-`tools/oracle.py` over every drawing on one machine whose model space holds them: 365 `SOLID` in 35
+`tools/oracle.py` over every drawing on one machine whose model space holds them
+(`tools/oracle_diff.py`): 365 `SOLID` in 35
 drawings and 13,106 `3DFACE` in 170 agree on every count and every coordinate. No drawing there held
 a `TOLERANCE` or a `WIPEOUT`, so those two rest on the fixture, whose frames are asserted from the
 format (`ezdxf` has no parser for the string).

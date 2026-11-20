@@ -32,10 +32,12 @@ extension DXF.Tolerance {
             self.unread = unread
         }
 
-        /// Whether the symbol was recognised and nothing was kept as written; see ``unread``.
+        /// Whether the symbol was recognised, each tolerance box holds a number, and nothing was
+        /// kept as written; see ``unread``.
         public var isFullyRead: Bool {
             if case .unrecognised? = characteristic { return false }
             return unread.isEmpty
+                && [tolerance, secondTolerance].allSatisfy { $0?.value != nil || $0 == nil }
         }
     }
 

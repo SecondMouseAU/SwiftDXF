@@ -151,7 +151,11 @@ def summarize(path):
         elif t == "SOLID":
             # Corners in outline order (the file's third and fourth swapped; a triangle has three),
             # after upright_all has flipped a -z plane into the world.
-            for p in e.vertices():
+            # A record with no fourth corner is a triangle, as SwiftDXF reads it (ezdxf's own
+            # default for the missing corner is the origin).
+            corners = e.vertices() if e.dxf.hasattr("vtx3") else [
+                e.dxf.vtx0, e.dxf.vtx1, e.dxf.vtx2]
+            for p in corners:
                 add("SOLID", p.x, p.y, p.z)
         elif t == "WIPEOUT":
             # The clip boundary in the world, closed; SwiftDXF does not repeat the first vertex.

@@ -213,8 +213,15 @@ struct SolidTests {
         return RawDXF.record("WIPEOUT", tags)
     }
 
-    @Test("a polygon is the same open or closed, and a polygon of two points is a rectangle")
+    @Test("a polygon is the same open or closed, and two points are a rectangle")
     func wipeoutClosure() throws {
+        let rectangle = try Self.read([
+            Self.wipeoutRecord(insertion: (2, 3), clip: [(-0.5, -0.5), (0.5, 0.5)])
+        ])
+        #expect(
+            Self.wipeouts(rectangle).first?.boundary == [
+                DXF.Point(2, 4, 0), DXF.Point(3, 4, 0), DXF.Point(3, 3, 0), DXF.Point(2, 3, 0),
+            ])
         let open = [(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5)]
         let closed = open + [(-0.5, -0.5)]
         let a = try Self.read([Self.wipeoutRecord(insertion: (2, 3), clip: open)])

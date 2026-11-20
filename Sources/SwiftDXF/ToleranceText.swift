@@ -116,6 +116,10 @@ extension DXF.Tolerance {
 
     /// A `{\Fgdt;…}` group that starts at `i`: its opening as written (`{\Fgdt;`), the characters
     /// it holds and the index after it, or `nil` when there is no group in a font of symbols there.
+    ///
+    /// ``DXF/TextCodes`` skips a font code and keeps the bare letter, which for `{\Fgdt;i}` would
+    /// be a plain `i`; the symbol is read here first, and everything else goes to the shared
+    /// scanner.
     private static func symbolGroup(
         in s: [Unicode.Scalar], at i: Int
     ) -> (opening: String, letters: [Unicode.Scalar], end: Int)? {

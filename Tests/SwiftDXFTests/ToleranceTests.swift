@@ -7,8 +7,8 @@ import Testing
 ///
 /// The record of the first test is the one in issue 34, as AutoCAD's DXF export writes it. The
 /// symbol letters are those of `gdt.shx` (Goodheart-Willcox, *AutoCAD and Its Applications*), and
-/// the strings of the second and third tests are the ones in Autodesk's own examples for the
-/// feature control frame. No drawing on the machine holds a TOLERANCE, and `ezdxf` has no parser
+/// the string of `autodeskExample` is the one in Autodesk's own example for the feature control
+/// frame. No drawing on the machine holds a TOLERANCE, and `ezdxf` has no parser
 /// for the string, so the frames are asserted here from the format; `Fixtures/solids.dxf`
 /// (`tools/solid_fixtures.py`) checks the record around the string against `ezdxf`.
 @Suite("TOLERANCE")
@@ -181,7 +181,16 @@ struct ToleranceTests {
         for text in ["0.05/25", "0.05.1", "1,000.5", "1e3", "inf", "abc", "-"] {
             let zone = try #require(try Self.frames("{\\Fgdt;c}%%v\(text)").first?.tolerance)
             #expect(zone.value == nil && zone.text == text, "text \(text)")
+            // The frame says it has a box that is no number.
+            #expect(try Self.frames("{\\Fgdt;c}%%v\(text)").first?.isFullyRead == false)
         }
+    }
+
+    @Test("a tolerance box with only a modifier has no number, and the frame is not fully read")
+    func zoneWithoutNumber() throws {
+        let frame = try #require(try Self.frames(#"{\Fgdt;j}%%v{\Fgdt;n}%%v%%vA"#).first)
+        #expect(frame.tolerance == .init(isDiameter: true, value: nil, text: ""))
+        #expect(!frame.isFullyRead)
     }
 
     @Test("a second tolerance box is the second tolerance, apart from the first")

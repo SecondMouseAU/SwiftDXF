@@ -10,9 +10,9 @@ import Foundation
 /// `TOLERANCE`, `SOLID`, `WIPEOUT` and `3DFACE`, and skips entities it does not model rather than
 /// failing, recording them in ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space)
 /// section, matching what a tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is
-/// read for block definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is read into
-/// ``Drawing/references`` and flattened into the entities when ``ReadOptions/expandBlocks`` is
-/// set. An entity written in a coordinate system with a `-z` extrusion is read as its world
+/// read for block definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is
+/// read into ``Drawing/references`` and flattened into the entities when
+/// ``ReadOptions/expandBlocks`` is set. An entity written in a coordinate system with a `-z` extrusion is read as its world
 /// geometry; one on a tilted plane is read as written and reported in ``Drawing/warnings``.
 ///
 /// ```swift
