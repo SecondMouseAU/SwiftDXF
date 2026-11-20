@@ -170,7 +170,7 @@ extension DXF {
             dwg.paperSpace = run.paperSpace
             dwg.warnings = Self.extrusionWarnings(
                 blockTilted.merging(run.tilted, uniquingKeysWith: +))
-            if options.expandBlocks {
+            if options.expandBlocks || options.expandAttributes {
                 dwg.expandBlockReferences(attributes: options.expandAttributes)
             }
             return dwg
