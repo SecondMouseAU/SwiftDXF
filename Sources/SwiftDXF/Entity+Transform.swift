@@ -35,6 +35,22 @@ extension DXF.Entity {
             l.layer = layer
             l.color = color
             return .leader(l)
+        case .tolerance(var t):
+            t.layer = layer
+            t.color = color
+            return .tolerance(t)
+        case .solid(var s):
+            s.layer = layer
+            s.color = color
+            return .solid(s)
+        case .wipeout(var w):
+            w.layer = layer
+            w.color = color
+            return .wipeout(w)
+        case .face3D(var f):
+            f.layer = layer
+            f.color = color
+            return .face3D(f)
         }
     }
 
@@ -49,6 +65,10 @@ extension DXF.Entity {
         case .spline(let s): return s.color
         case .hatch(let h): return h.color
         case .leader(let l): return l.color
+        case .tolerance(let t): return t.color
+        case .solid(let s): return s.color
+        case .wipeout(let w): return w.color
+        case .face3D(let f): return f.color
         }
     }
 
@@ -66,6 +86,10 @@ extension DXF.Entity {
         case .spline: return "SPLINE"
         case .hatch: return "HATCH"
         case .leader: return "LEADER"
+        case .tolerance: return "TOLERANCE"
+        case .solid: return "SOLID"
+        case .wipeout: return "WIPEOUT"
+        case .face3D: return "3DFACE"
         }
     }
 
@@ -135,9 +159,16 @@ extension DXF.Entity {
             d.defPoint3 = d.defPoint3.map(t.apply)
             d.defPoint4 = d.defPoint4.map(t.apply)
             d.defPoint5 = d.defPoint5.map(t.apply)
-            // The stored value is a length: it scales with a uniform scale, and is dropped
-            // (the computed value still follows the points) when the scale is not uniform.
-            if let m = d.measurement { d.measurement = t.similarity.map { m * $0 } }
+            // The stored value of a length scales with a uniform scale, and is dropped (the
+            // computed value still follows the points) when the scale is not uniform. An angle
+            // keeps its value under a uniform scale, which does not turn it, and is dropped under
+            // any other.
+            if let m = d.measurement {
+                switch d.kind {
+                case .angular, .angular3Point: d.measurement = t.similarity == nil ? nil : m
+                default: d.measurement = t.similarity.map { m * $0 }
+                }
+            }
             d.carryRotation(through: t)
             return .dimension(d)
 
@@ -147,6 +178,25 @@ extension DXF.Entity {
         case .leader(var l):
             l.vertices = l.vertices.map(t.apply)
             return .leader(l)
+
+        case .tolerance(var tolerance):
+            tolerance.insertion = t.apply(tolerance.insertion)
+            let d = tolerance.direction
+            let (x, y) = t.applyVector(d.x, d.y)
+            tolerance.direction = DXF.Point(x, y, t.zScale * d.z)
+            return .tolerance(tolerance)
+
+        case .solid(var s):
+            s.corners = s.corners.map(t.apply)
+            return .solid(s)
+
+        case .wipeout(var w):
+            w.boundary = w.boundary.map(t.apply)
+            return .wipeout(w)
+
+        case .face3D(var f):
+            f.corners = f.corners.map(t.apply)
+            return .face3D(f)
         }
     }
 
@@ -162,11 +212,12 @@ extension DXF.Entity {
 }
 
 extension DXF.Dimension {
-    /// Turns a linear dimension's ``rotation`` into the direction `t` gives its measuring axis.
+    /// Turns a linear or ordinate dimension's ``rotation`` into the direction `t` gives its
+    /// measuring axis.
     ///
     /// A horizontal axis stays `nil` when it was, whichever way it points.
     mutating func carryRotation(through t: DXF.Transform) {
-        guard kind == .linear else { return }
+        guard kind == .linear || kind == .ordinate else { return }
         let angle = t.directionAngle(degrees: rotation ?? 0)
         let horizontal = abs(sin(angle * .pi / 180)) < 1e-12
         if rotation != nil || !horizontal { rotation = angle }

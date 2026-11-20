@@ -11,7 +11,14 @@ extension DXF {
             /// `<>`: the measured value.
             case measurement
             /// A number typed into the text, with the characters it was written with.
+            ///
+            /// A number typed as an angle is an ``angle(_:text:)``, not a number: `45°` is not a
+            /// length of 45.
             case number(Double, text: String)
+            /// An angle typed into the text, in degrees, with the characters it was written with,
+            /// the degree sign included: `45°`, however the sign is written (`°`, `%%d` or
+            /// `\U+00B0`).
+            case angle(Double, text: String)
             /// Other text, decoded as ``TextContent`` decodes `MTEXT`: `%%c` is `⌀`, and the
             /// formatting codes are removed. A code that is not understood is kept as written, and
             /// its digits are not read as typed numbers.
@@ -29,10 +36,15 @@ extension DXF {
         public var parts: [Part]
 
         /// Splits `raw`, the text override of a dimension (`nil` or empty when there is none),
-        /// reading `%%nnn` through `codePage` (as a Unicode code point when it is `nil`).
-        public init(_ raw: String?, codePage: CodePage? = nil) {
+        /// reading numbers as `numbers` says the drawing writes them and `%%nnn` through
+        /// `codePage` (as a Unicode code point when it is `nil`).
+        ///
+        /// With the default, ``NumberConvention/plain``, `10,439` is the numbers 10 and 439.
+        public init(
+            _ raw: String?, numbers: NumberConvention = .plain, codePage: CodePage? = nil
+        ) {
             self.raw = raw
-            self.parts = Self.split(raw ?? "", codePage: codePage)
+            self.parts = Self.split(raw ?? "", numbers: numbers, codePage: codePage)
         }
 
         /// `true` when the dimension shows its measured value: no override, or one containing `<>`.
@@ -44,12 +56,22 @@ extension DXF {
         /// `true` for the single space AutoCAD uses to hide the dimension text.
         public var isSuppressed: Bool { raw == " " }
 
-        /// The numbers typed into the text, in order.
+        /// The numbers typed into the text, in order, other than angles.
         ///
-        /// A range such as `40 - 60` gives two.
+        /// A range such as `40 - 60` gives two. Which marks are part of a number is up to the
+        /// ``NumberConvention`` the text was split with. The `45` of `45°` is not one: see
+        /// ``typedAngles``.
         public var typedNumbers: [Double] {
             parts.compactMap {
                 if case .number(let value, _) = $0 { return value } else { return nil }
+            }
+        }
+
+        /// The angles typed into the text, in degrees, in order: a number with a degree sign right
+        /// after it, such as `45°` or `45%%d`.
+        public var typedAngles: [Double] {
+            parts.compactMap {
+                if case .angle(let value, _) = $0 { return value } else { return nil }
             }
         }
 
@@ -77,7 +99,7 @@ extension DXF {
             for part in parts {
                 switch part {
                 case .measurement: out += "<>"
-                case .number(_, let text), .words(let text): out += text
+                case .number(_, let text), .angle(_, let text), .words(let text): out += text
                 case .lineBreak: out += "\n"
                 case .stack(let stack): TextCodes.append(stack, to: &out)
                 }
@@ -85,10 +107,12 @@ extension DXF {
             return out
         }
 
-        private static func split(_ raw: String, codePage: CodePage?) -> [Part] {
+        private static func split(
+            _ raw: String, numbers: NumberConvention, codePage: CodePage?
+        ) -> [Part] {
             var parts: [Part] = []
             var buffer = ""
-            // The character before the current text, for the sign rule of `numberEnd`.
+            // The character before the current text, for the sign rule of `number`.
             var previous: Character?
             func flush() {
                 if !buffer.isEmpty { parts.append(.words(buffer)) }
@@ -104,13 +128,20 @@ extension DXF {
                             flush()
                             parts.append(.measurement)
                             i += 2
-                        } else if let end = numberEnd(chars, from: i, after: previous) {
+                        } else if let found = number(
+                            chars, from: i, after: previous, numbers: numbers)
+                        {
                             flush()
-                            let number = String(chars[i..<end])
-                            if let value = Double(number) {
-                                parts.append(.number(value, text: number))
+                            // A degree sign right after the number makes it an angle.
+                            if found.end < chars.count, chars[found.end] == "\u{00B0}" {
+                                let text = String(chars[i...found.end])
+                                parts.append(.angle(found.value, text: text))
+                                i = found.end + 1
+                            } else {
+                                parts.append(
+                                    .number(found.value, text: String(chars[i..<found.end])))
+                                i = found.end
                             }
-                            i = end
                         } else {
                             buffer.append(chars[i])
                             i += 1
@@ -135,28 +166,25 @@ extension DXF {
             return parts
         }
 
-        /// The index just past a number starting at `start`, or `nil` when none starts there.
+        /// The number starting at `start`, with its sign, and the index just past it; `nil` when
+        /// none starts there.
         ///
         /// A sign counts only at the start of the text, after a space or after a line break, so
         /// `40 - 60` and `40-60` are two numbers. `previous` is the character before `chars`.
-        private static func numberEnd(
-            _ chars: [Character], from start: Int, after previous: Character?
-        ) -> Int? {
+        private static func number(
+            _ chars: [Character], from start: Int, after previous: Character?,
+            numbers: NumberConvention
+        ) -> (value: Double, end: Int)? {
             var i = start
+            var sign = 1.0
             if chars[i] == "-" || chars[i] == "+" {
                 let before = start == 0 ? previous : chars[start - 1]
                 guard before == nil || before == " " || before == "\n" else { return nil }
+                if chars[i] == "-" { sign = -1 }
                 i += 1
             }
-            let digitsStart = i
-            while i < chars.count, chars[i].isASCII, chars[i].isNumber { i += 1 }
-            if i < chars.count, chars[i] == ".", i + 1 < chars.count, chars[i + 1].isASCII,
-                chars[i + 1].isNumber
-            {
-                i += 1
-                while i < chars.count, chars[i].isASCII, chars[i].isNumber { i += 1 }
-            }
-            return i > digitsStart ? i : nil
+            guard let found = numbers.scan(chars, from: i) else { return nil }
+            return (sign * found.value, found.end)
         }
     }
 }

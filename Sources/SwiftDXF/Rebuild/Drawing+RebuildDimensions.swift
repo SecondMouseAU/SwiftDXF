@@ -26,7 +26,8 @@ extension DXF {
         init(_ drawing: Drawing, _ options: DimensionRebuild.Options) {
             self.drawing = drawing
             self.options = options
-            let pieces = RebuildPieces(drawing, tolerance: options.tolerance)
+            let pieces = RebuildPieces(
+                drawing, tolerance: options.tolerance, numbers: options.numbers)
             self.pieces = pieces
         }
 

@@ -63,7 +63,7 @@ struct IdentityTests {
 
     @Test("records added after an entity leave its identity unchanged")
     func appendingLeavesEarlierIdentities() throws {
-        let head = [RawDXF.line(), RawDXF.record("SOLID", (8, "0")), RawDXF.line(handle: "B2")]
+        let head = [RawDXF.line(), RawDXF.record("TRACE", (8, "0")), RawDXF.line(handle: "B2")]
         let short = try DXF.read(text: RawDXF.entities(head))
         let long = try DXF.read(
             text: RawDXF.entities(head + [RawDXF.line(), RawDXF.line(handle: "C3")]))
@@ -90,7 +90,7 @@ struct IdentityTests {
     @Test("a file without handles names each entity by section and position")
     func fileWithoutHandles() throws {
         let text = RawDXF.entities([
-            RawDXF.line(), RawDXF.record("SOLID", (8, "0")), RawDXF.line(layer: "B"),
+            RawDXF.line(), RawDXF.record("TRACE", (8, "0")), RawDXF.line(layer: "B"),
         ])
         let dwg = try DXF.read(text: text)
         #expect(dwg.entities.count == 2)

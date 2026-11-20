@@ -15,6 +15,10 @@ extension DXF.Drawing.Counts {
         case .spline: spline += 1
         case .hatch: hatch += 1
         case .leader: leader += 1
+        case .tolerance: tolerance += 1
+        case .solid: solid += 1
+        case .wipeout: wipeout += 1
+        case .face3D: face3D += 1
         }
     }
 }
@@ -114,7 +118,7 @@ extension DXF.Reader {
                 run.attributeDefinitions.append(definition)
                 position += 1
             } else if type != "VERTEX" && type != "SEQEND" {
-                // Unmodelled entity (INSERT, SOLID, TRACE, …): skip, but record it.
+                // Unmodelled entity (INSERT, TRACE, …): skip, but record it.
                 if type == "INSERT" {
                     let identity = DXF.Identity(handle: handle(fields), locator: locator(position))
                     var reference = blockReference(fields, identity: identity)
@@ -278,6 +282,18 @@ extension DXF.Reader {
 
         case "LEADER":
             return .leader(leader(fields))
+
+        case "TOLERANCE":
+            return .tolerance(tolerance(fields))
+
+        case "SOLID":
+            return .solid(solid(fields))
+
+        case "WIPEOUT":
+            return .wipeout(wipeout(fields))
+
+        case "3DFACE":
+            return .face3D(face3D(fields))
 
         default:
             return nil

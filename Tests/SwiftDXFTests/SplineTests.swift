@@ -406,11 +406,11 @@ struct SplineTests {
                 8
                 B
                 0
-                SOLID
+                RAY
                 8
                 B
                 0
-                SOLID
+                RAY
                 0
                 POLYLINE
                 70
@@ -431,8 +431,8 @@ struct SplineTests {
                 SEQEND
                 """))
         #expect(dwg.counts.line == 1 && dwg.counts.polyline == 1)
-        #expect(dwg.skipped == ["INSERT": 1, "TRACE": 1, "SOLID": 2])
-        #expect(dwg.skippedByLayer["SOLID"] == ["B": 1, "0": 1])
+        #expect(dwg.skipped == ["INSERT": 1, "TRACE": 1, "RAY": 2])
+        #expect(dwg.skippedByLayer["RAY"] == ["B": 1, "0": 1])
         #expect(dwg.skippedByLayer["INSERT"] == ["A": 1])
     }
 

@@ -11,12 +11,23 @@ timestamp: 2026-11-21
 
 - **`SwiftDXF`** (library): `DXF.read(contentsOf:)` parses an ASCII DXF file into a `Sendable`
   drawing model: the DXF version, entity counts, and the model-space `DXF.Entity` cases
-  (line, arc, circle, polyline, text, spline, …) with their layer, text decoded.
+  (line, arc, circle, polyline, text, spline, tolerance, solid, …) with their layer, text decoded.
   `DXF.Dimension` carries rotation, style name and overrides, a computed measurement and
   `DimensionText` parts; `Drawing.identities` gives each entity its handle or position;
   `Drawing.dimensionStyles` is the `DIMSTYLE` table. Unmodelled entity types are tallied in
   `Drawing.skipped` / `skippedByLayer`; `DXF.Spline.flattened(tolerance:)` turns a spline into
   polyline points.
+- **Header variables** (`HeaderVariable.swift`, `Reader+Header.swift`, `Drawing+Header.swift`,
+  `HeaderScan.swift`): `Drawing.headerVariables` holds every variable of the `HEADER` section by
+  name as a `DXF.HeaderVariable` (its group-coded values as written, with `value(code)`, `.integer`,
+  `.real` and `point` to read them), built in one pass by `readHeaderVariables()`. The named
+  properties are read from it: `version`, `codePage`, `insUnits`, `extMin`/`extMax`,
+  `dimensionDefaults` (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`) and `measurement`
+  (`$MEASUREMENT`), `currentDimensionStyleName` (`$DIMSTYLE`, with `currentDimensionStyle` the
+  record), `dimensionScale` (`$DIMSCALE`), `linearUnitFormat` (`$LUNITS`), `linearUnitPrecision`
+  (`$LUPREC`). They are stored, like `insUnits`, so a hand-built `Drawing` sets them through `init`;
+  they are not kept in step with the dictionary. `HeaderScan.swift` is the separate byte-level scan
+  of `$ACADVER` and `$DWGCODEPAGE`, which runs before the file is decoded.
 - **Extrusion** (`ObjectPlane.swift`, `Reader+Extrusion.swift`): an entity written in an object
   coordinate system with a `-z` normal is read as its world geometry (`Entity.transformed(by:)` with
   `ObjectPlane.mirror`; an `ELLIPSE` only reverses its parameter range). A normal that is not along z
@@ -50,6 +61,18 @@ timestamp: 2026-11-21
   (polyline and edge types); `.leader` the vertices, arrowhead and annotation handle. `Layer` and
   `LineType` carry the table fields, and `Drawing.effectiveLineType(ofEntityAt:)` resolves BYLAYER
   and BYBLOCK. Read by `Reader+Hatch.swift` and `Reader+Tables.swift`.
+- **Tolerances, solids, wipeouts and faces** (`Tolerance.swift`, `ToleranceFrame.swift`,
+  `ToleranceText.swift`, `Solid.swift`, `Wipeout.swift`, `Face3D.swift`): `.tolerance` carries the
+  insertion, direction, dimension style and string of a feature control frame, and
+  `Tolerance.frames` reads the string into rows (`^J`) of boxes (`%%v`): the characteristic from the
+  GDT-font letter (`gdt.shx`), two tolerance boxes with their diameter and material condition, and
+  the datums in order; what it cannot map is kept as written (`.unrecognised`, `Frame.unread`).
+  `.solid` is three or four corners in outline order (the file's third and fourth swapped, read in
+  the object coordinate system), `.face3D` four corners with their z and the invisible edges, and
+  `.wipeout` the clip boundary carried from image pixels into the world as `ezdxf` does. The contour
+  layer ignores all four with `Warning.ignoredEntities`. Read by `Reader+Tolerance.swift`,
+  `Reader+Solid.swift` and `Reader+Wipeout.swift`; `tools/solid_fixtures.py` builds the fixture and
+  the `ezdxf` reference values.
 - **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `CodePage.swift`,
   `Drawing+Text.swift`): the
   `string` of `.text` is the text as it reads. `Drawing.textContent(ofEntityAt:)` gives a
@@ -66,14 +89,17 @@ timestamp: 2026-11-21
   `DimensionStyleVariables.swift`, `Drawing+Dimensions.swift`): `Dimension` carries the stored
   `measurement` (nil when absent, zero or negative), `rotation`, `obliqueAngle`, `styleName` and the
   `styleOverrides` read from the `DSTYLE` extended data. `computedMeasurement` is the geometric value
-  (linear, aligned, radius, diameter); `Drawing.styleVariables(of:)` resolves overrides over the
-  `DIMSTYLE` record, and `displayedMeasurement(of:)` applies `DIMLFAC`. `DimensionText` splits the
-  override into measurement, number, words, line-break and stack parts, with the codes decoded as
-  in `MTEXT`. Read by `Reader+Dimension.swift`.
+  (a length, or degrees for an angular dimension: the angle on the side of its arc location);
+  `Drawing.styleVariables(of:)` resolves overrides over the `DIMSTYLE` record, and
+  `displayedMeasurement(of:)` applies `DIMLFAC` to a length and not to an angle. `DimensionText`
+  splits the override into measurement, number, angle, words, line-break and stack parts, with the
+  codes decoded as in `MTEXT`; `NumberConvention.swift` says how the drawing writes a comma in a number (thousands
+  separator, decimal mark, or neither), which `Dimension.text(numbers:)` and the rebuild's
+  `Options(numbers:)` both take. Read by `Reader+Dimension.swift`.
 - **Rebuilding dimensions** (`Sources/SwiftDXF/Rebuild/`): `Drawing.rebuildingDimensions(_:)`
   rebuilds `.dimension`s from loose pieces (`Drawing+RebuildDimensions.swift`), starting from each
   value text: `RebuildValue.swift` reads the number (a comma as a decimal mark or thousands
-  separator), `RebuildPieces.swift` collects the texts, segments, circles and end marks,
+  separator, or as `Options(numbers:)` says), `RebuildPieces.swift` collects the texts, segments, circles and end marks,
   `RebuildLinear.swift` finds the spans of a dimension line beside a text, `RebuildRadial.swift`
   the diameters and radii, and the scale is inferred per layer group. The result is a
   `DXF.DimensionRebuild` (dimensions with `Dimension.rebuilt` set, `ScaleEstimate`s, `Warning`s)
@@ -96,6 +122,9 @@ timestamp: 2026-11-21
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
   `--contours` prints the contour summary as JSON; `--texts` prints each text string as it reads,
   with its stacks; `--rebuild [--scale N]` prints the dimensions rebuilt from loose pieces, the
-  scales and the warnings; `--expand`, `--expand-attributes` and `--skip-paper-space` read with
-  those `ReadOptions`; `--attributes` prints the attributes and definitions, for
-  `tools/attrib_oracle.py`.
+  scales and the warnings; `--header` prints the header properties and every variable with its
+  first value, for diffing against `tools/oracle.py --header` (`--against` runs `dxfdump` itself);
+  `--expand`, `--expand-attributes` and `--skip-paper-space` read with those `ReadOptions`;
+  `--attributes` prints the attributes and definitions, for `tools/attrib_oracle.py`. The digest has
+  a `tolerances` list of the frame strings, and `tools/oracle_diff.py` compares it with
+  `tools/oracle.py` over a list of drawings.

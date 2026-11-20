@@ -13,12 +13,15 @@ extension DXF.Reader {
 
     /// Whether a record of `type` is written in its object coordinate system (OCS).
     ///
-    /// `MTEXT`, `POINT`, `SPLINE` and `LEADER` hold world coordinates, and so does a 3D polyline,
-    /// polygon mesh or polyface mesh (flags 8, 16 and 64 of `POLYLINE`). An `ELLIPSE` holds its
+    /// `MTEXT`, `POINT`, `SPLINE`, `LEADER`, `TOLERANCE`, `WIPEOUT` and `3DFACE` hold world
+    /// coordinates, and so does a 3D polyline, polygon mesh or polyface mesh (flags 8, 16 and 64
+    /// of `POLYLINE`). A `SOLID` is in its object coordinate system, as `ezdxf` reads it (its own
+    /// `upright` flips a `SOLID`, not a `3DFACE`). An `ELLIPSE` holds its
     /// centre and axis in the world, but its extrusion says which way its parameter runs.
     func usesObjectCoordinates(_ type: String, _ f: Fields) -> Bool {
         switch type {
-        case "ARC", "CIRCLE", "LWPOLYLINE", "TEXT", "HATCH", "ELLIPSE", "DIMENSION": return true
+        case "ARC", "CIRCLE", "LWPOLYLINE", "TEXT", "HATCH", "ELLIPSE", "DIMENSION", "SOLID":
+            return true
         case "POLYLINE": return (ints(70, f) ?? 0) & (8 | 16 | 64) == 0
         default: return false
         }

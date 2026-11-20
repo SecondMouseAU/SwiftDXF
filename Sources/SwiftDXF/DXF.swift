@@ -6,16 +6,16 @@ import Foundation
 ///
 /// The reader is a clean-room implementation of the public DXF group-code reference. It targets the
 /// 2D entity set that dominates real-world drawings: `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `POINT`,
-/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, `SPLINE`, `HATCH` and `LEADER`, and
-/// skips entities it does not model rather than failing, recording them in
-/// ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space) section, matching what a
-/// tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is read for block
-/// definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is read into
-/// ``Drawing/references`` and flattened into the entities when ``ReadOptions/expandBlocks`` is
-/// set; its `ATTRIB`s are ``BlockReference/attributes``, a block's `ATTDEF`s its
-/// ``Block/attributeDefinitions``, and ``ReadOptions/expandAttributes`` flattens the attributes
-/// too. An entity written in a coordinate system with a `-z` extrusion is read as its world
-/// geometry; one on a tilted plane is read as written and reported in ``Drawing/warnings``.
+/// `TEXT` / `MTEXT`, `LWPOLYLINE` / `POLYLINE`, `DIMENSION`, `SPLINE`, `HATCH`, `LEADER`,
+/// `TOLERANCE`, `SOLID`, `WIPEOUT` and `3DFACE`, and skips entities it does not model rather than
+/// failing, recording them in ``Drawing/skipped``. Entities come from the `ENTITIES` (model-space)
+/// section, matching what a tool like *ezdxf*'s `modelspace()` iterates. The `BLOCKS` section is
+/// read for block definitions and `TABLES` for layers, line types and dimension styles. `INSERT` is
+/// read into ``Drawing/references`` and flattened into the entities when
+/// ``ReadOptions/expandBlocks`` is set; its `ATTRIB`s are ``BlockReference/attributes``, a block's
+/// `ATTDEF`s its ``Block/attributeDefinitions``, and ``ReadOptions/expandAttributes`` flattens the
+/// attributes too. An entity written in a coordinate system with a `-z` extrusion is read as its
+/// world geometry; one on a tilted plane is read as written and reported in ``Drawing/warnings``.
 ///
 /// ```swift
 /// let dwg = try DXF.read(contentsOf: url)
@@ -29,6 +29,9 @@ import Foundation
 /// page `$DWGCODEPAGE` names (``CodePage``), and **CP932 / Shift-JIS** when it names none, for DXF
 /// emitted by Japanese tools such as Jw_cad. The codes inside a text string are decoded too, and
 /// `%%nnn` through the page when the header names one; see ``TextContent``.
+///
+/// The `HEADER` section is in ``Drawing/headerVariables``, with named properties for the
+/// variables that say how to read a drawing's numbers, such as ``Drawing/measurement``.
 public enum DXF {
 
     // MARK: Model
@@ -92,6 +95,15 @@ public enum DXF {
         case hatch(Hatch)
         /// `LEADER`: the line from an annotation to the feature it refers to; see ``Leader``.
         case leader(Leader)
+        /// `TOLERANCE`: a geometric tolerance, the feature control frame of GD&T; see
+        /// ``Tolerance``.
+        case tolerance(Tolerance)
+        /// `SOLID`: a filled triangle or quadrilateral; see ``Solid``.
+        case solid(Solid)
+        /// `WIPEOUT`: a masking area; see ``Wipeout``.
+        case wipeout(Wipeout)
+        /// `3DFACE`: a triangle or quadrilateral of a surface, with its z; see ``Face3D``.
+        case face3D(Face3D)
     }
 
     /// One polyline vertex: a point plus the bulge of the segment leaving it (`0` = straight).
@@ -132,9 +144,43 @@ public enum DXF {
         /// computed ``bounds`` of the entities actually read). `nil` when the header omits them.
         public var extMin: Point?
         public var extMax: Point?
+        /// `$MEASUREMENT` (group 70): `0` for an imperial drawing and `1` for a metric one, or `nil`
+        /// when the file declares none.
+        ///
+        /// It is the file's own answer for a drawing whose ``insUnits`` is `0` or missing. It can
+        /// disagree with ``insUnits`` when that is set: it says what the drawing's writer chose,
+        /// not what its numbers are in.
+        public var measurement: Int?
+        /// `$DIMSTYLE` (group 2): the name of the dimension style that is current, or `nil` when the
+        /// file declares none.
+        ///
+        /// ``currentDimensionStyle`` is its record in ``dimensionStyles``.
+        public var currentDimensionStyleName: String?
+        /// `$DIMSCALE` (group 40): the overall dimension scale, or `nil` when the file declares
+        /// none.
+        ///
+        /// It scales sizes such as text height and arrow size, not the measured value, which
+        /// `$DIMLFAC` scales (``dimensionDefaults``). `0` leaves the scale to the application.
+        public var dimensionScale: Double?
+        /// `$LUNITS` (group 70): the format of linear units, `1` scientific, `2` decimal,
+        /// `3` engineering, `4` architectural or `5` fractional, or `nil` when the file declares
+        /// none.
+        public var linearUnitFormat: Int?
+        /// `$LUPREC` (group 70): the precision of linear units, or `nil` when the file declares
+        /// none.
+        public var linearUnitPrecision: Int?
+        /// Every variable of the `HEADER` section by name (`"$MEASUREMENT"`), each with the
+        /// group-coded values the file writes for it.
+        ///
+        /// It holds the variables this package has no property for, and the ones it does: the
+        /// properties above and ``version``, ``codePage``, ``insUnits``, ``extMin``, ``extMax``
+        /// and ``dimensionDefaults`` were read from it. They are not kept in step with it, so a
+        /// change to one does not change the other. A variable written twice keeps its first
+        /// value, and a drawing with no `HEADER` section has none. See ``HeaderVariable``.
+        public var headerVariables: [String: HeaderVariable]
         /// Unmodelled entity types in the `ENTITIES` section, with a count of each.
         ///
-        /// For example `["INSERT": 3, "SOLID": 1]`; empty when nothing was skipped. Skipping is
+        /// For example `["INSERT": 3, "TRACE": 1]`; empty when nothing was skipped. Skipping is
         /// never an error.
         public var skipped: [String: Int]
         /// The same skipped entities broken down by layer: type name, then layer name, then count.
@@ -165,8 +211,9 @@ public enum DXF {
         public var dimensionStyles: [DimensionStyle]
         /// The dimension variables the header holds (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`).
         ///
-        /// These belong to the style that is current when the file is saved, not to any one
-        /// dimension; see ``styleVariables(of:)``.
+        /// These belong to the style that is current when the file is saved, which
+        /// ``currentDimensionStyleName`` names, not to any one dimension; see
+        /// ``styleVariables(of:)``.
         public var dimensionDefaults: DimensionStyle.Variables
         /// The `INSERT`s of the `ENTITIES` section, whether or not they were expanded.
         ///
@@ -190,7 +237,10 @@ public enum DXF {
             lineTypes: [LineType] = [], dimensionStyles: [DimensionStyle] = [],
             dimensionDefaults: DimensionStyle.Variables = .init(),
             references: [BlockReference] = [], warnings: [Warning] = [],
-            paperSpace: [String: Int] = [:], codePage: CodePage? = nil
+            paperSpace: [String: Int] = [:], codePage: CodePage? = nil, measurement: Int? = nil,
+            currentDimensionStyleName: String? = nil, dimensionScale: Double? = nil,
+            linearUnitFormat: Int? = nil, linearUnitPrecision: Int? = nil,
+            headerVariables: [String: HeaderVariable] = [:]
         ) {
             self.version = version
             self.codePage = codePage
@@ -212,6 +262,12 @@ public enum DXF {
             self.references = references
             self.warnings = warnings
             self.paperSpace = paperSpace
+            self.measurement = measurement
+            self.currentDimensionStyleName = currentDimensionStyleName
+            self.dimensionScale = dimensionScale
+            self.linearUnitFormat = linearUnitFormat
+            self.linearUnitPrecision = linearUnitPrecision
+            self.headerVariables = headerVariables
         }
 
         /// The identity of the entity at `index` in ``entities``.
@@ -230,11 +286,12 @@ public enum DXF {
         public struct Counts: Sendable, Equatable {
             public var line = 0, circle = 0, arc = 0, ellipse = 0, point = 0, text = 0, polyline = 0
             public var dimension = 0, spline = 0, hatch = 0, leader = 0
+            public var tolerance = 0, solid = 0, wipeout = 0, face3D = 0
             public init() {}
             /// Total modelled entities.
             public var total: Int {
                 line + circle + arc + ellipse + point + text + polyline + dimension + spline + hatch
-                    + leader
+                    + leader + tolerance + solid + wipeout + face3D
             }
         }
 
@@ -288,6 +345,13 @@ public enum DXF {
                     for p in h.extentPoints { acc(p) }
                 case .leader(let l):
                     for p in l.vertices { acc(p) }
+                case .tolerance(let t): acc(t.insertion)
+                case .solid(let s):
+                    for p in s.corners { acc(p) }
+                case .wipeout(let w):
+                    for p in w.boundary { acc(p) }
+                case .face3D(let f):
+                    for p in f.corners { acc(p) }
                 }
             }
             return any ? (lo, hi) : nil

@@ -10,6 +10,8 @@ extension DXF {
         var version = ""
         /// The code page `$DWGCODEPAGE` names, which `%%nnn` in a text string is read through.
         var codePage: DXF.CodePage?
+        /// The variables of the `HEADER` section, by name; see ``readHeaderVariables()``.
+        var headerVariables: [String: DXF.HeaderVariable] = [:]
         /// What to flatten and what to leave out; see ``ReadOptions``.
         let options: ReadOptions
 
@@ -131,24 +133,14 @@ extension DXF {
                     || pairs.contains(where: { $0.code == 0 && trimmed($0.value) == "EOF" })
             else { throw Error.notDXF }
 
-            // $ACADVER from the HEADER section, if present.
-            for k in pairs.indices.dropLast()
-            where pairs[k].code == 9 && trimmed(pairs[k].value) == "$ACADVER" {
-                version = trimmed(pairs[k + 1].value)
-                break
-            }
-
-            codePage = DXF.CodePage(name: first(3, headerVar("$DWGCODEPAGE")) ?? "")
+            headerVariables = readHeaderVariables()
+            version = headerVariables["$ACADVER"]?.values.first.map { trimmed($0.text) } ?? ""
+            codePage = DXF.CodePage(name: headerVariables["$DWGCODEPAGE"]?.value(3)?.text ?? "")
             var dwg = Drawing(version: version, codePage: codePage)
-            dwg.insUnits = ints(70, headerVar("$INSUNITS"))
-            let mn = headerVar("$EXTMIN")
-            if mn.contains(where: { $0.code == 10 }) { dwg.extMin = point(mn) }
-            let mx = headerVar("$EXTMAX")
-            if mx.contains(where: { $0.code == 10 }) { dwg.extMax = point(mx) }
+            applyHeaderProperties(to: &dwg)
             dwg.layers = layers()
             dwg.lineTypes = lineTypes()
             dwg.dimensionStyles = dimensionStyles()
-            dwg.dimensionDefaults = headerStyleVariables()
             let (blockList, blockTilted) = blocks()
             dwg.blocks = blockList
             guard let start = sectionStart("ENTITIES") else {  // no model space
@@ -181,19 +173,6 @@ extension DXF {
             tilted.sorted { $0.key < $1.key }.map {
                 .extrusionNotApplied(type: $0.key, count: $0.value)
             }
-        }
-
-        /// The value pairs of a HEADER variable (`9`/`$NAME`), up to the next `9` or section `0`.
-        func headerVar(_ name: String) -> [(code: Int, value: String)] {
-            guard let start = pairs.firstIndex(where: { $0.code == 9 && trimmed($0.value) == name })
-            else { return [] }
-            var out: [(code: Int, value: String)] = []
-            var k = start + 1
-            while k < pairs.count, pairs[k].code != 9, pairs[k].code != 0 {
-                out.append(pairs[k])
-                k += 1
-            }
-            return out
         }
 
         func trimmed(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }

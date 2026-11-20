@@ -35,16 +35,20 @@ The 2D entity set that dominates real-world drawings, from the `ENTITIES` (model
 | `SPLINE` | `.spline(Spline)`: degree, flags, control points, knots, weights, fit points; flattens to a polyline |
 | `HATCH` | `.hatch(Hatch)`: pattern name, solid fill, and the boundary paths (polyline and edge types) |
 | `LEADER` | `.leader(Leader)`: vertices, arrowhead, and the handle of the annotation it points at |
+| `TOLERANCE` | `.tolerance(Tolerance)`: a feature control frame, its string read into rows of characteristic, tolerance and datums (see *Geometric tolerances*) |
+| `SOLID` | `.solid(Solid)`: the three or four corners of a filled triangle or quadrilateral, in outline order |
+| `WIPEOUT` | `.wipeout(Wipeout)`: the masking boundary, in the world |
+| `3DFACE` | `.face3D(Face3D)`: four corners with their z, and the invisible edges |
 
-Entities it does not model (e.g. `INSERT`, `SOLID`) are **skipped, not fatal**, and
+Entities it does not model (e.g. `INSERT`, `TRACE`) are **skipped, not fatal**, and
 reported on the drawing (see below).
 
 ### Skipped entities
 
 ```swift
 let dwg = try DXF.read(contentsOf: url)
-dwg.skipped          // ["INSERT": 3, "SOLID": 1]  type name -> count
-dwg.skippedByLayer   // ["INSERT": ["PARTS": 3], "SOLID": ["0": 1]]  type -> layer -> count
+dwg.skipped          // ["INSERT": 3, "TRACE": 1]  type name -> count
+dwg.skippedByLayer   // ["INSERT": ["PARTS": 3], "TRACE": ["0": 1]]  type -> layer -> count
 ```
 
 An empty `skipped` means nothing in `ENTITIES` was dropped. `dxfdump` prints the same table to
@@ -112,7 +116,7 @@ into `dwg.entities`:
 - Each expanded entity's `identity.via` names the references it came through, outermost first (the
   handle, or the locator when there is none, with `[column,row]` for an array), and
   `identity.blocks` their names. A block drawn twice gives two entities with different identities.
-- Expanded references leave `dwg.skipped`; what a block holds that has no entity form (a `SOLID`)
+- Expanded references leave `dwg.skipped`; what a block holds that has no entity form (a `TRACE`)
   is added to it once per instance. A reference to a block the file does not define stays in
   `skipped`.
 - `counts`, `bounds`, `identities` and `entityLineTypes` follow the expanded entities.
@@ -191,8 +195,8 @@ handle and names the reference in `via` (its `id` reads `8E/9A`); an invisible a
 
 ### Extrusion
 
-Arcs, circles, polylines, text, hatches and the text point of a dimension are written in their own
-coordinate system (OCS), whose z axis is the entity's extrusion direction (groups 210, 220, 230).
+Arcs, circles, polylines, text, hatches, solids and the text point of a dimension are written in
+their own coordinate system (OCS), whose z axis is the entity's extrusion direction (groups 210, 220, 230).
 For an extrusion of `(0, 0, -1)`, which is what a drawing made on a flipped plane or mirrored in
 a CAD program holds, the OCS x axis is the world `-x`. The reader gives you world coordinates:
 
@@ -202,10 +206,11 @@ a CAD program holds, the OCS x axis is the world `-x`. The reader gives you worl
 | `ELLIPSE` | centre and axis are world coordinates already; the parameter range is reversed, so it still runs counter-clockwise |
 | `TEXT`, `ATTRIB`, `ATTDEF` | insertion point mirrored, rotation `180 - rotation` |
 | `HATCH` | boundary paths mirrored; a path that travelled an arc counter-clockwise now travels it clockwise |
+| `SOLID` | corners mirrored (x and z change sign), in outline order |
 | `DIMENSION` | the text point (group 11) and the arc point (group 16), and the rotation (group 50), an angle in the OCS, becomes `180 - rotation`. The definition points are world coordinates already, and the oblique angle (group 52) is left as written, as in `ezdxf` |
 
-`MTEXT`, `POINT`, `SPLINE`, `LEADER` and a 3D polyline hold world coordinates and are never
-converted (an `MTEXT`'s rotation is read as written). An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
+`MTEXT`, `POINT`, `SPLINE`, `LEADER`, `TOLERANCE`, `WIPEOUT`, `3DFACE` and a 3D polyline hold world
+coordinates and are never converted (an `MTEXT`'s rotation is read as written). An `LWPOLYLINE`'s elevation (group 38) is the z of its vertices. The conversion agrees
 with `ezdxf.upright`, `ezdxf`'s own, on a drawing with one of each.
 
 A normal that is not along z cannot be held by a planar entity, so such an entity is read as written
@@ -259,6 +264,56 @@ dwg.isVisible(entityAt: i)                  // on a layer that is on and not fro
 `lineTypeName`, `isOff` (a negative colour), `isFrozen` and `isLocked`. A `LineType` carries
 `pattern` (positive dash, negative gap, zero dot), `patternLength` and `description`. A block's
 entities keep their line type names in `Block.entityLineTypes`.
+
+### Geometric tolerances, solids, wipeouts and faces
+
+```swift
+for case .tolerance(let t) in dwg.entities {
+    t.insertion, t.direction, t.styleName     // where the frame is, which way it runs
+    t.text                                    // {\Fgdt;i}%%v0.012%%v%%vB%%v%%v, as written
+    for frame in t.frames {                   // one per line of the string
+        frame.characteristic                  // .symmetry
+        frame.tolerance                       // Zone(isDiameter: false, value: 0.012, ...)
+        frame.datums                          // [Datum(reference: "B")]
+    }
+    t.isFullyRead                             // false when anything was kept as written
+}
+```
+
+A `TOLERANCE` is read into the string of its frame (group 1) and the frames in it. `^J` separates
+the lines of the string (a second line is a composite frame), and `%%v` the boxes of a line: the
+symbol, the first and second tolerance, and up to three datums. The symbol is a letter of the GDT
+font (`{\Fgdt;j}`), read as the font `gdt.shx` defines it: `a` angularity, `b` perpendicularity,
+`c` flatness, `d` profile of a surface, `e` circularity, `f` parallelism, `g` cylindricity, `h`
+circular runout, `i` symmetry, `j` position, `k` profile of a line, `r` concentricity, `t` total
+runout, `u` straightness. A tolerance box states a `value` (a comma is read as the decimal mark), a
+diameter (`%%c`, or `{\Fgdt;n}`), a material condition (`{\Fgdt;m}`, `l`, `s`) and a projected zone
+(`{\Fgdt;p}`, `isProjected`); a datum box its reference and a material condition. A first box that
+is none of those symbols is `.unrecognised(raw)`, and a symbol in another box that is not one of
+those stays in the box's `text` and is listed in `Frame.unread`, as is a box after the sixth: they
+are kept as written and not guessed at. `isFullyRead` is `false` for them, and for a tolerance box
+that holds no number (`0.05/25`). The rest of the text is decoded as
+`MTEXT` is, `%%nnn` through the drawing's code page. The size of a frame comes from its dimension
+style, which `styleName` names; the size is not looked up.
+
+`SOLID`, `WIPEOUT` and `3DFACE` carry their corners:
+
+- `Solid.corners` is in outline order: the file lists a quadrilateral as corners 1, 2, 4, 3, so the
+  third and fourth are swapped, and a triangle (a repeated third corner, or none) has three. A
+  `SOLID` is written in its object coordinate system, so one on a `-z` plane is converted, like an
+  `ARC`.
+- `Face3D.corners` are the four corners as written, in the world, with their z; `invisibleEdges` is
+  the file's bit field, and `isEdgeVisible(_:)` and `isTriangle` read it.
+- `Wipeout.boundary` is the clip boundary in the world. The file stores a `WIPEOUT` as an image, with
+  the clip in pixels from its top left corner, and the reader places it as `ezdxf` does:
+  `insertion + u (x + 1/2) + v (height - y - 1/2)`. Two clip vertices are a rectangle (four corners),
+  and a polygon does not repeat its first vertex. The clip mode, which can invert the mask, is not
+  read.
+
+The contour layer ignores all four, with a warning (`.ignoredEntities`): a filled `SOLID` is a fill
+as a solid `HATCH` is, and most are arrowheads, whose outline would only add loops that nothing
+encloses; a `WIPEOUT` is a mask, a `3DFACE` a surface patch, and a `TOLERANCE` an annotation.
+`bounds` takes in their corners, boundary points and insertion points.
 
 ### Fitting one curve
 
@@ -357,9 +412,10 @@ A `DIMENSION` says what it measures, and how the number is to be stated:
 ```swift
 for case .dimension(let d) in dwg.entities {
     d.measurement                         // the stored value (group 42); nil when absent, 0 or -1
-    d.computedMeasurement                 // the value the geometry gives, in drawing units
-    d.rotation, d.obliqueAngle            // groups 50 and 52, in degrees
-    dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale
+    d.computedMeasurement                 // the value the geometry gives: units, or degrees for an angle
+    d.rotation, d.obliqueAngle            // groups 50 (51, negated, for ordinate) and 52, in degrees
+    d.isXOrdinate                         // bit 64 of group 70: an ordinate dimension of the X type
+    dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale (not an angle)
     let style = dwg.styleVariables(of: d)
     style.decimalPlaces                   // DIMDEC: 1 if stated to one place, nil if unstated
     style.suppressesTrailingZeros         // DIMZIN: "8.1" may be 8.100 with its zeros hidden
@@ -374,24 +430,66 @@ for case .dimension(let d) in dwg.entities {
 - **`computedMeasurement`** is the same number for every consumer: for a linear dimension the
   distance between the two extension-line origins along `rotation` (horizontal when absent), for an
   aligned one the distance between them, for a radius or diameter the distance between its two
-  definition points. Angular and ordinate dimensions have none. It matches `ezdxf`'s
-  `Dimension.get_measurement()`, which also applies no scale. Group 50 absent means horizontal, as
-  the DXF default says, and agreed with the direction worked out from the dimension-line point on
-  every one of 339 real dimensions checked.
+  definition points. For these it matches `ezdxf`'s `Dimension.get_measurement()`, which also
+  applies no scale. Group 50 absent means horizontal, as the DXF default says, and agreed with the
+  direction worked out from the dimension-line point on every one of 339 real dimensions checked.
+  The rest are as follows.
+  - **Angular and three-point angular dimensions are in degrees**, as `rotation` and the angles of
+    an `ARC` are, and are not scaled by `DIMLFAC`: `displayedMeasurement(of:)` leaves them alone. A
+    three-point dimension is the angle at its vertex (group 15) between the rays to groups 13 and
+    14; a two-line one is the angle between the line from group 13 to 14 and the line from 15 to
+    10, where the lines cross. Either is the angle **on the side of the arc location** (group 16,
+    or group 10 for a three-point one), which is what AutoCAD displays: three-point angles are
+    between 0 and 360 and can be over 180; two crossing lines make two angles and their
+    supplements, so a two-line angle is between 0 and 180. `ezdxf`'s `get_measurement()` is the
+    angle counter-clockwise from the first line to the second whichever side the arc is on, so it
+    differs where the arc is on the other side. Checked against AutoCAD's own anonymous blocks in
+    two DWG files: all 8 three-point angular dimensions in them, of which 7 are different (the
+    tests hold those) and 2 put the arc on the side `ezdxf`'s number does not (AutoCAD drew 125 and
+    130 where `ezdxf` gives 235 and 230); and against `ezdxf`'s numbers where the side is the same
+    (`tools/angular_fixtures.py`). A dimension with a point missing, lines that are parallel, a ray
+    of no length, or an arc location exactly on the vertex or the crossing has none. The decimal places and unit of an angle (`DIMADEC`,
+    `DIMAUNIT`) are not modelled, and `measurement` (group 42) of an angular dimension is the
+    file's number, not converted.
+  - **An ordinate dimension** is the distance from its origin (group 10) to its feature location
+    (group 13) along x when `isXOrdinate` (bit 64 of group 70) and along y when not. The axes are
+    those of the coordinate system the dimension was made in: `rotation` is the negative of group
+    51, and a block insertion or a `-z` plane turns it as it turns a linear dimension's. The value
+    is always positive, as `ezdxf` draws it, with the same value for a feature on either side of
+    the origin. It was checked against `ezdxf`'s own rendering only (`tools/angular_fixtures.py`):
+    there was no AutoCAD drawing with an ordinate dimension to check it against, so whether
+    AutoCAD shows a sign for the far side of the origin is not known.
 - **Style variables** come from the entity's own overrides in its extended data (`ACAD` /
   `DSTYLE`), then the `DIMSTYLE` record it names. A variable neither states is `nil`: SolidWorks
   styles often leave `DIMDEC` out, and the reader does not guess it. The header's own current
   values are in `dwg.dimensionDefaults` for a caller that wants them as a fallback; they belong to
-  whichever style was current when the file was saved, so they are not applied for you. A negative
+  whichever style was current when the file was saved (`dwg.currentDimensionStyleName` names it),
+  so they are not applied for you. A negative
   `DIMLFAC` applies to paper space only and is ignored.
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
   `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`
   and `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a
-  limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces;
+  limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces, and an
+  angle (`45°`, `45%%d`) is in `typedAngles`, in degrees, and not in `typedNumbers` where a length
+  would be read;
   `isSuppressed` is the single space that hides the text. The codes are decoded as in an `MTEXT`
   (see *Text*), so `%%c<>` gives the words `⌀` and `<>{\H0.7x;\S+0.1^ -0.2;}` the measurement and
   a tolerance stack, whose numbers are not typed numbers. `d.textOverride` is the override as the
   file writes it.
+- **How a drawing writes numbers** is not in the text. `10,439` is two numbers to `typedNumbers`
+  (10 and 439), as it always was. Jw_cad writes ten thousand four hundred and thirty-nine that way,
+  and a drawing that writes decimals with a comma means `0,125` as one eighth, so say which:
+
+  ```swift
+  d.text(numbers: .commaSeparatesThousands).typedNumbers   // "10,439" -> [10439]
+  d.text(numbers: .commaIsDecimalMark).typedNumbers        // "0,125"  -> [0.125]
+  DXF.DimensionText("5,186.6", numbers: .commaSeparatesThousands).typedNumbers   // [5186.6]
+  ```
+
+  A comma separates thousands only inside a number written in groups of three (`1,930`,
+  `12,345,678`); `40,60`, `1,2345` and `0,125` stay as written. A point is a decimal mark under
+  every setting. Full-width digits, point and comma (`１０，４３９`) read as the ordinary ones under
+  every setting, and the part keeps the characters it was written with.
 
 ### Rebuilding dimensions from loose pieces
 
@@ -440,7 +538,12 @@ It starts from each text that states a number and works out the rest, like Swift
   geometry is nearest its texts wins, then a reduction over an enlargement. `Options(scale:)`
   states the scale instead; anything but a positive number is no scale.
 - **Values.** A comma or a point is a decimal mark or a thousands separator, whichever the geometry
-  bears out: `1,829` is 1.829 or 1829, and `1.234,5` is 1234.5. Full-width digits, a diameter or
+  bears out: `1,829` is 1.829 or 1829, and `1.234,5` is 1234.5. Where the geometry cannot tell
+  (a chain of `1,829` and `1,981` fits 1:1 and 1:1000 alike), say how the drawing writes numbers
+  with `Options(numbers:)`, the setting `DimensionText` takes: a Jw_cad export is
+  `.commaSeparatesThousands`, and then `10,439` is 10439 and never 10.439. With a setting a comma
+  is read only as it says, and a number it does not read as one (`40,60`) is listed as several.
+  Full-width digits, a diameter or
   radius symbol before the number and a trailing `mm` are read; a tolerance stack is ignored.
   Angles, other units, texts with several numbers and numbers that are not read (`1.2.3`) are
   listed as not rebuilt, with the reason. Numbers a text assembler ran
@@ -470,11 +573,13 @@ the PDF through OCCTSwiftPDF, whose positions are noisy to about 0.1 mm: 29 at 1
 squares scale is 80.04). Over 2,855 DXF files on one machine, the 38 that have real
 dimensions (22 of them McMaster-Carr sheets) gained none, 35 of them with no warning and 3 with
 warnings for numbers beside lines, and the other Jw_cad railway drawings (`dd12`,
-`ka2000`, `tmf1`, `to1`) found 1:80.
+`ka2000`, `tmf1`, `to1`) found 1:80. On the 2120, 17 of the 29 values carry a comma: with
+`Options(numbers: .commaSeparatesThousands)` the result is the same 29 at 1:80; told a comma is a
+decimal mark it finds 17 at a scale of 0.08, and told a comma is not part of a number, 12.
 
 It is an inference. It does not rebuild angular or ordinate dimensions, a text on a dimension
 line that is not beside it (a leader), or two scales in one layer group; an arrowhead drawn as a
-filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] file.dxf`
+filled `SOLID` is not used as an end mark. `dxfdump --rebuild [--scale N] [--numbers thousands|decimal|plain] file.dxf`
 prints the result as JSON. The 2120 and the drawings with real dimensions are checked by tests that
 need the files: `DXF_REBUILD_FILE` (a drawing that gives 29 at 1:80) and `DXF_REBUILD_CORPUS` (a
 folder in which every drawing with real dimensions gains none). `tools/rebuild_corpus.py <folder>`
@@ -506,9 +611,42 @@ tolerance. Fallbacks, so malformed data never traps:
   and be rounded off.
 - Fewer than two control points returns what is there; `point(at:)` returns `nil`.
 
-`Drawing` also exposes header essentials: `version` (`$ACADVER`), `insUnits` (`$INSUNITS`), and the
+### Header variables
+
+`Drawing` exposes header essentials: `version` (`$ACADVER`), `insUnits` (`$INSUNITS`), and the
 declared `extMin` / `extMax` extents (`$EXTMIN` / `$EXTMAX`), plus a computed `bounds` over the
-entities actually read.
+entities actually read. Five more say how to read the drawing's numbers, each `nil` when the file
+lacks it (an R12 file has no `$INSUNITS` or `$MEASUREMENT`):
+
+```swift
+dwg.measurement                // $MEASUREMENT: 0 imperial, 1 metric; the file's answer when insUnits is 0 or nil
+dwg.currentDimensionStyleName  // $DIMSTYLE: the style the dimension defaults below belong to
+dwg.currentDimensionStyle      // its record in dimensionStyles (case-insensitive), or nil
+dwg.dimensionScale             // $DIMSCALE: the overall dimension scale (sizes, not measured values)
+dwg.linearUnitFormat           // $LUNITS: 1 scientific, 2 decimal, 3 engineering, 4 architectural, 5 fractional
+dwg.linearUnitPrecision        // $LUPREC
+dwg.headerVariables["$MEASUREMENT"]?.value(70)?.integer   // any variable, by name
+dwg.headerVariables["$EXTMIN"]?.point                      // 10/20/30 as a point
+```
+
+`headerVariables` holds **every** variable of the `HEADER` section by name, each a
+`DXF.HeaderVariable` of its group-coded values in file order (`$EXTMIN` is three, groups 10, 20 and
+30; `$DIMSTYLE` is one, group 2). A consumer can read a variable the package has no property for,
+such as `$LIMMIN` or `$PSLTSCALE`; `value(code)?.integer`, `.real` and `.text` read one, and
+`point` reads a point. The properties above were read from it, and the two are not kept in step, so
+changing one does not change the other.
+
+- **Text keeps the file's characters.** A string value is read through the drawing's code page
+  like the rest of the file (the bytes `43 61 66 E9` of a `$DIMSTYLE` in an `ANSI_1252` file read
+  as `Café`), whitespace is kept (the named `currentDimensionStyleName` is trimmed), and `%%` codes
+  are not decoded: they are for the text of the drawing, and `$DIMPOST` keeps `<>%%d` as written.
+- **Only the `HEADER` section is read.** A variable written twice keeps its first value, and a file
+  with no `HEADER` section has none. A value of the wrong type, such as a `$MEASUREMENT` that is
+  not an integer or is written in another group, reads as `nil` from the named property and is
+  still in `headerVariables`.
+- **`$DIMSCALE` is not `$DIMLFAC`.** `dimensionScale` scales sizes such as text height and arrow
+  size, and `0` leaves it to the application. The factor that multiplies a measured value is
+  `dimensionDefaults.linearScale` (`$DIMLFAC`).
 
 ### Behaviours worth knowing
 
@@ -534,6 +672,20 @@ entities actually read.
 
 ### Upgrading from 0.4
 
+- **`Drawing` has new header properties**: `headerVariables` (every variable of the `HEADER`
+  section by name), `measurement`, `currentDimensionStyleName`, `dimensionScale`,
+  `linearUnitFormat` and `linearUnitPrecision`, and a computed `currentDimensionStyle`. The stored
+  ones are defaulted in `init`, which keeps its parameters in their order with the new ones last,
+  so existing calls compile unchanged; see *Header variables*. Only the `HEADER` section is read
+  for the header properties now: a group 9 elsewhere in the file was once taken for a variable.
+- **`DXF.Entity` has four new cases**, `.tolerance`, `.solid`, `.wipeout` and `.face3D`, so an
+  exhaustive `switch` needs them. `TOLERANCE`, `SOLID`, `WIPEOUT` and `3DFACE` no longer appear in
+  `dwg.skipped`, and `Counts` gains `tolerance`, `solid`, `wipeout` and `face3D`, which `total`
+  and `bounds` include. `DXF.Tolerance`, `Solid`, `Wipeout` and `Face3D` are new types.
+- **`Contour.Warning` has a new case**, `.ignoredEntities(type:count:)`, so an exhaustive `switch`
+  over it needs it. A `SOLID` and the others were `.skippedEntities` before.
+- **A `SOLID` on a `-z` plane is converted into the world**, as an `ARC` is; one on a tilted plane
+  is read as written and reported as `.extrusionNotApplied`.
 - **`ATTRIB` is no longer in `dwg.skipped`**, and `ATTDEF` no longer in a block's `skippedByLayer`:
   they are read (see *Attributes*). `BlockReference` gains `attributes`, `Block` gains
   `attributeDefinitions` and `ReadOptions` gains `expandAttributes`, all defaulted, so nothing
@@ -632,6 +784,7 @@ half turn, so a circle is two segments and a 270 degree arc is two. A `Loop` is 
 | `SPLINE` that is exactly a line or arc | that line or arc |
 | other `ELLIPSE`, `SPLINE` | sampled, then fitted with lines and circular arcs |
 | `TEXT`, `DIMENSION`, `POINT`, `HATCH`, `LEADER` | ignored, with a warning |
+| `TOLERANCE`, `SOLID`, `WIPEOUT`, `3DFACE` | ignored, with an `ignoredEntities` warning for each type |
 | `INSERT` | flattened first when the drawing was read with `expandBlocks: true`; otherwise not read, with a warning |
 | unmodelled types | not read, with a warning |
 
@@ -664,7 +817,7 @@ How it works:
   fit is available for one entity.
 - **Warnings** (`result.warnings`): `unitlessAssumed`, `unknownUnitCode`, `skippedEntities`,
   `blockReferencesNotExpanded`, `ignoredText`, `ignoredDimensions`, `ignoredPoints`,
-  `ignoredHatches`, `ignoredLeaders`, `fittedCurves`, `openChains`, `degenerateGeometry`,
+  `ignoredHatches`, `ignoredLeaders`, `ignoredEntities`, `fittedCurves`, `openChains`, `degenerateGeometry`,
   `coincidentLoops`, `crossingLoops`, `nestedLoopsDropped`.
 
 Limits:
@@ -695,7 +848,14 @@ SPLINE control data and NURBS evaluation are checked against `ezdxf` on fixtures
 (`Tests/SwiftDXFTests/Fixtures/`, generated by `tools/spline_fixtures.py`): clamped, rational,
 3D and periodic cases. Flattening deviation is asserted against dense exact evaluation. The contour layer is tested on
 fixtures from `tools/contour_fixtures.py` with analytic areas and bounds, and its fitted ellipses
-and splines are measured against the exact curves.
+and splines are measured against the exact curves. `SOLID`, `3DFACE` and `WIPEOUT` are checked on
+`Fixtures/solids.dxf` (`tools/solid_fixtures.py`), which has a triangle and quadrilaterals, a
+`-z` plane, invisible edges, and a clip on a rotated, scaled grid of pixels, and by `dxfdump` against
+`tools/oracle.py` (`tools/oracle_diff.py`) over the 341 drawings on one machine that hold one of
+them in any section (a survey of its `.dxf` files, leaving out iCloud folders): the 365 `SOLID` in 35
+drawings and 13,106 `3DFACE` in 170 agree on every count and every coordinate. No drawing there held
+a `TOLERANCE` or a `WIPEOUT`, so those two rest on the fixture, whose frames are asserted from the
+format (`ezdxf` has no parser for the string).
 
 Across an 11-file corpus (~62,000 entities, mixed R12 drawings incl. Jw_cad exports), SwiftDXF
 matches `ezdxf` **exactly**: every entity count and every coordinate scalar, to the bit. The
@@ -760,6 +920,26 @@ differently in these cases, on purpose:
   character, or of half a surrogate pair, is kept as written; `ezdxf` decodes it. `ezdxf` leaves
   a surrogate pair as two code points, and the oracle joins them as SwiftDXF does. A `%%` or a
   backslash at the very end is kept; `ezdxf` drops it.
+
+The header is checked with `tools/oracle.py --header`, which reads the `HEADER` section with
+`ezdxf` and prints the shape `dxfdump --header` prints: the variables SwiftDXF names, and every
+variable of the file with its first group-coded value. `--against` runs `dxfdump` on each file and
+lists where the two differ, numbers compared as numbers:
+
+```bash
+swift build && python3 tools/oracle.py --header --against .build/debug/dxfdump drawing.dxf [...]
+```
+
+Over 2,943 real drawings (R10 to R2013, from Jw_cad exports to McMaster-Carr sheets and CAD block
+libraries) the two agree on every variable of every file, and so on the named properties. In that
+set 412 drawings declare `$MEASUREMENT` (383 metric, 29 imperial) and 2,651 declare the other
+four; the 292 that lack `$DIMSTYLE`, `$DIMSCALE`, `$LUNITS` and `$LUPREC` are R12 or R10 files or
+have no `$ACADVER`. 2,530 have no `$INSUNITS`, and of the 413 that do, 31 say `0` (unitless),
+25 of them with an imperial `$MEASUREMENT`. Eleven have no header variable at all.
+`$MEASUREMENT` is not a statement of the units: 354 drawings declare inches and a metric
+`$MEASUREMENT`. Only one file has a non-ASCII header string (`$CLAYER` in an `ANSI_1252` file),
+which both readers read alike; the `$DIMSTYLE` and `$DIMPOST` cases are tested on constructed files
+in `HeaderVariablesTests`.
 
 ## Install
 

@@ -47,7 +47,7 @@ struct SegmentExtractor {
             addEllipse(c, m, ratio, s, e, layer: layer)
         case .spline(let sp):
             addSpline(sp, layer: layer)
-        case .point, .text, .dimension, .hatch, .leader:
+        case .point, .text, .dimension, .hatch, .leader, .tolerance, .solid, .wipeout, .face3D:
             break
         }
     }

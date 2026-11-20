@@ -9,7 +9,8 @@ import SwiftDXF
 //   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
 //   dxfdump --texts file.dxf [...]
 //   dxfdump --attributes file.dxf [...]
-//   dxfdump --rebuild [--scale N] file.dxf [...]
+//   dxfdump --rebuild [--scale N] [--numbers thousands|decimal|plain] file.dxf [...]
+//   dxfdump --header file.dxf [...]
 //
 // --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
 // entities flagged as paper space. Both work with the digest and with --contours.
@@ -25,7 +26,12 @@ import SwiftDXF
 // modelspace() reads). It cannot be combined with --contours.
 // --rebuild prints the dimensions rebuilt from the loose pieces of each drawing (value texts, dimension
 // lines, extension lines and marks), the scale found for each layer group, and what it could not
-// explain; --scale N states the scale instead of inferring one.
+// explain; --scale N states the scale instead of inferring one, and --numbers says how the drawing
+// writes a comma in a number: `thousands` (Jw_cad's `10,439` is 10439), `decimal` (`0,125` is
+// 0.125) or `plain` (a comma is not part of a number). Without it a comma is read every way it can
+// be, and the geometry chooses.
+// --header prints the header variables SwiftDXF names (as the drawing has them) and every header
+// variable with its first value, for diffing against tools/oracle.py --header.
 
 /// How the files are read, set by `--expand` and `--skip-paper-space`.
 var readOptions = DXF.ReadOptions()
@@ -42,7 +48,8 @@ func summary(for path: String) -> [String: Any] {
                 "LINE": c.line, "CIRCLE": c.circle, "ARC": c.arc, "ELLIPSE": c.ellipse,
                 "POINT": c.point, "TEXT": c.text, "POLYLINE": c.polyline,
                 "DIMENSION": c.dimension, "SPLINE": c.spline, "HATCH": c.hatch, "LEADER": c.leader,
-                "total": c.total,
+                "TOLERANCE": c.tolerance, "SOLID": c.solid, "WIPEOUT": c.wipeout,
+                "3DFACE": c.face3D, "total": c.total,
             ],
             "skipped": dwg.skipped,
             "skippedByLayer": dwg.skippedByLayer,
@@ -97,6 +104,15 @@ func summary(for path: String) -> [String: Any] {
                 for p in s.fitPoints { add("SPLINE", p.x, p.y) }
             case .leader(let l):
                 for p in l.vertices { add("LEADER", p.x, p.y) }
+            case .tolerance(let t):
+                add("TOLERANCE", t.insertion.x, t.insertion.y, t.direction.x, t.direction.y)
+            case .solid(let s):
+                for p in s.corners { add("SOLID", p.x, p.y, p.z) }
+            case .wipeout(let w):
+                for p in w.boundary { add("WIPEOUT", p.x, p.y, p.z) }
+            case .face3D(let f):
+                for p in f.corners { add("3DFACE", p.x, p.y, p.z) }
+                add("3DFACE", Double(f.invisibleEdges))
             case .hatch(let h):
                 for path in h.paths {
                     switch path.geometry {
@@ -123,6 +139,12 @@ func summary(for path: String) -> [String: Any] {
         obj["dimensions"] = dwg.entities.compactMap { e -> Any? in
             guard case .dimension(let d) = e else { return nil }
             return d.computedMeasurement ?? NSNull()
+        }
+        // The frame string of each TOLERANCE in order, as the file writes it, for diffing against
+        // ezdxf's `content`.
+        obj["tolerances"] = dwg.entities.compactMap { e -> Any? in
+            guard case .tolerance(let t) = e else { return nil }
+            return t.text
         }
         obj["geom"] = ["sum": sum, "scalars": n]
         obj["geomByType"] = byType.mapValues { ["sum": $0[0], "scalars": Int($0[1])] }
@@ -282,6 +304,24 @@ if let flag = arguments.firstIndex(of: "--rebuild") {
         rebuildOptions.scale = scale
         arguments.removeSubrange(at...(at + 1))
     }
+    if let at = arguments.firstIndex(of: "--numbers") {
+        let names: [String: DXF.DimensionText.NumberConvention] = [
+            "thousands": .commaSeparatesThousands, "decimal": .commaIsDecimalMark,
+            "plain": .plain,
+        ]
+        guard at + 1 < arguments.count, let numbers = names[arguments[at + 1]] else {
+            FileHandle.standardError.write(
+                Data("--numbers needs thousands, decimal or plain\n".utf8))
+            exit(2)
+        }
+        rebuildOptions.numbers = numbers
+        arguments.removeSubrange(at...(at + 1))
+    }
+}
+var listHeader = false
+if let flag = arguments.firstIndex(of: "--header") {
+    arguments.remove(at: flag)
+    listHeader = true
 }
 var contourOptions: DXF.Contour.Options?
 if let flag = arguments.firstIndex(of: "--contours") {
@@ -309,13 +349,17 @@ if let flag = arguments.firstIndex(of: "--contours") {
     }
     contourOptions = options
 }
-if !rebuild, arguments.contains("--scale") {
-    FileHandle.standardError.write(Data("--scale goes with --rebuild\n".utf8))
+for flag in ["--scale", "--numbers"] where !rebuild && arguments.contains(flag) {
+    FileHandle.standardError.write(Data("\(flag) goes with --rebuild\n".utf8))
     exit(2)
 }
-if [listTexts, listAttributes, contourOptions != nil, rebuild].filter({ $0 }).count > 1 {
+if [listTexts, listAttributes, contourOptions != nil, rebuild, listHeader].filter({ $0 }).count
+    > 1
+{
     FileHandle.standardError.write(
-        Data("--texts, --attributes, --contours and --rebuild cannot be used together\n".utf8))
+        Data(
+            ("--texts, --attributes, --contours, --rebuild and --header"
+                + " cannot be used together\n").utf8))
     exit(2)
 }
 let paths = arguments
@@ -324,7 +368,8 @@ guard !paths.isEmpty else {
         Data(
             ("usage: dxfdump [--expand | --expand-attributes] [--skip-paper-space]"
                 + " [--contours [--layers A,B] [--units inch|mm] | --texts | --attributes"
-                + " | --rebuild [--scale N]] <file.dxf> [...]\n")
+                + " | --rebuild [--scale N] [--numbers thousands|decimal|plain]"
+                + " | --header] <file.dxf> [...]\n")
                 .utf8)
     )
     exit(2)
@@ -351,6 +396,19 @@ if listAttributes {
     for path in paths {
         let data = try JSONSerialization.data(
             withJSONObject: attributeSummary(for: path, options: readOptions), options: options)
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
+
+if listHeader {
+    var options: JSONSerialization.WritingOptions = [.sortedKeys]
+    if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
+        options.insert(.withoutEscapingSlashes)
+    }
+    for path in paths {
+        let data = try JSONSerialization.data(
+            withJSONObject: headerSummary(for: path, options: readOptions), options: options)
         print(String(decoding: data, as: UTF8.self))
     }
     exit(0)
