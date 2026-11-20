@@ -214,75 +214,6 @@ func textSummary(for path: String) -> [String: Any] {
     }
 }
 
-/// The attributes of each block reference and the attribute definitions of each block.
-///
-/// Only the references and blocks that have any are listed. With `--skip-paper-space`, as ezdxf's
-/// `modelspace()` reads. With `--expand-attributes`, also the texts the attributes became.
-func attributeSummary(for path: String) -> [String: Any] {
-    let url = URL(fileURLWithPath: path)
-    do {
-        let dwg = try DXF.read(contentsOf: url, options: readOptions)
-        func fields(
-            _ tag: String, _ text: String, _ at: DXF.Point, _ height: Double, _ rotation: Double,
-            _ layer: String, _ flags: DXF.AttributeFlags, _ multiline: Bool,
-            _ identity: DXF.Identity
-        ) -> [String: Any] {
-            [
-                "tag": tag, "text": text, "x": at.x, "y": at.y, "height": height,
-                "rotation": rotation, "layer": layer, "flags": flags.rawValue,
-                "multiline": multiline, "handle": identity.handle ?? NSNull() as Any,
-            ]
-        }
-        func references(_ list: [DXF.BlockReference]) -> [[String: Any]] {
-            list.filter { !$0.attributes.isEmpty }.map { ref in
-                [
-                    "name": ref.name, "handle": ref.identity.handle ?? NSNull() as Any,
-                    "attributes": ref.attributes.map {
-                        fields(
-                            $0.tag, $0.value, $0.position, $0.height, $0.rotation, $0.layer,
-                            $0.flags, $0.isMultiline, $0.identity)
-                    },
-                ]
-            }
-        }
-        let blocks: [[String: Any]] = dwg.blocks.compactMap { block in
-            let nested = references(block.references)
-            guard !nested.isEmpty || !block.attributeDefinitions.isEmpty else { return nil }
-            return [
-                "name": block.name, "references": nested,
-                "definitions": block.attributeDefinitions.map {
-                    var out = fields(
-                        $0.tag, $0.defaultValue, $0.position, $0.height, $0.rotation, $0.layer,
-                        $0.flags, $0.isMultiline, $0.identity)
-                    out["prompt"] = $0.prompt
-                    return out
-                },
-            ]
-        }
-        var out: [String: Any] = [
-            "file": url.lastPathComponent, "references": references(dwg.references),
-            "blocks": blocks,
-        ]
-        if readOptions.expandAttributes {
-            // The texts an attribute became: the entities that carry an attribute's handle.
-            let attributes = dwg.references + dwg.blocks.flatMap(\.references)
-            let handles = Set(attributes.flatMap(\.attributes).compactMap(\.identity.handle))
-            out["expanded"] = dwg.entities.enumerated().compactMap {
-                (i, entity) -> [String: Any]? in
-                guard case .text(let at, let height, let rotation, let text, _, _) = entity,
-                    let handle = dwg.identity(ofEntityAt: i).handle, handles.contains(handle)
-                else { return nil }
-                return [
-                    "text": text, "x": at.x, "y": at.y, "height": height, "rotation": rotation,
-                ]
-            }
-        }
-        return out
-    } catch {
-        return ["file": url.lastPathComponent, "error": "\(error)"]
-    }
-}
-
 /// The dimensions rebuilt from the loose pieces of the file, what scale they were found at, and
 /// what could not be explained.
 func rebuildSummary(for path: String, options: DXF.DimensionRebuild.Options) -> [String: Any] {
@@ -420,7 +351,7 @@ if listAttributes {
     }
     for path in paths {
         let data = try JSONSerialization.data(
-            withJSONObject: attributeSummary(for: path), options: options)
+            withJSONObject: attributeSummary(for: path, options: readOptions), options: options)
         print(String(decoding: data, as: UTF8.self))
     }
     exit(0)

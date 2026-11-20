@@ -120,6 +120,8 @@ extension DXF.Attribute {
     }
 
     /// This attribute with its position, height and rotation carried through `t`, as a `TEXT` is.
+    ///
+    /// A `TEXT` passes any map, so the attribute is never returned unmoved.
     func transformed(by t: DXF.Transform) -> DXF.Attribute {
         guard case .text(let at, let height, let rotation, _, _, _)? = textEntity.transformed(by: t)
         else { return self }

@@ -7,13 +7,15 @@ extension DXFBuilder {
     /// An `ATTRIB` as AutoCAD writes it from R13 on, with its subclass markers.
     static func attrib(
         _ tag: String, _ value: String, at p: (Double, Double), height: Double = 2.5,
-        rotation: Double = 0, layer: String = "0", handle: String? = nil, flags: Int = 0,
-        normal: (Double, Double, Double) = (0, 0, 1)
+        rotation: Double = 0, layer: String = "0", color: Int? = nil, handle: String? = nil,
+        flags: Int = 0, normal: (Double, Double, Double) = (0, 0, 1)
     ) -> Record {
         var r: Record = [(0, "ATTRIB")]
         if let handle { r.append((5, handle)) }
+        r += [(100, "AcDbEntity"), (8, layer)]
+        if let color { r.append((62, "\(color)")) }
         r += [
-            (100, "AcDbEntity"), (8, layer), (100, "AcDbText"), (10, "\(p.0)"), (20, "\(p.1)"),
+            (100, "AcDbText"), (10, "\(p.0)"), (20, "\(p.1)"),
             (30, "0.0"), (40, "\(height)"), (1, value), (50, "\(rotation)"), (71, "4"),
             (72, "0"), (210, "\(normal.0)"), (220, "\(normal.1)"), (230, "\(normal.2)"),
             (100, "AcDbAttribute"),
@@ -25,14 +27,16 @@ extension DXFBuilder {
     /// An `ATTDEF` as AutoCAD writes it from R13 on.
     static func attdef(
         _ tag: String, prompt: String, value: String, at p: (Double, Double), height: Double = 2.5,
-        layer: String = "0", handle: String? = nil, flags: Int = 0,
-        normal: (Double, Double, Double) = (0, 0, 1)
+        rotation: Double = 0, layer: String = "0", color: Int? = nil, handle: String? = nil,
+        flags: Int = 0, normal: (Double, Double, Double) = (0, 0, 1)
     ) -> Record {
         var r: Record = [(0, "ATTDEF")]
         if let handle { r.append((5, handle)) }
+        r += [(100, "AcDbEntity"), (8, layer)]
+        if let color { r.append((62, "\(color)")) }
         r += [
-            (100, "AcDbEntity"), (8, layer), (100, "AcDbText"), (10, "\(p.0)"), (20, "\(p.1)"),
-            (30, "0.0"), (40, "\(height)"), (1, value), (71, "4"), (210, "\(normal.0)"),
+            (100, "AcDbText"), (10, "\(p.0)"), (20, "\(p.1)"), (30, "0.0"), (40, "\(height)"),
+            (1, value), (50, "\(rotation)"), (71, "4"), (210, "\(normal.0)"),
             (220, "\(normal.1)"), (230, "\(normal.2)"), (100, "AcDbAttributeDefinition"),
             (280, "0"), (3, prompt), (2, tag), (70, "\(flags)"),
         ]
@@ -43,12 +47,12 @@ extension DXFBuilder {
     static func insert(
         _ name: String, at p: (Double, Double), attributes: [Record],
         scale: (Double, Double) = (1, 1),
-        rotation: Double = 0, layer: String = "0", handle: String? = nil, seqend: Bool = true,
-        array: (columns: Int, rows: Int, dx: Double, dy: Double)? = nil
+        rotation: Double = 0, layer: String = "0", handle: String? = nil, color: Int? = nil,
+        seqend: Bool = true, array: (columns: Int, rows: Int, dx: Double, dy: Double)? = nil
     ) -> [Record] {
         var head = insert(
             name, at: p, scale: scale, rotation: rotation, layer: layer, handle: handle,
-            array: array)
+            color: color, array: array)
         head.append((66, "1"))
         return [head] + attributes + (seqend ? [[(0, "SEQEND")]] : [])
     }
@@ -99,7 +103,7 @@ struct AttributeTests {
             attributes: [
                 B.attrib(
                     "DWG_NO", "D-1234", at: (101, 51), height: 5, rotation: 90, layer: "TEXT",
-                    handle: "A2"),
+                    color: 5, handle: "A2"),
                 B.attrib("SCALE", "1:2", at: (102, 52), handle: "A3", flags: 1),
             ], handle: "A1")
         b.entities.append(B.line((0, 0), (1, 1), handle: "A5"))
@@ -113,6 +117,7 @@ struct AttributeTests {
         let first = reference.attributes[0]
         #expect(Self.close(first.position, 101, 51))
         #expect(first.height == 5 && first.rotation == 90 && first.layer == "TEXT")
+        #expect(first.color == 5 && reference.attributes[1].color == 256)
         #expect(!first.isMultiline && !first.isInvisible)
         #expect(reference.attributes[1].flags == .invisible && reference.attributes[1].isInvisible)
 
@@ -205,7 +210,7 @@ struct AttributeTests {
                     B.line((0, 0), (10, 0)),
                     B.attdef(
                         "DWG_NO", prompt: "Drawing number", value: "NO-0", at: (1, 2), height: 5,
-                        layer: "TEXT", handle: "D1"),
+                        rotation: 45, layer: "TEXT", color: 2, handle: "D1"),
                     B.attdef(
                         "COMPANY", prompt: "Company", value: "ACME", at: (1, 8), handle: "D2",
                         flags: 2 | 4),
@@ -225,6 +230,8 @@ struct AttributeTests {
         let number = block.attributeDefinitions[0]
         #expect(Self.close(number.position, 1, 2) && number.height == 5)
         #expect(number.layer == "TEXT" && number.flags.isEmpty)
+        #expect(number.rotation == 45 && number.color == 2)
+        #expect(block.attributeDefinitions[1].color == 256)
         let company = block.attributeDefinitions[1]
         #expect(company.flags == [.constant, .verify] && company.isConstant)
         #expect(block.attributeDefinitions[2].flags == [.invisible, .preset])
@@ -288,43 +295,47 @@ struct AttributeTests {
     func movesLikeText() throws {
         let attribute = DXF.Attribute(
             tag: "T", content: DXF.TextContent("v", syntax: .text), position: DXF.Point(3, 4, 1),
-            height: 2, rotation: 30, identity: DXF.Identity(locator: "ENTITIES:0"))
+            height: 2, rotation: 30, color: 4, identity: DXF.Identity(locator: "ENTITIES:0"))
         func map(_ build: (inout DXF.Transform) -> Void) -> DXF.Transform {
             var t = DXF.Transform()
             build(&t)
             return t
         }
-        let maps = [
-            DXF.Transform(),
-            map {
-                $0.a = 0
-                $0.b = 2
-                $0.c = -2
-                $0.d = 0
-                $0.tx = 5
-                $0.ty = -1
-            },  // turn, scale
-            map {
-                $0.a = -1
-                $0.tx = 7
-            },  // mirror
-            map {
-                $0.a = 3
-                $0.d = 0.5
-                $0.tz = 2
-                $0.zScale = -1
-            },  // non-uniform
+        // The map, then where it puts (3, 4), the height and the rotation, worked out by hand.
+        let cases: [(DXF.Transform, x: Double, y: Double, height: Double, rotation: Double)] = [
+            (DXF.Transform(), 3, 4, 2, 30),
+            // A quarter turn, doubled, and moved: (3, 4) is (-8 + 5, 6 - 1).
+            (
+                map {
+                    $0.a = 0
+                    $0.b = 2
+                    $0.c = -2
+                    $0.d = 0
+                    $0.tx = 5
+                    $0.ty = -1
+                }, -3, 5, 4, 120
+            ),
+            // A flip of x turns the angle round: 180 - 30.
+            (
+                map {
+                    $0.a = -1
+                    $0.tx = 7
+                }, 4, 4, 2, 150
+            ),
+            // Stretched, the height follows y and the angle only adds the map's own turn.
+            (
+                map {
+                    $0.a = 3
+                    $0.d = 0.5
+                }, 9, 2, 1, 30
+            ),
         ]
-        for t in maps {
-            guard
-                case .text(let p, let h, let r, _, _, _)? = attribute.textEntity.transformed(by: t)
-            else {
-                Issue.record("a TEXT did not survive the map")
-                continue
-            }
+        for (t, x, y, height, rotation) in cases {
             let moved = attribute.transformed(by: t)
-            #expect(moved.position == p && moved.height == h && moved.rotation == r)
-            #expect(moved.tag == "T" && moved.value == "v" && moved.identity == attribute.identity)
+            #expect(Self.close(moved.position, x, y))
+            #expect(abs(moved.height - height) < 1e-9 && abs(moved.rotation - rotation) < 1e-9)
+            #expect(moved.tag == "T" && moved.value == "v" && moved.color == 4)
+            #expect(moved.identity == attribute.identity)
         }
     }
 
@@ -343,6 +354,19 @@ struct AttributeTests {
         let left = try Self.read(b, options: .init(skipPaperSpace: true))
         #expect(left.references.isEmpty && left.skipped.isEmpty)
         #expect(left.identities.map(\.locator) == ["ENTITIES:2"])
+    }
+
+    @Test("a tilted attribute of a paper-space reference is not counted when it is left out")
+    func paperSpaceTilted() throws {
+        var b = Self.titleBlock()
+        var paper = B.insert(
+            "TITLE", at: (0, 0), attributes: [B.attrib("A", "1", at: (0, 0), normal: (1, 0, 0))])
+        paper[0].append((67, "1"))
+        b.entities += paper
+        let kept = try Self.read(b)
+        #expect(kept.warnings.contains(.extrusionNotApplied(type: "ATTRIB", count: 1)))
+        let left = try Self.read(b, options: .init(skipPaperSpace: true))
+        #expect(left.warnings.isEmpty)
     }
 
     // MARK: ezdxf

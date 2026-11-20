@@ -76,10 +76,10 @@ extension DXF.Reader {
             // The `ATTRIB`s of an `INSERT` come after it, up to a `SEQEND`; each is a record of
             // its own for the positions, as it always was.
             var attached: [DXF.Attribute] = []
+            var attachedTilted = 0
             if type == "INSERT", ints(66, fields) == 1 {
-                attached = attributes(
-                    after: &j, firstPosition: position + 1, locator: locator,
-                    tilted: &run.tilted)
+                (attached, attachedTilted) = attributes(
+                    after: &j, firstPosition: position + 1, locator: locator)
             }
 
             if inModelSpace, ints(67, fields) == 1 {
@@ -90,6 +90,7 @@ extension DXF.Reader {
                     continue
                 }
             }
+            if attachedTilted > 0 { run.tilted["ATTRIB", default: 0] += attachedTilted }
             // The plane of a record written in an OCS; the rest are in the world.
             let plane = usesObjectCoordinates(type, fields) ? objectPlane(fields) : .up
             let content = textContent(type: type, fields)

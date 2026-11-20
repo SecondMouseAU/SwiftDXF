@@ -176,6 +176,72 @@ struct AttributeExpansionTests {
         #expect(texts.map(\.layer) == ["PARTS", "0"])
     }
 
+    @Test("a BYBLOCK colour is the reference's, and a constant attribute's is its reference's")
+    func inheritsColor() throws {
+        var b = DXFBuilder()
+        b.blocks = [
+            (
+                "TITLE", (0, 0),
+                [B.attdef("CONST", prompt: "", value: "c", at: (0, 0), color: 0, flags: 2)]
+            ),
+            (
+                "SHEET", (0, 0),
+                B.insert(
+                    "TITLE",
+                    at: (0, 0),
+                    attributes: [
+                        B.attrib("A", "a", at: (1, 1), color: 0),
+                        B.attrib("B", "b", at: (2, 2), color: 7),
+                    ], color: 2)
+            ),
+        ]
+        // The outer reference is 5, the nested one 2, the top-level one 6. A BYBLOCK attribute is
+        // its own reference's colour (2 and 6), not the enclosing block's (5).
+        b.entities = [B.insert("SHEET", at: (0, 0), color: 5)]
+        b.entities += B.insert(
+            "TITLE", at: (0, 0),
+            attributes: [B.attrib("A", "a", at: (1, 1), color: 0)], color: 6)
+        let d = try Self.expanded(b)
+        let colors = d.entities.map(\.colorIndex)
+        // SHEET: the constant of the nested TITLE (2), then its attributes (2, 7); then the
+        // constant of the top-level TITLE (6) and its attribute (6).
+        #expect(colors == [2, 2, 7, 6, 6])
+    }
+
+    @Test("an array rotated and a block scaled and rotated, as ezdxf places them")
+    func matchesEzdxfArray() throws {
+        // `tools/attrib_fixtures.py` writes the file, and `attrib_oracle.py` expands it with ezdxf.
+        let d = try AttributeTests.fixture(
+            "attributes_array", options: .init(expandBlocks: true, expandAttributes: true))
+        let texts = d.entities.enumerated().compactMap {
+            (i, entity) -> (String, DXF.Point, Double, Double, Int)? in
+            guard case .text(let p, let h, let r, let s, _, let c) = entity,
+                d.identities[i].handle != nil, ["A-1", "Array", "N-1"].contains(s)
+            else { return nil }
+            return (s, p, h, r, c)
+        }
+        let at = texts.map { "\($0.0) \(Int($0.1.x.rounded())),\(Int($0.1.y.rounded()))" }
+        #expect(
+            Set(at) == [
+                "A-1 -65,5", "A-1 -65,155", "A-1 -5,5", "A-1 -5,155", "Array -80,5",
+                "Array -80,155", "Array -20,5", "Array -20,155", "N-1 486,84",
+            ])
+        let nested = try #require(texts.first { $0.0 == "N-1" })
+        #expect(abs(nested.1.x - 485.98076211353316) < 1e-9)
+        #expect(abs(nested.1.y - 84.2820323027551) < 1e-9)
+        #expect(abs(nested.2 - 10) < 1e-9 && abs(nested.3 - 30) < 1e-9)
+        #expect(texts.filter { $0.0 == "Array" }.allSatisfy { $0.4 == 3 })
+        #expect(texts.filter { $0.0 == "A-1" }.allSatisfy { $0.4 == 256 })
+    }
+
+    @Test("expandAttributes alone expands the blocks")
+    func impliesExpandBlocks() throws {
+        var b = AttributeTests.titleBlock()
+        b.entities += B.insert("TITLE", at: (0, 0), attributes: [B.attrib("A", "x", at: (1, 1))])
+        let d = try AttributeTests.read(b, options: .init(expandAttributes: true))
+        #expect(d.counts.line == 1 && d.counts.text == 1 && d.skipped.isEmpty)
+    }
+
     @Test("a reference to a block the file does not define places no attributes")
     func missingBlock() throws {
         var b = AttributeTests.titleBlock()

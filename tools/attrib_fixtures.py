@@ -5,10 +5,12 @@
 
 Builds, with ezdxf, `<out_dir>/attributes.dxf` (R2000: a title block with attribute definitions,
 one reference in model space that fills them in, one inside another block, and an invisible and a
-constant attribute) and `<out_dir>/attributes_mtext.dxf` (R2018: a multiline attribute and
-attribute definition, which carry their `MTEXT` as an embedded object). Then prints, per file,
-what ezdxf reads back from it, in the shape `dxfdump --attributes` prints; the values are pasted
-into Tests/SwiftDXFTests/AttributeTests.swift.
+constant attribute), `<out_dir>/attributes_mtext.dxf` (R2018: a multiline attribute and attribute
+definition, which carry their `MTEXT` as an embedded object) and `<out_dir>/attributes_array.dxf`
+(R2000: a rotated 2 by 2 array of a reference with a coloured attribute, and a rotated, scaled
+block that holds a rotated reference with an attribute). Then prints, per file, what ezdxf reads
+back from it, in the shape `dxfdump --attributes` prints; the values are pasted into
+Tests/SwiftDXFTests/AttributeTests.swift and AttributeExpansionTests.swift.
 
 Requires: pip install ezdxf
 """
@@ -87,11 +89,31 @@ def build_mtext(out_dir):
     return path
 
 
+def build_array(out_dir):
+    doc = ezdxf.new("R2000")
+    title_block(doc)
+    outer = doc.blocks.new("SHEET")
+    outer.add_blockref("TITLE", (10, 0), dxfattribs={"rotation": 90}).add_attrib(
+        "DWG_NO", "N-1", (15, 40), {"height": 5})
+
+    msp = doc.modelspace()
+    ref = msp.add_blockref(
+        "TITLE", (0, 0),
+        dxfattribs={"rotation": 90, "column_count": 2, "row_count": 2, "column_spacing": 150,
+                    "row_spacing": 60})
+    ref.add_attrib("DWG_NO", "A-1", (-5, 5), {"height": 5, "rotation": 90})
+    ref.add_attrib("TITLE", "Array", (-20, 5), {"height": 3.5, "rotation": 90, "color": 3})
+    msp.add_blockref("SHEET", (500, 0), dxfattribs={"rotation": 30, "xscale": 2, "yscale": 2})
+    path = os.path.join(out_dir, "attributes_array.dxf")
+    doc.saveas(path)
+    return path
+
+
 def main(argv):
     out_dir = argv[0] if argv else "."
     os.makedirs(out_dir, exist_ok=True)
     out = {}
-    for path in (build_title(out_dir), build_mtext(out_dir)):
+    for path in (build_title(out_dir), build_mtext(out_dir), build_array(out_dir)):
         out[os.path.basename(path)] = summarize(path)
     print(json.dumps(out, indent=1, sort_keys=True))
     return 0

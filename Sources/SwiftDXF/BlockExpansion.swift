@@ -71,15 +71,16 @@ extension DXF.Drawing {
             raw?.uppercased() == "BYBLOCK" ? own.lineType : raw
         }
 
-        /// Adds `attribute`, carried through `map`, as a `TEXT`. Layer `0` and `BYBLOCK` colour
-        /// take `inheriting`'s, when there is one.
+        /// Adds `attribute`, carried through `map`, as a `TEXT`.
+        ///
+        /// Layer `0` takes `zeroLayer` when there is one, and `BYBLOCK` colour takes `blockColor`.
         func addText(
-            _ attribute: DXF.Attribute, by map: DXF.Transform, inheriting: Inherited?,
+            _ attribute: DXF.Attribute, by map: DXF.Transform, zeroLayer: String?, blockColor: Int,
             via chain: [String], blocks chainNames: [String]
         ) {
             let moved = attribute.transformed(by: map)
-            let layerName = moved.layer == "0" ? (inheriting?.layer ?? moved.layer) : moved.layer
-            let colorIndex = moved.color == 0 ? (inheriting?.color ?? moved.color) : moved.color
+            let layerName = moved.layer == "0" ? (zeroLayer ?? moved.layer) : moved.layer
+            let colorIndex = moved.color == 0 ? blockColor : moved.color
             let entity = moved.textEntity.replacing(layer: layerName, color: colorIndex)
             newEntities.append(entity)
             newCounts.record(entity)
@@ -159,19 +160,22 @@ extension DXF.Drawing {
                     }
                     for definition in constants {
                         addText(
-                            DXF.Attribute(definition), by: t, inheriting: own, via: chain,
-                            blocks: chainNames)
+                            DXF.Attribute(definition), by: t, zeroLayer: own.layer,
+                            blockColor: own.color, via: chain, blocks: chainNames)
                     }
                     if !carried.isEmpty {
                         // The reference's own place in its space, moved to this instance of an
-                        // array; the block's base point and scale do not apply to a value.
+                        // array; the block's base point and scale do not apply to a value. It is
+                        // in the enclosing block's space, so layer `0` there takes that block's
+                        // reference's layer; BYBLOCK is the reference it belongs to.
                         var shift = DXF.Transform()
                         shift.tx = placed.tx - home.tx
                         shift.ty = placed.ty - home.ty
                         for attribute in carried {
                             addText(
-                                attribute, by: outer.composed(with: shift), inheriting: parent,
-                                via: chain, blocks: chainNames)
+                                attribute, by: outer.composed(with: shift),
+                                zeroLayer: parent?.layer, blockColor: own.color, via: chain,
+                                blocks: chainNames)
                         }
                     }
                     for (type, byLayer) in block.skippedByLayer {

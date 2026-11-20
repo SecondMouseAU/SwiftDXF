@@ -94,20 +94,25 @@ def expanded(doc):
                 f = fields(a)
                 out.append({k: f[k] for k in ("text", "x", "y", "height", "rotation")})
 
+    def instances(insert):
+        return list(insert.multi_insert()) if insert.mcount > 1 else [insert]
+
     def walk(insert, depth=0):
+        """The attributes of the references inside the blocks `insert`, one instance, places."""
         if depth > 32:
             return
-        for one in insert.multi_insert() if insert.mcount > 1 else [insert]:
-            for e in one.virtual_entities():
-                if e.dxftype() == "INSERT":
-                    add(e)
-                    walk(e, depth + 1)
+        for e in insert.virtual_entities():
+            if e.dxftype() == "INSERT":
+                for one in instances(e):
+                    add(one)
+                    walk(one, depth + 1)
 
     for insert in doc.modelspace().query("INSERT"):
         if insert.dxf.name not in doc.blocks:
             continue  # a reference to a block the file lacks places nothing
-        add(insert)
-        walk(insert)
+        for one in instances(insert):
+            add(one)
+            walk(one)
     return out
 
 

@@ -169,16 +169,18 @@ for block in dwg.blocks {
   written and counted in `extrusionNotApplied`. Justification and the text style are not read.
 - An attribute definition's position is in the block's coordinates.
 
-Expansion leaves the attributes on their references, so `entities` still holds what the blocks
-draw. With `ReadOptions(expandBlocks: true, expandAttributes: true)` the visible attributes come
-through as `.text` too, each with an identity that keeps the attribute's handle and names the
-reference in `via` (`8E/9A`); an invisible attribute stays out. A reference inside a block has its
-attributes carried by the placement of that block only, since the file already drew them where its
-own reference is; an array repeats them per instance, as `ezdxf`'s `multi_insert()` does. A
-constant attribute, which no reference carries, comes through from its block's definition, placed as
-the block's other entities are. A reference to a block the file does not define places nothing,
-attributes included, as before. `dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
-`dxfdump --expand-attributes` reads with `expandBlocks` and `expandAttributes`.
+Expansion with `expandBlocks` leaves the attributes on their references, so `entities` still holds
+what the blocks draw. With `ReadOptions(expandAttributes: true)`, which expands the blocks too, the
+visible attributes come through as `.text` as well, each with an identity that keeps the attribute's
+handle and names the reference in `via` (`8E/9A`); an invisible attribute stays out. A reference
+inside a block has its attributes carried by the placement of that block only, since the file
+already drew them where its own reference is; an array repeats them per instance, as `ezdxf`'s
+`multi_insert()` does. An attribute on layer `0` in a block takes the layer of the reference to that
+block, and a `BYBLOCK` colour is the colour of the attribute's own reference. A constant attribute,
+which no reference carries, comes through from its block's definition, placed as the block's other
+entities are. A reference to a block the file does not define places nothing, attributes included,
+as before. `dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
+`dxfdump --expand-attributes` reads with `expandAttributes`.
 
 ### Extrusion
 
@@ -722,9 +724,9 @@ model-space references, the 3,634 attributes of 158 references inside blocks and
 definitions has the same tag, value, position, height, rotation, layer, flags and handle in both.
 Expansion is compared too, against `ezdxf`'s `virtual_entities()`: on the same files all 441 visible
 attributes, those of references inside blocks carried through their blocks' placement, come out at
-the same position, height and rotation. The R2000 title block and the R2018 multiline
-attribute of `Tests/SwiftDXFTests/Fixtures/attributes*.dxf` are written and read back by `ezdxf`
-(`tools/attrib_fixtures.py`). No drawing of the corpus is a title block written by AutoCAD with
+the same position, height and rotation. The R2000 title block, the R2018 multiline
+attribute and the rotated array of `Tests/SwiftDXFTests/Fixtures/attributes*.dxf` are written and
+read back by `ezdxf` (`tools/attrib_fixtures.py`). No drawing of the corpus is a title block written by AutoCAD with
 R2000 attribute records filled in, or has a multiline attribute: those two forms are tested on
 `ezdxf`'s own output.
 

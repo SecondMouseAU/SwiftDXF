@@ -6,13 +6,13 @@ extension DXF.Reader {
     ///
     /// `index` is the first pair after the `INSERT`, and moves to the one after the `SEQEND`. A
     /// record of any other type ends the run where it stands. The records are named by their
-    /// own positions, which start at `firstPosition`; `tilted` counts the ones written on a plane
-    /// that is not horizontal.
+    /// own positions, which start at `firstPosition`. Also returns how many were written on a
+    /// plane that is not horizontal.
     func attributes(
-        after index: inout Int, firstPosition: Int, locator: (Int) -> String,
-        tilted: inout [String: Int]
-    ) -> [DXF.Attribute] {
+        after index: inout Int, firstPosition: Int, locator: (Int) -> String
+    ) -> (attributes: [DXF.Attribute], tilted: Int) {
         var out: [DXF.Attribute] = []
+        var tilted = 0
         while index < pairs.count, pairs[index].code == 0 {
             let type = trimmed(pairs[index].value)
             guard type == "ATTRIB" else {
@@ -23,11 +23,11 @@ extension DXF.Reader {
             let identity = DXF.Identity(
                 handle: handle(fields), locator: locator(firstPosition + out.count))
             let (value, isTilted) = attribute(fields, identity: identity)
-            if isTilted { tilted["ATTRIB", default: 0] += 1 }
+            if isTilted { tilted += 1 }
             out.append(value)
             index = end
         }
-        return out
+        return (out, tilted)
     }
 
     /// An `ATTRIB` from its fields, and whether it is written on a tilted plane.
