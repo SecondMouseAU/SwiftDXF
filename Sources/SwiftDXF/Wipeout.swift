@@ -3,7 +3,8 @@ extension DXF {
     ///
     /// The file stores a WIPEOUT as an image whose clip boundary is the area, in pixels of that
     /// image; the reader carries it into the world, so ``boundary`` is where the mask lies. The
-    /// clip mode (group 290), which can invert the mask, is not read.
+    /// clip mode (group 290), which can invert the mask, and the clipping state (group 280) are not
+    /// read.
     public struct Wipeout: Equatable, Sendable {
         /// The corners of the masking polygon, in the order the file lists them, in the world.
         ///

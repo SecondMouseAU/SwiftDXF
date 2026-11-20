@@ -70,6 +70,9 @@ struct ToleranceTests {
         let t = try Self.read([RawDXF.record("TOLERANCE", (10, "5"), (20, "6"), (1, "x"))])
         #expect(t.direction == DXF.Point(1, 0, 0) && t.styleName == nil && t.layer == "0")
         #expect(t.insertion == DXF.Point(5, 6, 0))
+        // A group 3 with nothing in it is no style.
+        let blank = try Self.read([RawDXF.record("TOLERANCE", (3, "  "), (10, "5"), (20, "6"))])
+        #expect(blank.styleName == nil)
         let none = try Self.read([RawDXF.record("TOLERANCE", (10, "5"), (20, "6"))])
         #expect(none.text == "" && none.frames.isEmpty && none.isFullyRead)
     }
@@ -320,7 +323,9 @@ struct ToleranceTests {
         #expect(huge.first?.tolerance?.value == nil && huge.first?.tolerance?.text.count == 400)
         // An unterminated group, and a group with no letters, hold nothing.
         #expect(try Self.frames(#"{\Fgdt;"#).isEmpty)
-        #expect(try Self.frames(#"{\Fgdt;}%%v1"#).first?.characteristic == nil)
+        let empty = try Self.frames(#"{\Fgdt;}%%v1"#)
+        #expect(empty.count == 1 && empty[0].characteristic == nil)
+        #expect(empty[0].tolerance?.value == 1)
     }
 
     // MARK: Code pages

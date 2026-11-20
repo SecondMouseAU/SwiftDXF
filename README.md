@@ -236,7 +236,7 @@ those stays in the box's `text` and is listed in `Frame.unread`, as is a box aft
 are kept as written and not guessed at. `isFullyRead` is `false` for them, and for a tolerance box
 that holds no number (`0.05/25`). The rest of the text is decoded as
 `MTEXT` is, `%%nnn` through the drawing's code page. The size of a frame comes from its dimension
-style, which is not read.
+style, which `styleName` names; the size is not looked up.
 
 `SOLID`, `WIPEOUT` and `3DFACE` carry their corners:
 
