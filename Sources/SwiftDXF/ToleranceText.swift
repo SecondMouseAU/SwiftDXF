@@ -197,7 +197,10 @@ extension DXF.Tolerance {
                 // A symbol that is not read stays in the text, and is listed.
                 text += raw
                 unread.append(raw)
+                return
             }
+            // A symbol that is read leaves a gap, so the text on each side of it stays apart.
+            text += " "
         }
 
         /// Whether the box holds nothing: no symbol, and no text but spaces.
@@ -249,19 +252,9 @@ extension DXF.Tolerance {
 
     /// The number a box states, or `nil` for anything else, not a guess.
     ///
-    /// An optional sign, digits and at most one decimal mark, which is a point or, when there is no
-    /// point, a comma.
+    /// Read as the part of a stack is (``DXF/StackedText/number(_:)``), and `nil` when it is too
+    /// large for a `Double`.
     static func number(_ text: String) -> Double? {
-        var scalars = Array(text.unicodeScalars)
-        let negative = scalars.first == "-"
-        if let sign = scalars.first, sign == "+" || sign == "-" { scalars.removeFirst() }
-        let digits = scalars.filter { ("0"..."9").contains($0) }
-        let marks = scalars.filter { $0 == "." || $0 == "," }
-        guard !digits.isEmpty, digits.count + marks.count == scalars.count, marks.count <= 1
-        else { return nil }
-        let normalised = String(String.UnicodeScalarView(scalars)).replacingOccurrences(
-            of: ",", with: ".")
-        // A string of digits too long for a Double is not a number to report.
-        return Double(normalised).flatMap { $0.isFinite ? (negative ? -$0 : $0) : nil }
+        DXF.StackedText.number(text).flatMap { $0.isFinite ? $0 : nil }
     }
 }

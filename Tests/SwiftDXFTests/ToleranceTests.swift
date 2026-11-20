@@ -184,6 +184,26 @@ struct ToleranceTests {
         }
     }
 
+    @Test("text on both sides of a modifier is not run together into one number")
+    func modifierBetweenText() throws {
+        let value = try #require(try Self.frames(#"{\Fgdt;j}%%v5{\Fgdt;m}12%%v%%vA"#).first)
+        #expect(value.tolerance?.text == "5 12" && value.tolerance?.value == nil)
+        #expect(value.tolerance?.materialCondition == .maximum && !value.isFullyRead)
+        let projected = try #require(try Self.frames(#"{\Fgdt;j}%%v0.05{\Fgdt;p}12"#).first)
+        #expect(projected.tolerance?.value == nil && projected.tolerance?.isProjected == true)
+        #expect(!projected.isFullyRead)
+        let datum = try #require(try Self.frames(#"{\Fgdt;j}%%v0.1%%v%%vA{\Fgdt;m}B"#).first)
+        #expect(datum.datums == [.init(reference: "A B", materialCondition: .maximum)])
+        // A modifier at either end leaves the text as it was.
+        let ends = try #require(try Self.frames(#"{\Fgdt;j}%%v{\Fgdt;n}0.5{\Fgdt;m}"#).first)
+        #expect(ends.tolerance?.text == "0.5" && ends.tolerance?.value == 0.5)
+    }
+
+    @Test("a minus sign, written as U+2212, is read as a stack part is")
+    func minusSign() throws {
+        #expect(try Self.frames("{\\Fgdt;c}%%v\u{2212}0.5").first?.tolerance?.value == -0.5)
+    }
+
     @Test("a tolerance box with only a modifier has no number, and the frame is not fully read")
     func zoneWithoutNumber() throws {
         let frame = try #require(try Self.frames(#"{\Fgdt;j}%%v{\Fgdt;n}%%v%%vA"#).first)
