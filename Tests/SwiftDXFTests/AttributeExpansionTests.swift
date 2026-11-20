@@ -70,22 +70,25 @@ struct AttributeExpansionTests {
                 "TITLE", (1, 1),
                 [
                     B.attdef(
-                        "COMPANY", prompt: "", value: "ACME", at: (3, 2), height: 2, handle: "D1",
-                        flags: 2),
+                        "COMPANY", prompt: "", value: "ACME", at: (3, 2), height: 2, rotation: 10,
+                        handle: "D1", flags: 2),
                     B.attdef("HIDDEN", prompt: "", value: "no", at: (3, 3), flags: 2 | 1),
                     B.attdef("ASKED", prompt: "", value: "no", at: (3, 4)),
                 ]
             )
         ]
-        b.entities += B.insert("TITLE", at: (10, 10), attributes: [], scale: (2, 2), handle: "A1")
+        b.entities += B.insert(
+            "TITLE", at: (10, 10), attributes: [], scale: (2, 2), rotation: 90, handle: "A1")
         let d = try Self.expanded(b)
         #expect(d.entities.count == 1)
-        guard case .text(let p, let h, _, let string, _, _) = d.entities[0] else {
+        guard case .text(let p, let h, let rotation, let string, _, _) = d.entities[0] else {
             Issue.record("expected a text")
             return
         }
-        // (3, 2) minus the base point (1, 1), scaled by 2, plus the insertion point.
-        #expect(AttributeTests.close(p, 14, 12) && abs(h - 4) < 1e-9 && string == "ACME")
+        // (3, 2) minus the base point (1, 1) is (2, 1), doubled (4, 2), turned a quarter (-2, 4),
+        // and moved to the insertion point.
+        #expect(AttributeTests.close(p, 8, 14) && abs(h - 4) < 1e-9 && string == "ACME")
+        #expect(abs(rotation - 100) < 1e-9)
         #expect(d.identities[0].id == "A1/D1")
 
         let off = try Self.expanded(b, attributes: false)

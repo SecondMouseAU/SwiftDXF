@@ -35,7 +35,7 @@ timestamp: 2026-11-21
   reader slices a record by its `100` markers (`AcDbText`, `AcDbAttribute` or
   `AcDbAttributeDefinition`) and reads the R2018 embedded `MTEXT` after a `101` as the value.
   `ReadOptions(expandAttributes:)`, which implies `expandBlocks`, adds each visible attribute and
-  each constant definition to the entities as `.text` (identity `via` names the reference). An attribute
+  each visible constant definition to the entities as `.text` (identity `via` names the reference). An attribute
   is already placed in its container's space, so expansion applies only the transform of the block
   it sits in, plus the array offset.
   `tools/attrib_oracle.py` (`--compare`) is the ezdxf reference for `dxfdump --attributes`, and

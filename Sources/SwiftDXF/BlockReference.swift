@@ -79,9 +79,10 @@ extension DXF {
         ///
         /// Each visible ``Attribute`` becomes a `.text` whose identity names its reference in
         /// ``Identity/via`` and keeps the attribute's handle; an invisible one stays on the
-        /// reference. A constant attribute (``AttributeFlags/constant``), which no reference
-        /// carries, comes through from the block's definition. They are the text AutoCAD draws for
-        /// the reference. A `BYBLOCK` colour is the reference's.
+        /// reference. A visible constant attribute (``AttributeFlags/constant``), which no
+        /// reference carries, comes through from the block's definition; an invisible one stays
+        /// out. They are the text AutoCAD draws for the reference. A `BYBLOCK` colour is the
+        /// reference's.
         ///
         /// Off by default: the values are on ``BlockReference/attributes`` either way, and
         /// ``Drawing/entities`` then holds only what the blocks draw.

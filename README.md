@@ -178,11 +178,12 @@ handle and names the reference in `via` (its `id` reads `8E/9A`); an invisible a
   the file already drew them where its own reference is.
 - An array repeats them per instance, as `ezdxf`'s `multi_insert()` does. Inside a block that is
   scaled, `ezdxf` leaves the grid unscaled and SwiftDXF scales it, as it does for the block's own
-  entities.
+  entities. Under a non-uniform scale the height and rotation of an attribute follow the rule for a
+  `TEXT` (see *Extrusion* and the mirrored text above), which differs from `ezdxf`'s.
 - An attribute on layer `0` in a block takes the layer of the reference to that block, and a
   `BYBLOCK` colour is the colour of the attribute's own reference.
-- A constant attribute, which no reference carries, comes through from its block's definition,
-  placed as the block's other entities are. A reference to a block the file does not define places
+- A visible constant attribute, which no reference carries, comes through from its block's
+  definition, placed as the block's other entities are; an invisible one stays out. A reference to a block the file does not define places
   nothing, attributes included, as before.
 
 `dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
