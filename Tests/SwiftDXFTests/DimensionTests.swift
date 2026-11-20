@@ -72,13 +72,19 @@ struct DimensionTests {
 
     // MARK: Computed value
 
-    @Test("the computed value equals ezdxf's measurement for every dimension type it computes")
+    @Test(
+        "the computed value equals ezdxf's measurement, but for an angle with its arc on the far side"
+    )
     func computedMatchesEzdxf() throws {
         let dims = Self.dimensions(try Self.fixture())
         // ezdxf Dimension.get_measurement(): linear 40, 25, 27.320508; aligned 36.055513;
-        // radius 7.5; diameter 12; angular has none; then 12.5, 8, 15, 67.
+        // radius 7.5; diameter 12; then 12.5, 8, 15, 67. The angular dimension is 56.31 to ezdxf,
+        // which is the angle counter-clockwise from the first line to the second. Its arc location
+        // (0, 100) is on the other side of the lines, so the angle there, the one AutoCAD
+        // displays, is the supplement (see AngularDimensionTests).
         let reference: [Double?] = [
-            40, 25, 27.320508075688775, 36.05551275463989, 7.5, 12, nil, 12.5, 8, 15, 67,
+            40, 25, 27.320508075688775, 36.05551275463989, 7.5, 12, 123.69006752597979, 12.5, 8,
+            15, 67,
         ]
         #expect(dims.count == reference.count)
         for (dim, want) in zip(dims, reference) {
@@ -156,7 +162,10 @@ struct DimensionTests {
         #expect(abs(try #require(dwg.displayedMeasurement(of: dims[2])) - 54.64101615137755) < 1e-9)
         // dimlfac 25.4 from the override.
         #expect(abs(try #require(dwg.displayedMeasurement(of: dims[7])) - 12.5 * 25.4) < 1e-9)
-        #expect(dwg.displayedMeasurement(of: dims[6]) == nil)
+        // An angle is not scaled: the angular dimension's style has no scale, and it would not
+        // apply.
+        #expect(
+            abs(try #require(dwg.displayedMeasurement(of: dims[6])) - 123.69006752597979) < 1e-9)
     }
 
     @Test("the header's current values are kept apart and never used as a style")
@@ -303,13 +312,14 @@ struct DimensionTests {
 
     @Test("unicode escapes and percent symbols are text, not typed numbers")
     func symbolEscapes() {
-        #expect(DXF.DimensionText("45\\U+00B0").typedNumbers == [45])
+        #expect(DXF.DimensionText("45\\U+00B0").typedNumbers.isEmpty)  // an angle: see typedAngles
+        #expect(DXF.DimensionText("45\\U+00B0").typedAngles == [45])
         #expect(DXF.DimensionText("<>\\U+00B1 0.1").typedNumbers == [0.1])
         #expect(DXF.DimensionText("\\U+00D8<>").typedNumbers.isEmpty)
         #expect(DXF.DimensionText("\\U+00D8<>").parts.contains(.measurement))
-        #expect(DXF.DimensionText("45%%d").typedNumbers == [45])
+        #expect(DXF.DimensionText("45%%d").typedAngles == [45])
         #expect(DXF.DimensionText("%%c20").typedNumbers == [20])
-        #expect(DXF.DimensionText("5%%176").typedNumbers == [5])
+        #expect(DXF.DimensionText("5%%176").typedAngles == [5])
         #expect(DXF.DimensionText("%%p0.05").typedNumbers == [0.05])
         #expect(DXF.DimensionText("100%").typedNumbers == [100])
     }

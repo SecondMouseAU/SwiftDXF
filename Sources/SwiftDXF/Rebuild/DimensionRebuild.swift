@@ -51,6 +51,14 @@ extension DXF {
             public var tolerance: Double?
             /// Which pieces may belong to a value text.
             public var pieceLayers: PieceLayers
+            /// How the drawing writes numbers, or `nil` to read a comma every way it can be read.
+            ///
+            /// A Jw_cad export writes `10,439` for ten thousand four hundred and thirty-nine: say
+            /// ``DimensionText/NumberConvention/commaSeparatesThousands`` and it is read as 10439
+            /// and never as 10.439, whatever the geometry would bear out. `nil` reads `1,829` as
+            /// 1.829 and as 1829 and lets the geometry choose, which is right while the scale is
+            /// not in doubt and a guess where it is.
+            public var numbers: DimensionText.NumberConvention?
 
             /// The layers the pieces of one dimension are on.
             public enum PieceLayers: Equatable, Sendable {
@@ -63,11 +71,13 @@ extension DXF {
 
             public init(
                 scale: Double? = nil, tolerance: Double? = nil,
-                pieceLayers: PieceLayers = .sameAsText
+                pieceLayers: PieceLayers = .sameAsText,
+                numbers: DimensionText.NumberConvention? = nil
             ) {
                 self.scale = scale
                 self.tolerance = tolerance
                 self.pieceLayers = pieceLayers
+                self.numbers = numbers
             }
         }
 

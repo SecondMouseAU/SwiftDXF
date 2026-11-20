@@ -26,9 +26,11 @@ from collections import Counter
 
 import ezdxf
 from ezdxf import recover
-from ezdxf.math import Vec3
+from ezdxf.math import Vec2, Vec3
 from ezdxf.sections.header import HeaderSection
 from ezdxf.upright import upright_all
+
+from angular_fixtures import arc_side_2l, arc_side_3p
 
 
 # Mirrors Foundation's CharacterSet.whitespaces (tab plus every Unicode Zs space separator), which
@@ -132,7 +134,16 @@ def summarize(path):
                     p = getattr(e.dxf, name)
                     # defpoint5 is the one OCS point.
                     vs.extend([mirror * p.x if name == "defpoint5" else p.x, p.y])
-            if e.dxf.hasattr("angle") and (e.dxf.dimtype & 15) in (0, 1):
+            if (e.dxf.dimtype & 15) == 6:
+                # An ordinate dimension has no rotation of its own: SwiftDXF reads the negative of
+                # group 51, the angle of its coordinate system, as one.
+                if e.dxf.hasattr("horizontal_direction"):
+                    angle = -e.dxf.horizontal_direction
+                    if e.dxf.handle in flipped_dim:
+                        r = math.radians(angle)
+                        angle = math.degrees(math.atan2(math.sin(r), -math.cos(r)))
+                    vs.append(angle)
+            elif e.dxf.hasattr("angle") and (e.dxf.dimtype & 15) in (0, 1):
                 angle = e.dxf.angle
                 if e.dxf.handle in flipped_dim:
                     # An OCS angle: SwiftDXF reports the world direction of the measuring axis.
@@ -207,7 +218,29 @@ def summarize(path):
             # It differs for a rotated linear dimension on a -z plane, where it passes the world
             # definition points through the OCS (see tools/ocs_fixtures.py).
             kind = e.dxf.dimtype & 15
-            m = e.get_measurement() if kind in (0, 1, 3, 4) else None
+            if kind in (0, 1, 3, 4):
+                m = e.get_measurement()
+            elif kind == 6:
+                # The distance from the origin to the feature location along the x axis of the
+                # coordinate system it was made in (group 51 is the negative of its angle), or
+                # across it, as ezdxf's renderer measures it.
+                v = Vec2(e.get_measurement())
+                x_axis = Vec2.from_deg_angle(-e.dxf.get("horizontal_direction", 0.0))
+                m = abs((x_axis if e.dxf.dimtype & 64 else x_axis.orthogonal()).dot(v))
+            elif kind in (2, 5):
+                # ezdxf measures the angle counter-clockwise from the first line to the second;
+                # AutoCAD shows the one on the side of the arc location (tools/angular_fixtures.py).
+                p = {n: Vec2(e.dxf.get(g)) for n, g in (
+                    ("p10", "defpoint"), ("p13", "defpoint2"), ("p14", "defpoint3"),
+                    ("p15", "defpoint4"), ("p16", "defpoint5")) if e.dxf.hasattr(g)}
+                if kind == 5:
+                    m = arc_side_3p(p["p15"], p["p13"], p["p14"], p["p10"])
+                else:
+                    # Group 16 is an OCS point: mirror it as for any dimension on a -z plane.
+                    arc = Vec2(-p["p16"].x, p["p16"].y) if e.dxf.handle in flipped_dim else p["p16"]
+                    m = arc_side_2l((p["p13"], p["p14"]), (p["p15"], p["p10"]), arc)
+            else:
+                m = None
             dimensions.append(float(m) if m is not None else None)
         except Exception:  # noqa: BLE001
             dimensions.append(None)

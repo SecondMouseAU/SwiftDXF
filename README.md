@@ -299,9 +299,10 @@ A `DIMENSION` says what it measures, and how the number is to be stated:
 ```swift
 for case .dimension(let d) in dwg.entities {
     d.measurement                         // the stored value (group 42); nil when absent, 0 or -1
-    d.computedMeasurement                 // the value the geometry gives, in drawing units
-    d.rotation, d.obliqueAngle            // groups 50 and 52, in degrees
-    dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale
+    d.computedMeasurement                 // the value the geometry gives: units, or degrees for an angle
+    d.rotation, d.obliqueAngle            // groups 50 (51, negated, for ordinate) and 52, in degrees
+    d.isXOrdinate                         // bit 64 of group 70: an ordinate dimension of the X type
+    dwg.displayedMeasurement(of: d)       // computed value times the style's linear scale (not an angle)
     let style = dwg.styleVariables(of: d)
     style.decimalPlaces                   // DIMDEC: 1 if stated to one place, nil if unstated
     style.suppressesTrailingZeros         // DIMZIN: "8.1" may be 8.100 with its zeros hidden
@@ -316,10 +317,35 @@ for case .dimension(let d) in dwg.entities {
 - **`computedMeasurement`** is the same number for every consumer: for a linear dimension the
   distance between the two extension-line origins along `rotation` (horizontal when absent), for an
   aligned one the distance between them, for a radius or diameter the distance between its two
-  definition points. Angular and ordinate dimensions have none. It matches `ezdxf`'s
-  `Dimension.get_measurement()`, which also applies no scale. Group 50 absent means horizontal, as
-  the DXF default says, and agreed with the direction worked out from the dimension-line point on
-  every one of 339 real dimensions checked.
+  definition points. For these it matches `ezdxf`'s `Dimension.get_measurement()`, which also
+  applies no scale. Group 50 absent means horizontal, as the DXF default says, and agreed with the
+  direction worked out from the dimension-line point on every one of 339 real dimensions checked.
+  The rest are as follows.
+  - **Angular and three-point angular dimensions are in degrees**, as `rotation` and the angles of
+    an `ARC` are, and are not scaled by `DIMLFAC`: `displayedMeasurement(of:)` leaves them alone. A
+    three-point dimension is the angle at its vertex (group 15) between the rays to groups 13 and
+    14; a two-line one is the angle between the line from group 13 to 14 and the line from 15 to
+    10, where the lines cross. Either is the angle **on the side of the arc location** (group 16,
+    or group 10 for a three-point one), which is what AutoCAD displays: three-point angles are
+    between 0 and 360 and can be over 180; two crossing lines make two angles and their
+    supplements, so a two-line angle is between 0 and 180. `ezdxf`'s `get_measurement()` is the
+    angle counter-clockwise from the first line to the second whichever side the arc is on, so it
+    differs where the arc is on the other side. Checked against AutoCAD's own anonymous blocks in
+    two DWG files: all 8 three-point angular dimensions in them, of which 7 are different (the
+    tests hold those) and 2 put the arc on the side `ezdxf`'s number does not (AutoCAD drew 125 and
+    130 where `ezdxf` gives 235 and 230); and against `ezdxf`'s numbers where the side is the same
+    (`tools/angular_fixtures.py`). A dimension with a point missing, lines that are parallel, a ray
+    of no length, or an arc location exactly on the vertex or the crossing has none. The decimal places and unit of an angle (`DIMADEC`,
+    `DIMAUNIT`) are not modelled, and `measurement` (group 42) of an angular dimension is the
+    file's number, not converted.
+  - **An ordinate dimension** is the distance from its origin (group 10) to its feature location
+    (group 13) along x when `isXOrdinate` (bit 64 of group 70) and along y when not. The axes are
+    those of the coordinate system the dimension was made in: `rotation` is the negative of group
+    51, and a block insertion or a `-z` plane turns it as it turns a linear dimension's. The value
+    is always positive, as `ezdxf` draws it, with the same value for a feature on either side of
+    the origin. It was checked against `ezdxf`'s own rendering only (`tools/angular_fixtures.py`):
+    there was no AutoCAD drawing with an ordinate dimension to check it against, so whether
+    AutoCAD shows a sign for the far side of the origin is not known.
 - **Style variables** come from the entity's own overrides in its extended data (`ACAD` /
   `DSTYLE`), then the `DIMSTYLE` record it names. A variable neither states is `nil`: SolidWorks
   styles often leave `DIMDEC` out, and the reader does not guess it. The header's own current
@@ -330,11 +356,27 @@ for case .dimension(let d) in dwg.entities {
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
   `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`
   and `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a
-  limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces;
+  limit, a range and a note. `d.text.typedNumbers` and `d.text.words` give the pieces, and an
+  angle (`45°`, `45%%d`) is in `typedAngles`, in degrees, and not in `typedNumbers` where a length
+  would be read;
   `isSuppressed` is the single space that hides the text. The codes are decoded as in an `MTEXT`
   (see *Text*), so `%%c<>` gives the words `⌀` and `<>{\H0.7x;\S+0.1^ -0.2;}` the measurement and
   a tolerance stack, whose numbers are not typed numbers. `d.textOverride` is the override as the
   file writes it.
+- **How a drawing writes numbers** is not in the text. `10,439` is two numbers to `typedNumbers`
+  (10 and 439), as it always was. Jw_cad writes ten thousand four hundred and thirty-nine that way,
+  and a drawing that writes decimals with a comma means `0,125` as one eighth, so say which:
+
+  ```swift
+  d.text(numbers: .commaSeparatesThousands).typedNumbers   // "10,439" -> [10439]
+  d.text(numbers: .commaIsDecimalMark).typedNumbers        // "0,125"  -> [0.125]
+  DXF.DimensionText("5,186.6", numbers: .commaSeparatesThousands).typedNumbers   // [5186.6]
+  ```
+
+  A comma separates thousands only inside a number written in groups of three (`1,930`,
+  `12,345,678`); `40,60`, `1,2345` and `0,125` stay as written. A point is a decimal mark under
+  every setting. Full-width digits, point and comma (`１０，４３９`) read as the ordinary ones under
+  every setting, and the part keeps the characters it was written with.
 
 ### Rebuilding dimensions from loose pieces
 
@@ -383,7 +425,12 @@ It starts from each text that states a number and works out the rest, like Swift
   geometry is nearest its texts wins, then a reduction over an enlargement. `Options(scale:)`
   states the scale instead; anything but a positive number is no scale.
 - **Values.** A comma or a point is a decimal mark or a thousands separator, whichever the geometry
-  bears out: `1,829` is 1.829 or 1829, and `1.234,5` is 1234.5. Full-width digits, a diameter or
+  bears out: `1,829` is 1.829 or 1829, and `1.234,5` is 1234.5. Where the geometry cannot tell
+  (a chain of `1,829` and `1,981` fits 1:1 and 1:1000 alike), say how the drawing writes numbers
+  with `Options(numbers:)`, the setting `DimensionText` takes: a Jw_cad export is
+  `.commaSeparatesThousands`, and then `10,439` is 10439 and never 10.439. With a setting a comma
+  is read only as it says, and a number it does not read as one (`40,60`) is listed as several.
+  Full-width digits, a diameter or
   radius symbol before the number and a trailing `mm` are read; a tolerance stack is ignored.
   Angles, other units, texts with several numbers and numbers that are not read (`1.2.3`) are
   listed as not rebuilt, with the reason. Numbers a text assembler ran
@@ -413,11 +460,13 @@ the PDF through OCCTSwiftPDF, whose positions are noisy to about 0.1 mm: 29 at 1
 squares scale is 80.04). Over 2,855 DXF files on one machine, the 38 that have real
 dimensions (22 of them McMaster-Carr sheets) gained none, 35 of them with no warning and 3 with
 warnings for numbers beside lines, and the other Jw_cad railway drawings (`dd12`,
-`ka2000`, `tmf1`, `to1`) found 1:80.
+`ka2000`, `tmf1`, `to1`) found 1:80. On the 2120, 17 of the 29 values carry a comma: with
+`Options(numbers: .commaSeparatesThousands)` the result is the same 29 at 1:80; told a comma is a
+decimal mark it finds 17 at a scale of 0.08, and told a comma is not part of a number, 12.
 
 It is an inference. It does not rebuild angular or ordinate dimensions, a text on a dimension
 line that is not beside it (a leader), or two scales in one layer group; an arrowhead drawn as a
-filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] file.dxf`
+filled `SOLID` is not read, as `SOLID` is not modelled. `dxfdump --rebuild [--scale N] [--numbers thousands|decimal|plain] file.dxf`
 prints the result as JSON. The 2120 and the drawings with real dimensions are checked by tests that
 need the files: `DXF_REBUILD_FILE` (a drawing that gives 29 at 1:80) and `DXF_REBUILD_CORPUS` (a
 folder in which every drawing with real dimensions gains none). `tools/rebuild_corpus.py <folder>`
