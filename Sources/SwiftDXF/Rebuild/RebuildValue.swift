@@ -186,18 +186,15 @@ extension DXF.DimensionRebuild {
         }
 
         /// `s` with full-width digits, point and comma as their ASCII forms, as Japanese drawings
-        /// write them.
+        /// write them, and the full-width `R` of a radius.
         private static func halfWidth(_ s: String) -> String {
             String(
                 String.UnicodeScalarView(
                     s.unicodeScalars.map {
                         switch $0.value {
-                        case 0xFF10...0xFF19: return Unicode.Scalar($0.value - 0xFF10 + 0x30) ?? $0
-                        case 0xFF0E: return "."
-                        case 0xFF0C: return ","
                         case 0xFF32: return "R"
                         case 0xFF52: return "r"
-                        default: return $0
+                        default: return DXF.DimensionText.NumberConvention.halfWidth($0)
                         }
                     }))
         }

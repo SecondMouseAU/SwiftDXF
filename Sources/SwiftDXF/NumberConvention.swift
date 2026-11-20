@@ -62,9 +62,9 @@ extension DXF.DimensionText.NumberConvention {
     }
 
     private func isDecimalMark(_ c: Character) -> Bool {
-        switch c {
-        case ".", "\u{FF0E}": return true
-        case ",", "\u{FF0C}": return self == .commaIsDecimalMark
+        switch Self.halfWidth(c) {
+        case ".": return true
+        case ",": return self == .commaIsDecimalMark
         default: return false
         }
     }
@@ -72,7 +72,7 @@ extension DXF.DimensionText.NumberConvention {
     /// The three digits of a thousands group at `i` (a comma and three digits, and no fourth), or
     /// `nil`.
     private static func group(_ chars: [Character], at i: Int) -> String? {
-        guard i + 3 < chars.count, chars[i] == "," || chars[i] == "\u{FF0C}" else { return nil }
+        guard i + 3 < chars.count, halfWidth(chars[i]) == "," else { return nil }
         let digits = (i + 1...i + 3).compactMap { digit(chars[$0]) }
         guard digits.count == 3, i + 4 >= chars.count || digit(chars[i + 4]) == nil else {
             return nil
@@ -82,12 +82,24 @@ extension DXF.DimensionText.NumberConvention {
 
     /// The ASCII digit that `c` is, or `nil`; a full-width digit is read as its ordinary form.
     private static func digit(_ c: Character) -> Character? {
-        guard c.unicodeScalars.count == 1, let scalar = c.unicodeScalars.first else { return nil }
+        let folded = halfWidth(c)
+        return folded.isASCII && folded.isNumber ? folded : nil
+    }
+
+    /// `c` with a full-width digit, point or comma as its ASCII form, as Japanese drawings write
+    /// them, and any other character as it is.
+    private static func halfWidth(_ c: Character) -> Character {
+        guard c.unicodeScalars.count == 1, let scalar = c.unicodeScalars.first else { return c }
+        return Character(halfWidth(scalar))
+    }
+
+    /// `scalar` with a full-width digit, point or comma as its ASCII form.
+    static func halfWidth(_ scalar: Unicode.Scalar) -> Unicode.Scalar {
         switch scalar.value {
-        case 0x30...0x39: return c
-        case 0xFF10...0xFF19:
-            return Unicode.Scalar(scalar.value - 0xFF10 + 0x30).map(Character.init)
-        default: return nil
+        case 0xFF10...0xFF19: return Unicode.Scalar(scalar.value - 0xFF10 + 0x30) ?? scalar
+        case 0xFF0E: return "."
+        case 0xFF0C: return ","
+        default: return scalar
         }
     }
 }
