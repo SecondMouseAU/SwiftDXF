@@ -324,7 +324,8 @@ for case .dimension(let d) in dwg.entities {
   `DSTYLE`), then the `DIMSTYLE` record it names. A variable neither states is `nil`: SolidWorks
   styles often leave `DIMDEC` out, and the reader does not guess it. The header's own current
   values are in `dwg.dimensionDefaults` for a caller that wants them as a fallback; they belong to
-  whichever style was current when the file was saved, so they are not applied for you. A negative
+  whichever style was current when the file was saved (`dwg.currentDimensionStyleName` names it),
+  so they are not applied for you. A negative
   `DIMLFAC` applies to paper space only and is ignored.
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
   `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`
@@ -448,9 +449,42 @@ tolerance. Fallbacks, so malformed data never traps:
   and be rounded off.
 - Fewer than two control points returns what is there; `point(at:)` returns `nil`.
 
-`Drawing` also exposes header essentials: `version` (`$ACADVER`), `insUnits` (`$INSUNITS`), and the
+### Header variables
+
+`Drawing` exposes header essentials: `version` (`$ACADVER`), `insUnits` (`$INSUNITS`), and the
 declared `extMin` / `extMax` extents (`$EXTMIN` / `$EXTMAX`), plus a computed `bounds` over the
-entities actually read.
+entities actually read. Five more say how to read the drawing's numbers, each `nil` when the file
+lacks it (an R12 file has no `$INSUNITS` or `$MEASUREMENT`):
+
+```swift
+dwg.measurement                // $MEASUREMENT: 0 imperial, 1 metric; the file's answer when insUnits is 0 or nil
+dwg.currentDimensionStyleName  // $DIMSTYLE: the style the dimension defaults below belong to
+dwg.currentDimensionStyle      // its record in dimensionStyles (case-insensitive), or nil
+dwg.dimensionScale             // $DIMSCALE: the overall dimension scale (sizes, not measured values)
+dwg.linearUnitFormat           // $LUNITS: 1 scientific, 2 decimal, 3 engineering, 4 architectural, 5 fractional
+dwg.linearUnitPrecision        // $LUPREC
+dwg.headerVariables["$MEASUREMENT"]?.value(70)?.integer   // any variable, by name
+dwg.headerVariables["$EXTMIN"]?.point                      // 10/20/30 as a point
+```
+
+`headerVariables` holds **every** variable of the `HEADER` section by name, each a
+`DXF.HeaderVariable` of its group-coded values in file order (`$EXTMIN` is three, groups 10, 20 and
+30; `$DIMSTYLE` is one, group 2). A consumer can read a variable the package has no property for,
+such as `$LIMMIN` or `$PSLTSCALE`; `value(code)?.integer`, `.real` and `.text` read one, and
+`point` reads a point. The properties above were read from it, and the two are not kept in step, so
+changing one does not change the other.
+
+- **Text keeps the file's characters.** A string value is read through the drawing's code page
+  like the rest of the file (the bytes `43 61 66 E9` of a `$DIMSTYLE` in an `ANSI_1252` file read
+  as `Café`), whitespace is kept (the named `currentDimensionStyleName` is trimmed), and `%%` codes
+  are not decoded: they are for the text of the drawing, and `$DIMPOST` keeps `<>%%d` as written.
+- **Only the `HEADER` section is read.** A variable written twice keeps its first value, and a file
+  with no `HEADER` section has none. A value of the wrong type, such as a `$MEASUREMENT` that is
+  not an integer or is written in another group, reads as `nil` from the named property and is
+  still in `headerVariables`.
+- **`$DIMSCALE` is not `$DIMLFAC`.** `dimensionScale` scales sizes such as text height and arrow
+  size, and `0` leaves it to the application. The factor that multiplies a measured value is
+  `dimensionDefaults.linearScale` (`$DIMLFAC`).
 
 ### Behaviours worth knowing
 
@@ -476,6 +510,12 @@ entities actually read.
 
 ### Upgrading from 0.4
 
+- **`Drawing` has new header properties**: `headerVariables` (every variable of the `HEADER`
+  section by name), `measurement`, `currentDimensionStyleName`, `dimensionScale`,
+  `linearUnitFormat` and `linearUnitPrecision`, and a computed `currentDimensionStyle`. The stored
+  ones are defaulted in `init`, which keeps its parameters in their order with the new ones last,
+  so existing calls compile unchanged; see *Header variables*. Only the `HEADER` section is read
+  for the header properties now: a group 9 elsewhere in the file was once taken for a variable.
 - **`Dimension` has a new property**, `rebuilt`, `nil` for a dimension the file holds and set by
   `rebuildingDimensions()`; it is defaulted in `init`. `Dimension.text` reads `%%nnn` through its
   `codePage`, a new property read from the drawing.
@@ -674,6 +714,26 @@ differently in these cases, on purpose:
   character, or of half a surrogate pair, is kept as written; `ezdxf` decodes it. `ezdxf` leaves
   a surrogate pair as two code points, and the oracle joins them as SwiftDXF does. A `%%` or a
   backslash at the very end is kept; `ezdxf` drops it.
+
+The header is checked with `tools/oracle.py --header`, which reads the `HEADER` section with
+`ezdxf` and prints the shape `dxfdump --header` prints: the variables SwiftDXF names, and every
+variable of the file with its first group-coded value. `--against` runs `dxfdump` on each file and
+lists where the two differ, numbers compared as numbers:
+
+```bash
+swift build && python3 tools/oracle.py --header --against .build/debug/dxfdump drawing.dxf [...]
+```
+
+Over 2,943 real drawings (R10 to R2013, from Jw_cad exports to McMaster-Carr sheets and CAD block
+libraries) the two agree on every variable of every file, and so on the named properties. In that
+set 412 drawings declare `$MEASUREMENT` (383 metric, 29 imperial) and 2,651 declare the other
+four; the 292 that lack `$DIMSTYLE`, `$DIMSCALE`, `$LUNITS` and `$LUPREC` are R12 or R10 files or
+have no `$ACADVER`. 2,530 have no `$INSUNITS`, and of the 413 that do, 31 say `0` (unitless),
+25 of them with an imperial `$MEASUREMENT`. Eleven have no header variable at all.
+`$MEASUREMENT` is not a statement of the units: 354 drawings declare inches and a metric
+`$MEASUREMENT`. Only one file has a non-ASCII header string (`$CLAYER` in an `ANSI_1252` file),
+which both readers read alike; the `$DIMSTYLE` and `$DIMPOST` cases are tested on constructed files
+in `HeaderVariablesTests`.
 
 ## Install
 

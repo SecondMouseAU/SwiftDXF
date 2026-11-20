@@ -4,7 +4,7 @@ title: Components index
 resource: https://github.com/SecondMouseAU/SwiftDXF
 tags: [index]
 description: Public modules / API surfaces exposed by SwiftDXF.
-timestamp: 2026-11-19
+timestamp: 2026-11-21
 ---
 
 # Components
@@ -17,6 +17,17 @@ timestamp: 2026-11-19
   `Drawing.dimensionStyles` is the `DIMSTYLE` table. Unmodelled entity types are tallied in
   `Drawing.skipped` / `skippedByLayer`; `DXF.Spline.flattened(tolerance:)` turns a spline into
   polyline points.
+- **Header variables** (`HeaderVariable.swift`, `Reader+Header.swift`, `Drawing+Header.swift`,
+  `HeaderScan.swift`): `Drawing.headerVariables` holds every variable of the `HEADER` section by
+  name as a `DXF.HeaderVariable` (its group-coded values as written, with `value(code)`, `.integer`,
+  `.real` and `point` to read them), built in one pass by `readHeaderVariables()`. The named
+  properties are read from it: `version`, `codePage`, `insUnits`, `extMin`/`extMax`,
+  `dimensionDefaults` (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`) and `measurement`
+  (`$MEASUREMENT`), `currentDimensionStyleName` (`$DIMSTYLE`, with `currentDimensionStyle` the
+  record), `dimensionScale` (`$DIMSCALE`), `linearUnitFormat` (`$LUNITS`), `linearUnitPrecision`
+  (`$LUPREC`). They are stored, like `insUnits`, so a hand-built `Drawing` sets them through `init`;
+  they are not kept in step with the dictionary. `HeaderScan.swift` is the separate byte-level scan
+  of `$ACADVER` and `$DWGCODEPAGE`, which runs before the file is decoded.
 - **Extrusion** (`ObjectPlane.swift`, `Reader+Extrusion.swift`): an entity written in an object
   coordinate system with a `-z` normal is read as its world geometry (`Entity.transformed(by:)` with
   `ObjectPlane.mirror`; an `ELLIPSE` only reverses its parameter range). A normal that is not along z
@@ -84,4 +95,6 @@ timestamp: 2026-11-19
 - **`dxfdump`** (executable): CLI that reads a `.dxf` and dumps its version, counts, and entities;
   `--contours` prints the contour summary as JSON; `--texts` prints each text string as it reads,
   with its stacks; `--rebuild [--scale N]` prints the dimensions rebuilt from loose pieces, the
-  scales and the warnings; `--expand` and `--skip-paper-space` read with those `ReadOptions`.
+  scales and the warnings; `--header` prints the header properties and every variable with its
+  first value, for diffing against `tools/oracle.py --header` (`--against` runs `dxfdump` itself);
+  `--expand` and `--skip-paper-space` read with those `ReadOptions`.
