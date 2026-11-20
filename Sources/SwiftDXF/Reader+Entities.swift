@@ -36,6 +36,8 @@ extension DXF.Reader {
         ///
         /// Each is also counted in `skipped`, until an expansion takes it out.
         var references: [DXF.BlockReference] = []
+        /// The `ATTDEF`s of the run, which a block holds.
+        var attributeDefinitions: [DXF.AttributeDefinition] = []
         /// Entities flagged as paper space (group 67), by type.
         ///
         /// Only counted in model space.
@@ -71,11 +73,19 @@ extension DXF.Reader {
 
             // Collect this entity's fields up to the next 0-tag.
             var (fields, j) = recordFields(after: i)
+            // The `ATTRIB`s of an `INSERT` come after it, up to a `SEQEND`; each is a record of
+            // its own for the positions, as it always was.
+            var attached: [DXF.Attribute] = []
+            if type == "INSERT", ints(66, fields) == 1 {
+                attached = attributes(
+                    after: &j, firstPosition: position + 1, locator: locator,
+                    tilted: &run.tilted)
+            }
 
             if inModelSpace, ints(67, fields) == 1 {
                 run.paperSpace[type, default: 0] += 1
                 if options.skipPaperSpace {
-                    position += 1
+                    position += 1 + attached.count
                     i = j
                     continue
                 }
@@ -95,15 +105,24 @@ extension DXF.Reader {
                 run.textContents.append(content)
                 run.counts.record(entity)
                 position += 1
+            } else if type == "ATTDEF" && !inModelSpace {
+                // Only a block's definitions are read; one in model space is skipped below.
+                let identity = DXF.Identity(handle: handle(fields), locator: locator(position))
+                let (definition, tilted) = attributeDefinition(fields, identity: identity)
+                if tilted { run.tilted[type, default: 0] += 1 }
+                run.attributeDefinitions.append(definition)
+                position += 1
             } else if type != "VERTEX" && type != "SEQEND" {
                 // Unmodelled entity (INSERT, SOLID, TRACE, …): skip, but record it.
                 if type == "INSERT" {
                     let identity = DXF.Identity(handle: handle(fields), locator: locator(position))
-                    run.references.append(blockReference(fields, identity: identity))
+                    var reference = blockReference(fields, identity: identity)
+                    reference.attributes = attached
+                    run.references.append(reference)
                 }
                 run.skipped[type, default: 0] += 1
                 run.skippedByLayer[type, default: [:]][layer(fields), default: 0] += 1
-                position += 1
+                position += 1 + attached.count
             }
             i = j
         }

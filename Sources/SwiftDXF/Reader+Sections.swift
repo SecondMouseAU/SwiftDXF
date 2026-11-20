@@ -53,7 +53,7 @@ extension DXF.Reader {
                     basePoint: point(fields), entities: run.entities,
                     identities: run.identities, entityLineTypes: run.lineTypes,
                     textContents: run.textContents, references: run.references,
-                    skippedByLayer: skipped))
+                    skippedByLayer: skipped, attributeDefinitions: run.attributeDefinitions))
             k = run.end
             // Step over the ENDBLK so the next BLOCK is found, not the ENDBLK again.
             if k < pairs.count, trimmed(pairs[k].value) == "ENDBLK" { k += 1 }
