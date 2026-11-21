@@ -9,9 +9,14 @@ extension DXF.Drawing {
     /// through. The expanded `INSERT`s leave ``skipped``; what a block holds that has no entity
     /// form is added to it instead.
     ///
+    /// With `attributes`, the visible attributes of each reference come through as `TEXT` too, and
+    /// the constant ones of its block (see ``ReadOptions/expandAttributes``). The identity of such
+    /// an entity names its reference in `via`, and an attribute is where the file drew it, in the
+    /// space the reference is in, so only the transform of that space applies to it.
+    ///
     /// A file can multiply entities without bound (an array of arrays, or a block that holds ten
     /// references to the next), so expansion stops after about `limit` entities and says so.
-    mutating func expandBlockReferences(limit: Int = 2_000_000) {
+    mutating func expandBlockReferences(limit: Int = 2_000_000, attributes: Bool = false) {
         let blockByName = Dictionary(
             blocks.map { ($0.name.lowercased(), $0) }, uniquingKeysWith: { first, _ in first })
         let layerTable = Dictionary(
@@ -66,6 +71,27 @@ extension DXF.Drawing {
             raw?.uppercased() == "BYBLOCK" ? own.lineType : raw
         }
 
+        /// Adds `attribute`, carried through `map`, as a `TEXT`.
+        ///
+        /// Layer `0` takes `zeroLayer` when there is one, and `BYBLOCK` colour takes `blockColor`.
+        func addText(
+            _ attribute: DXF.Attribute, by map: DXF.Transform, zeroLayer: String?, blockColor: Int,
+            via chain: [String], blocks chainNames: [String]
+        ) {
+            let moved = attribute.transformed(by: map)
+            let layerName = moved.layer == "0" ? (zeroLayer ?? moved.layer) : moved.layer
+            let colorIndex = moved.color == 0 ? blockColor : moved.color
+            let entity = moved.textEntity.replacing(layer: layerName, color: colorIndex)
+            newEntities.append(entity)
+            newCounts.record(entity)
+            var id = moved.identity
+            id.via = chain
+            id.blocks = chainNames
+            newIdentities.append(id)
+            newLineTypes.append(nil)
+            newTextContents.append(moved.content)
+        }
+
         func visit(
             _ ref: DXF.BlockReference, outer: DXF.Transform, parent: Inherited?, via: [String],
             names: [String], stack: [String]
@@ -89,16 +115,28 @@ extension DXF.Drawing {
             let aligned = block.identities.count == block.entities.count
             let lineTypesAligned = block.entityLineTypes.count == block.entities.count
             let textsAligned = block.textContents.count == block.entities.count
+            // The constant attributes of the block, unless the reference carries that tag too,
+            // and the visible ones of the reference.
+            let constants =
+                attributes
+                ? block.attributeDefinitions.filter { definition in
+                    definition.isConstant && !definition.isInvisible
+                        && !ref.attributes.contains {
+                            $0.tag.caseInsensitiveCompare(definition.tag) == .orderedSame
+                        }
+                } : []
+            let carried = attributes ? ref.attributes.filter { !$0.isInvisible } : []
+            let home = DXF.Transform(reference: ref, base: block.basePoint, column: 0, row: 0)
             for row in 0..<ref.rows {
                 for column in 0..<ref.columns {
                     guard budget > 0 else {
                         truncated = true
                         return
                     }
-                    budget -= max(block.entities.count, 1)
-                    let t = outer.composed(
-                        with: DXF.Transform(
-                            reference: ref, base: block.basePoint, column: column, row: row))
+                    budget -= max(block.entities.count + constants.count + carried.count, 1)
+                    let placed = DXF.Transform(
+                        reference: ref, base: block.basePoint, column: column, row: row)
+                    let t = outer.composed(with: placed)
                     let link =
                         (ref.identity.handle ?? ref.identity.locator)
                         + (arrayed ? "[\(column),\(row)]" : "")
@@ -125,6 +163,26 @@ extension DXF.Drawing {
                         newLineTypes.append(
                             lineType(lineTypesAligned ? block.entityLineTypes[i] : nil, own))
                         newTextContents.append(textsAligned ? block.textContents[i] : nil)
+                    }
+                    for definition in constants {
+                        addText(
+                            DXF.Attribute(definition), by: t, zeroLayer: own.layer,
+                            blockColor: own.color, via: chain, blocks: chainNames)
+                    }
+                    if !carried.isEmpty {
+                        // The reference's own place in its space, moved to this instance of an
+                        // array; the block's base point and scale do not apply to a value. It is
+                        // in the enclosing block's space, so layer `0` there takes that block's
+                        // reference's layer; BYBLOCK is the reference it belongs to.
+                        var shift = DXF.Transform()
+                        shift.tx = placed.tx - home.tx
+                        shift.ty = placed.ty - home.ty
+                        for attribute in carried {
+                            addText(
+                                attribute, by: outer.composed(with: shift),
+                                zeroLayer: parent?.layer, blockColor: own.color, via: chain,
+                                blocks: chainNames)
+                        }
                     }
                     for (type, byLayer) in block.skippedByLayer {
                         for (layerName, count) in byLayer {

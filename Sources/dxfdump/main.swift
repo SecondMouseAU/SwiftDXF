@@ -8,11 +8,17 @@ import SwiftDXF
 //   dxfdump --contours [--layers A,B] [--units inch|mm|...] file.dxf [...]
 //   dxfdump [--expand] [--skip-paper-space] file.dxf [...]
 //   dxfdump --texts file.dxf [...]
+//   dxfdump --attributes file.dxf [...]
 //   dxfdump --rebuild [--scale N] [--numbers thousands|decimal|plain] file.dxf [...]
 //   dxfdump --header file.dxf [...]
 //
 // --expand flattens INSERT block references into the entities; --skip-paper-space leaves out
 // entities flagged as paper space. Both work with the digest and with --contours.
+// --expand-attributes is --expand with the attributes the references carry flattened too, as TEXT.
+// --attributes prints the ATTRIB values of each block reference and the ATTDEF of each block, for
+// diffing against tools/attrib_oracle.py (with --skip-paper-space, as ezdxf's modelspace() reads;
+// with --expand-attributes it adds the texts the attributes became, which the oracle also lists).
+// It cannot be combined with --contours, --texts or --rebuild.
 // --contours prints a JSON summary of the closed regions found (shapes, holes, areas, bounds in
 // millimetres, open chains, warnings) instead of the entity digest.
 // --texts prints each TEXT and MTEXT string and each dimension's text override as it reads, with
@@ -264,6 +270,11 @@ if let flag = arguments.firstIndex(of: "--expand") {
     arguments.remove(at: flag)
     readOptions.expandBlocks = true
 }
+if let flag = arguments.firstIndex(of: "--expand-attributes") {
+    arguments.remove(at: flag)
+    readOptions.expandBlocks = true
+    readOptions.expandAttributes = true
+}
 if let flag = arguments.firstIndex(of: "--skip-paper-space") {
     arguments.remove(at: flag)
     readOptions.skipPaperSpace = true
@@ -272,6 +283,11 @@ var listTexts = false
 if let flag = arguments.firstIndex(of: "--texts") {
     arguments.remove(at: flag)
     listTexts = true
+}
+var listAttributes = false
+if let flag = arguments.firstIndex(of: "--attributes") {
+    arguments.remove(at: flag)
+    listAttributes = true
 }
 var rebuild = false
 var rebuildOptions = DXF.DimensionRebuild.Options()
@@ -337,17 +353,21 @@ for flag in ["--scale", "--numbers"] where !rebuild && arguments.contains(flag) 
     FileHandle.standardError.write(Data("\(flag) goes with --rebuild\n".utf8))
     exit(2)
 }
-if [listTexts, contourOptions != nil, rebuild, listHeader].filter({ $0 }).count > 1 {
+if [listTexts, listAttributes, contourOptions != nil, rebuild, listHeader].filter({ $0 }).count
+    > 1
+{
     FileHandle.standardError.write(
-        Data("--texts, --contours, --rebuild and --header cannot be used together\n".utf8))
+        Data(
+            ("--texts, --attributes, --contours, --rebuild and --header"
+                + " cannot be used together\n").utf8))
     exit(2)
 }
 let paths = arguments
 guard !paths.isEmpty else {
     FileHandle.standardError.write(
         Data(
-            ("usage: dxfdump [--expand] [--skip-paper-space]"
-                + " [--contours [--layers A,B] [--units inch|mm] | --texts"
+            ("usage: dxfdump [--expand | --expand-attributes] [--skip-paper-space]"
+                + " [--contours [--layers A,B] [--units inch|mm] | --texts | --attributes"
                 + " | --rebuild [--scale N] [--numbers thousands|decimal|plain]"
                 + " | --header] <file.dxf> [...]\n")
                 .utf8)
@@ -355,15 +375,27 @@ guard !paths.isEmpty else {
     exit(2)
 }
 
+// Slashes unescaped, as Python's json writes them, so the two outputs diff line for line.
+var unescapedSlashes: JSONSerialization.WritingOptions = [.sortedKeys]
+if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
+    unescapedSlashes.insert(.withoutEscapingSlashes)
+}
+
 if listTexts {
-    // Slashes unescaped, as Python's json writes them, so the two outputs diff line for line.
-    var options: JSONSerialization.WritingOptions = [.sortedKeys]
-    if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
-        options.insert(.withoutEscapingSlashes)
-    }
+    let options = unescapedSlashes
     for path in paths {
         let data = try JSONSerialization.data(
             withJSONObject: textSummary(for: path), options: options)
+        print(String(decoding: data, as: UTF8.self))
+    }
+    exit(0)
+}
+
+if listAttributes {
+    let options = unescapedSlashes
+    for path in paths {
+        let data = try JSONSerialization.data(
+            withJSONObject: attributeSummary(for: path, options: readOptions), options: options)
         print(String(decoding: data, as: UTF8.self))
     }
     exit(0)
