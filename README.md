@@ -670,7 +670,7 @@ changing one does not change the other.
   entities are counted and can be left out, and `BLOCKS` definitions are read and flattened into the
   entities only on request (see *Block references and paper space*).
 
-### Upgrading from 0.4
+### Upgrading from 0.5
 
 - **`Drawing` has new header properties**: `headerVariables` (every variable of the `HEADER`
   section by name), `measurement`, `currentDimensionStyleName`, `dimensionScale`,
@@ -696,16 +696,6 @@ changing one does not change the other.
 - **`Dimension` has a new property**, `rebuilt`, `nil` for a dimension the file holds and set by
   `rebuildingDimensions()`; it is defaulted in `init`. `Dimension.text` reads `%%nnn` through its
   `codePage`, a new property read from the drawing.
-
-- **The `string` of `.text` is the text as it reads.** It used to drop only the backslash of each
-  MTEXT code and keep the rest (`36{H2.400000;S+0,011^ -0,005;}`), and to leave `%%c`, `%%d` and
-  `%%p` as written. The codes are now decoded or removed (`36 +0,011/-0,005`), and
-  `Drawing.textContent(ofEntityAt:)` gives the string as written, its syntax and its stacks.
-  `Drawing` and `Block` gain `textContents`, defaulted in `init`.
-- **A backslash in `TEXT` stays.** A `\P` in a `TEXT` used to become a line break and every other
-  backslash was dropped, which broke file paths. `\U+XXXX` is still decoded, and needs its four hex
-  digits; one that names a control character is kept as written. An MTEXT code that is not
-  understood keeps its backslash.
 - **A file is read through its `$DWGCODEPAGE`.** A file that is not UTF-8 used to be read as
   Shift-JIS whatever its header said, so a drawing that names `ANSI_1252` (McMaster-Carr's, for
   one) read `é`, `°` and `Ø` as other characters, or as replacement characters. It now reads them
@@ -718,6 +708,29 @@ changing one does not change the other.
 - **`%%nnn`, `\M+nXXXX` and surrogate pairs.** `%%128` in an `ANSI_1252` drawing is the euro sign,
   where it was kept as written; `\M+nXXXX` is decoded, where it was kept as written; and two
   `\U+` escapes that make a surrogate pair are one character, where each was kept.
+- **`computedMeasurement` has a value for angular, three-point angular and ordinate dimensions**,
+  where it was `nil`: degrees for the angular kinds (not scaled by `DIMLFAC`), a distance for an
+  ordinate, along x when the new `Dimension.isXOrdinate` is set. A block expansion no longer scales
+  an angular dimension's group 42 by the insertion scale, which was wrong for an angle.
+- **`DimensionText.Part` has another new case**, `.angle`, so an exhaustive `switch` over the parts
+  needs it. An angle typed into the text (`45°`, `45%%d`, `45\U+00B0`) is in `typedAngles`, in
+  degrees, and no longer in `typedNumbers`: that was `[45]` and is `[]`. Full-width digits and the
+  full-width comma now read as numbers.
+- **How a drawing writes numbers can be stated.** `DimensionText(_:numbers:codePage:)`,
+  `Dimension.text(numbers:)` and `DimensionRebuild.Options(numbers:)` take a `NumberConvention`,
+  defaulted to `.plain`, which reads `10,439` as two numbers, as before; see *Dimensions*.
+
+### Upgrading from 0.4
+
+- **The `string` of `.text` is the text as it reads.** It used to drop only the backslash of each
+  MTEXT code and keep the rest (`36{H2.400000;S+0,011^ -0,005;}`), and to leave `%%c`, `%%d` and
+  `%%p` as written. The codes are now decoded or removed (`36 +0,011/-0,005`), and
+  `Drawing.textContent(ofEntityAt:)` gives the string as written, its syntax and its stacks.
+  `Drawing` and `Block` gain `textContents`, defaulted in `init`.
+- **A backslash in `TEXT` stays.** A `\P` in a `TEXT` used to become a line break and every other
+  backslash was dropped, which broke file paths. `\U+XXXX` is still decoded, and needs its four hex
+  digits; one that names a control character is kept as written. An MTEXT code that is not
+  understood keeps its backslash.
 - **`DimensionText.Part` has a new case**, `.stack`, so an exhaustive `switch` over the parts needs
   it. `.words` no longer holds formatting codes, `%%c` in it is `⌀`, and `\X` is a `.lineBreak`. A
   sign after a line break now belongs to the number that follows. `Dimension.textOverride` is
