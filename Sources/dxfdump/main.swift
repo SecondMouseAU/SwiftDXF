@@ -376,10 +376,13 @@ guard !paths.isEmpty else {
 }
 
 // Slashes unescaped, as Python's json writes them, so the two outputs diff line for line.
-var unescapedSlashes: JSONSerialization.WritingOptions = [.sortedKeys]
-if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
-    unescapedSlashes.insert(.withoutEscapingSlashes)
-}
+let unescapedSlashes: JSONSerialization.WritingOptions = {
+    var options: JSONSerialization.WritingOptions = [.sortedKeys]
+    if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
+        options.insert(.withoutEscapingSlashes)
+    }
+    return options
+}()
 
 if listTexts {
     let options = unescapedSlashes

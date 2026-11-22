@@ -79,6 +79,19 @@ extension DXF {
         /// The angle the x axis is turned by, in degrees.
         var rotationDegrees: Double { atan2(b, a) * 180 / .pi }
 
+        /// A text's position, height and rotation carried through this map.
+        ///
+        /// A `TEXT` passes any map: the height takes the y scale and a mirror turns the angle round
+        /// instead of adding to it. It is the one rule of both a `TEXT` and an attribute.
+        func text(at p: Point, height: Double, rotationDeg: Double) -> (
+            at: Point, height: Double, rotationDeg: Double
+        ) {
+            (
+                apply(p), height * hypot(c, d),
+                isMirrored ? directionAngle(degrees: rotationDeg) : rotationDeg + rotationDegrees
+            )
+        }
+
         /// An arc's angle range with the start moved into `0..<360` and the end moved with it, so
         /// the sweep is unchanged and a full circle stays a full circle.
         ///
