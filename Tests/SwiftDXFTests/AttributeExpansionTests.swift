@@ -98,10 +98,20 @@ struct AttributeExpansionTests {
         var carried = b
         carried.entities = B.insert(
             "TITLE", at: (10, 10),
-            attributes: [B.attrib("company", "OTHER", at: (50, 50), handle: "A2")], handle: "A1")
+            attributes: [B.attrib("COMPANY", "OTHER", at: (50, 50), handle: "A2")], handle: "A1")
         let once = try Self.expanded(carried)
         #expect(once.entities.count == 1 && once.identities[0].id == "A1/A2")
         #expect(AttributeTests.close(Self.texts(once)[0], 50, 50))
+
+        // A tag is compared as written, as ezdxf does: `company` is not `COMPANY`, so the
+        // constant is shown as well.
+        var cased = b
+        cased.entities = B.insert(
+            "TITLE", at: (10, 10),
+            attributes: [B.attrib("company", "OTHER", at: (50, 50), handle: "A2")], handle: "A1")
+        let both = try Self.expanded(cased)
+        #expect(both.entities.count == 2)
+        #expect(Set(both.identities.map(\.id)) == ["A1/D1", "A1/A2"])
     }
 
     @Test("a reference inside a block has its attributes carried by the block's placement only")

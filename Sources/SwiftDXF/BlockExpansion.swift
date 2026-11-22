@@ -121,9 +121,7 @@ extension DXF.Drawing {
                 attributes
                 ? block.attributeDefinitions.filter { definition in
                     definition.isConstant && !definition.isInvisible
-                        && !ref.attributes.contains {
-                            $0.tag.caseInsensitiveCompare(definition.tag) == .orderedSame
-                        }
+                        && !ref.attributes.contains { $0.tag == definition.tag }
                 } : []
             let carried = attributes ? ref.attributes.filter { !$0.isInvisible } : []
             let home = DXF.Transform(reference: ref, base: block.basePoint, column: 0, row: 0)

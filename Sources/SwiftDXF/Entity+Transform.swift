@@ -136,11 +136,9 @@ extension DXF.Entity {
             return Self.ellipseEntity(e, z: t.apply(center).z, layer: l, color: c)
 
         case .text(let p, let h, let rot, let string, let l, let c):
-            let scaleY = hypot(t.c, t.d)
-            // A mirror turns the angle round instead of adding to it.
-            let direction = t.isMirrored ? t.directionAngle(degrees: rot) : rot + t.rotationDegrees
+            let moved = t.text(at: p, height: h, rotationDeg: rot)
             return .text(
-                at: t.apply(p), height: h * scaleY, rotationDeg: direction, string: string,
+                at: moved.at, height: moved.height, rotationDeg: moved.rotationDeg, string: string,
                 layer: l, color: c)
 
         case .polyline(let vertices, let closed, let l, let c):
