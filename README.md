@@ -187,8 +187,10 @@ handle and names the reference in `via` (its `id` reads `8E/9A`); an invisible a
 - An attribute on layer `0` in a block takes the layer of the reference to that block, and a
   `BYBLOCK` colour is the colour of the attribute's own reference.
 - A visible constant attribute, which no reference carries, comes through from its block's
-  definition, placed as the block's other entities are; an invisible one stays out. A reference to a block the file does not define places
-  nothing, attributes included, as before.
+  definition, placed as the block's other entities are; an invisible one stays out. A reference
+  carries it when one of its attributes has the same tag, compared as written (`company` is not
+  `COMPANY`), as `ezdxf` does. A reference to a block the file does not define places nothing,
+  attributes included, as before.
 
 `dxfdump --attributes file.dxf` prints the attributes and definitions as JSON, and
 `dxfdump --expand-attributes` reads with `expandAttributes`.

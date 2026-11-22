@@ -121,8 +121,7 @@ extension DXF.Attribute {
 
     /// This attribute with its position, height and rotation carried through `t`, as a `TEXT` is.
     ///
-    /// A `TEXT` passes any map, so this always moves the attribute: it takes the rule of
-    /// ``DXF/Transform/text(at:height:rotationDeg:)``, with no case where it is returned unmoved.
+    /// It takes the rule of ``DXF/Transform/text(at:height:rotationDeg:)``.
     func transformed(by t: DXF.Transform) -> DXF.Attribute {
         var moved = self
         (moved.position, moved.height, moved.rotation) = t.text(
