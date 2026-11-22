@@ -672,6 +672,12 @@ changing one does not change the other.
   entities are counted and can be left out, and `BLOCKS` definitions are read and flattened into the
   entities only on request (see *Block references and paper space*).
 
+### Upgrading from 0.6.0
+
+- **An attribute tag is compared as written** when a reference's attribute stands in for a block's
+  constant `ATTDEF`, as `ezdxf` does. A reference attribute `company` no longer hides a constant
+  `COMPANY`, so `expandAttributes` gives both. Nothing else changes.
+
 ### Upgrading from 0.5
 
 - **`Drawing` has new header properties**: `headerVariables` (every variable of the `HEADER`
