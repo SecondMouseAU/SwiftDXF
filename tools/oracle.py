@@ -359,6 +359,8 @@ def header_summary(path):
             "dimZin": integer("$DIMZIN"),
             "dimLfac": real("$DIMLFAC", 40),
             "dimPost": text("$DIMPOST", 1, trim=False),
+            "dimAUnit": integer("$DIMAUNIT"),
+            "dimADec": integer("$DIMADEC"),
         },
         "variables": variables,
     }

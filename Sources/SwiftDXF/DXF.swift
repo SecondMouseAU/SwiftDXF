@@ -209,7 +209,8 @@ public enum DXF {
         public var lineTypes: [LineType]
         /// The records of the `DIMSTYLE` table.
         public var dimensionStyles: [DimensionStyle]
-        /// The dimension variables the header holds (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`).
+        /// The dimension variables the header holds (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`,
+        /// `$DIMAUNIT`, `$DIMADEC`).
         ///
         /// These belong to the style that is current when the file is saved, which
         /// ``currentDimensionStyleName`` names, not to any one dimension; see

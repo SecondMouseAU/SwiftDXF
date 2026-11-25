@@ -45,6 +45,8 @@ func headerSummary(for path: String, options: DXF.ReadOptions) -> [String: Any] 
             "dimZin": defaults.zeroSuppression ?? NSNull(),
             "dimLfac": defaults.linearScale.map(number) ?? NSNull(),
             "dimPost": defaults.unitSuffix ?? NSNull(),
+            "dimAUnit": defaults.angleUnitCode ?? NSNull(),
+            "dimADec": defaults.angleDecimalPlaces ?? NSNull(),
         ]
         var variables: [String: Any] = [:]
         for (name, variable) in dwg.headerVariables {

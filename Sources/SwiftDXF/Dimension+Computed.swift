@@ -70,8 +70,20 @@ extension DXF.Dimension {
     ///
     /// For a Jw_cad drawing, `text(numbers: .commaSeparatesThousands).typedNumbers` of `10,439`
     /// is `[10439]`.
-    public func text(numbers: DXF.DimensionText.NumberConvention) -> DXF.DimensionText {
-        DXF.DimensionText(textOverride, numbers: numbers, codePage: codePage)
+    ///
+    /// With `angleUnit`, the unit of the dimension's style, an angle typed in that unit is read as
+    /// one: see ``DXF/DimensionText/init(_:numbers:codePage:angleUnit:)``.
+    /// ``DXF/Drawing/text(of:numbers:)`` finds the unit.
+    public func text(
+        numbers: DXF.DimensionText.NumberConvention,
+        angleUnit: DXF.DimensionStyle.AngleUnit? = nil
+    ) -> DXF.DimensionText {
+        DXF.DimensionText(textOverride, numbers: numbers, codePage: codePage, angleUnit: angleUnit)
+    }
+
+    /// The text override split into what it shows, with an angle typed in `angleUnit` read as one.
+    public func text(angleUnit: DXF.DimensionStyle.AngleUnit?) -> DXF.DimensionText {
+        DXF.DimensionText(textOverride, codePage: codePage, angleUnit: angleUnit)
     }
 
     // MARK: angles

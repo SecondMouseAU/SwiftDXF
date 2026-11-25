@@ -18,6 +18,10 @@ extension DXF {
             /// An angle typed into the text, in degrees, with the characters it was written with,
             /// the degree sign included: `45°`, however the sign is written (`°`, `%%d` or
             /// `\U+00B0`).
+            ///
+            /// Given the angle unit of the style (see ``init(_:numbers:codePage:angleUnit:)``) it is
+            /// also `45°30'15"`, `50g` or `0.7854r`; the value is in degrees whichever way it was
+            /// written.
             case angle(Double, text: String)
             /// Other text, decoded as ``TextContent`` decodes `MTEXT`: `%%c` is `⌀`, and the
             /// formatting codes are removed. A code that is not understood is kept as written, and
@@ -40,11 +44,29 @@ extension DXF {
         /// `codePage` (as a Unicode code point when it is `nil`).
         ///
         /// With the default, ``NumberConvention/plain``, `10,439` is the numbers 10 and 439.
+        ///
+        /// `angleUnit` is the unit the dimension's style shows an angle in
+        /// (``DXF/DimensionStyle/Variables/angleUnit``), which lets the text state an angle in it:
+        ///
+        /// - ``DXF/DimensionStyle/AngleUnit/degreesMinutesSeconds``: `45°30'15"`, `45°30'` and
+        ///   `45°` are each one angle, `45.504166…` for the first. Minutes are whole, and minutes
+        ///   and seconds are below 60.
+        /// - ``DXF/DimensionStyle/AngleUnit/gradians``: `50g` is an angle of 45 degrees, where the
+        ///   `g` is not followed by a letter, so `50gal` is not one.
+        /// - ``DXF/DimensionStyle/AngleUnit/radians``: `0.7854r` is an angle of 45 degrees, with the
+        ///   same rule for the `r`.
+        ///
+        /// A degree sign right after a number is an angle under every unit, and with no unit or
+        /// ``DXF/DimensionStyle/AngleUnit/decimalDegrees`` nothing else is read as one: `50g` is a
+        /// number and a word, as it would be a mass. Each ``Part/angle(_:text:)`` is in degrees
+        /// whatever unit it was written in.
         public init(
-            _ raw: String?, numbers: NumberConvention = .plain, codePage: CodePage? = nil
+            _ raw: String?, numbers: NumberConvention = .plain, codePage: CodePage? = nil,
+            angleUnit: DimensionStyle.AngleUnit? = nil
         ) {
             self.raw = raw
-            self.parts = Self.split(raw ?? "", numbers: numbers, codePage: codePage)
+            self.parts = Self.split(
+                raw ?? "", numbers: numbers, codePage: codePage, angleUnit: angleUnit)
         }
 
         /// `true` when the dimension shows its measured value: no override, or one containing `<>`.
@@ -108,7 +130,8 @@ extension DXF {
         }
 
         private static func split(
-            _ raw: String, numbers: NumberConvention, codePage: CodePage?
+            _ raw: String, numbers: NumberConvention, codePage: CodePage?,
+            angleUnit: DimensionStyle.AngleUnit?
         ) -> [Part] {
             var parts: [Part] = []
             var buffer = ""
@@ -132,11 +155,14 @@ extension DXF {
                             chars, from: i, after: previous, numbers: numbers)
                         {
                             flush()
-                            // A degree sign right after the number makes it an angle.
-                            if found.end < chars.count, chars[found.end] == "\u{00B0}" {
-                                let text = String(chars[i...found.end])
-                                parts.append(.angle(found.value, text: text))
-                                i = found.end + 1
+                            // A degree sign right after the number makes it an angle, and the
+                            // style's unit can make other endings one.
+                            if let angle = Self.angle(
+                                chars, after: found, numbers: numbers, unit: angleUnit)
+                            {
+                                parts.append(
+                                    .angle(angle.degrees, text: String(chars[i..<angle.end])))
+                                i = angle.end
                             } else {
                                 parts.append(
                                     .number(found.value, text: String(chars[i..<found.end])))
@@ -164,6 +190,55 @@ extension DXF {
             }
             flush()
             return parts
+        }
+
+        /// The angle the number `found` starts, in degrees, and the index just past it, or `nil`
+        /// when the text after the number does not make it one.
+        ///
+        /// A degree sign does, in every unit. Where the unit is degrees, minutes and seconds the
+        /// degrees may be followed by whole minutes and a `'`, and then by seconds and a `"`;
+        /// gradians end in `g` and radians in `r`, each not followed by a letter.
+        private static func angle(
+            _ chars: [Character], after found: (value: Double, end: Int),
+            numbers: NumberConvention, unit: DimensionStyle.AngleUnit?
+        ) -> (degrees: Double, end: Int)? {
+            let end = found.end
+            guard end < chars.count else { return nil }
+            func standsAlone(_ i: Int) -> Bool { i >= chars.count || !chars[i].isLetter }
+            switch (chars[end], unit) {
+            case ("\u{00B0}", .degreesMinutesSeconds?):
+                guard let rest = minutesAndSeconds(chars, from: end + 1, numbers: numbers)
+                else { return (found.value, end + 1) }
+                let degrees = abs(found.value) + rest.minutes / 60 + rest.seconds / 3600
+                return (found.value.sign == .minus ? -degrees : degrees, rest.end)
+            case ("\u{00B0}", _):
+                return (found.value, end + 1)
+            case ("g", .gradians?) where standsAlone(end + 1):
+                return (found.value * 0.9, end + 1)
+            case ("r", .radians?) where standsAlone(end + 1):
+                return (found.value * 180 / .pi, end + 1)
+            default:
+                return nil
+            }
+        }
+
+        /// The whole minutes and `'` at `start`, then the seconds and `"` when they follow, or
+        /// `nil` when there are no minutes or a part is 60 or more.
+        private static func minutesAndSeconds(
+            _ chars: [Character], from start: Int, numbers: NumberConvention
+        ) -> (minutes: Double, seconds: Double, end: Int)? {
+            guard let minutes = numbers.scan(chars, from: start), minutes.decimals == 0,
+                minutes.end < chars.count, chars[minutes.end] == "'", minutes.value < 60
+            else { return nil }
+            var seconds = 0.0
+            var end = minutes.end + 1
+            if let found = numbers.scan(chars, from: end), found.end < chars.count,
+                chars[found.end] == "\"", found.value < 60
+            {
+                seconds = found.value
+                end = found.end + 1
+            }
+            return (minutes.value, seconds, end)
         }
 
         /// The number starting at `start`, with its sign, and the index just past it; `nil` when
