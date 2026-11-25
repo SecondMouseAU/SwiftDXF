@@ -389,6 +389,10 @@ struct AngleUnitTests {
         #expect(fractional == .init())
         let junk = try overrides([(271, "x"), (275, "nan"), (179, "1e300"), (78, "inf")])
         #expect(junk == .init())
+        // Whatever an Int holds exactly is read, and nothing it does not.
+        #expect(try overrides([(179, "1e16")]).angleDecimalPlaces == 10_000_000_000_000_000)
+        #expect(try overrides([(179, "9.3e18")]).angleDecimalPlaces == nil)
+        #expect(try overrides([(179, "-0.0")]).angleDecimalPlaces == 0)
         // A real variable is still a real.
         #expect(try overrides([(144, "25.4")]).linearScale == 25.4)
     }

@@ -62,8 +62,8 @@ extension DXF.DimensionStyle {
 
         /// The decimal places an angle is shown with: ``angleDecimalPlaces``, or ``decimalPlaces``
         /// where that is `-1` (`DIMADEC` then uses `DIMDEC`). `nil` when the one that applies is
-        /// not stated: the places the application then uses are its own, which the reader does not
-        /// know.
+        /// not stated, which includes `-1` with no ``decimalPlaces``: the places the application
+        /// then uses are its own default, which the reader does not know.
         public var effectiveAngleDecimalPlaces: Int? {
             angleDecimalPlaces == -1 ? decimalPlaces : angleDecimalPlaces
         }

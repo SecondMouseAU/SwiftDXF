@@ -77,14 +77,11 @@ extension DXF.Reader {
     }
 
     /// The integer an override states: `1` as `1070` writes it, or `1.0` as a `1040` can, but not
-    /// `1.5`.
+    /// `1.5`, and nothing that an `Int` cannot hold exactly.
     func overrideInteger(_ s: String) -> Int? {
         let text = trimmed(s)
         if let whole = Int(text) { return whole }
-        guard let real = Double(text), real.isFinite, real == real.rounded(),
-            abs(real) < 1e15
-        else { return nil }
-        return Int(real)
+        return Double(text).flatMap { Int(exactly: $0) }
     }
 
     func nonEmpty(_ s: String?) -> String? { s.flatMap { $0.isEmpty ? nil : $0 } }
