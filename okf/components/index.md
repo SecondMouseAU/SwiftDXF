@@ -22,7 +22,8 @@ timestamp: 2026-11-21
   name as a `DXF.HeaderVariable` (its group-coded values as written, with `value(code)`, `.integer`,
   `.real` and `point` to read them), built in one pass by `readHeaderVariables()`. The named
   properties are read from it: `version`, `codePage`, `insUnits`, `extMin`/`extMax`,
-  `dimensionDefaults` (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`) and `measurement`
+  `dimensionDefaults` (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`, `$DIMAUNIT`, `$DIMADEC`) and
+  `measurement`
   (`$MEASUREMENT`), `currentDimensionStyleName` (`$DIMSTYLE`, with `currentDimensionStyle` the
   record), `dimensionScale` (`$DIMSCALE`), `linearUnitFormat` (`$LUNITS`), `linearUnitPrecision`
   (`$LUPREC`). They are stored, like `insUnits`, so a hand-built `Drawing` sets them through `init`;
@@ -91,7 +92,11 @@ timestamp: 2026-11-21
   `styleOverrides` read from the `DSTYLE` extended data. `computedMeasurement` is the geometric value
   (a length, or degrees for an angular dimension: the angle on the side of its arc location);
   `Drawing.styleVariables(of:)` resolves overrides over the `DIMSTYLE` record, and
-  `displayedMeasurement(of:)` applies `DIMLFAC` to a length and not to an angle. `DimensionText`
+  `displayedMeasurement(of:)` applies `DIMLFAC` to a length and not to an angle. The style
+  variables include `DIMAUNIT` and `DIMADEC` (`angleUnitCode`, `angleDecimalPlaces`, with
+  `angleUnit: DXF.DimensionStyle.AngleUnit?` and `effectiveAngleDecimalPlaces`), which say what an
+  angle is shown in; `DimensionText(_:angleUnit:)`, `Dimension.text(angleUnit:)` and
+  `Drawing.text(of:)` read a typed `45°30'15"`, `50g` or `0.7854r` as degrees. `DimensionText`
   splits the override into measurement, number, angle, words, line-break and stack parts, with the
   codes decoded as in `MTEXT`; `NumberConvention.swift` says how the drawing writes a comma in a number (thousands
   separator, decimal mark, or neither), which `Dimension.text(numbers:)` and the rebuild's

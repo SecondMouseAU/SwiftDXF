@@ -8,10 +8,24 @@ extension DXF.Drawing {
         return dimension.styleOverrides.filling(from: record?.variables ?? .init())
     }
 
+    /// The text of `dimension` split into what it shows, with an angle read in the unit of its
+    /// style (``DXF/DimensionStyle/Variables/angleUnit``).
+    ///
+    /// For a dimension whose style states no unit, this is ``DXF/Dimension/text(numbers:angleUnit:)``
+    /// with none, which reads `45°` and nothing else as an angle. A typed angle in
+    /// ``DXF/DimensionText/typedAngles`` is in degrees, as ``DXF/Dimension/computedMeasurement``
+    /// is of an angular dimension, so they compare directly; the places the text is rounded to
+    /// are ``DXF/DimensionStyle/Variables/effectiveAngleDecimalPlaces``.
+    public func text(
+        of dimension: DXF.Dimension, numbers: DXF.DimensionText.NumberConvention = .plain
+    ) -> DXF.DimensionText {
+        dimension.text(numbers: numbers, angleUnit: styleVariables(of: dimension).angleUnit)
+    }
+
     /// The computed measurement times the style's linear scale, before rounding.
     ///
-    /// An angle is not scaled, and stays in degrees: the style states its decimal places and unit
-    /// apart from a length's, and they are not modelled. `nil` where
+    /// An angle is not scaled, and stays in degrees whatever unit and decimal places its style
+    /// shows it in (``DXF/DimensionStyle/Variables/angleUnit``). `nil` where
     /// ``DXF/Dimension/computedMeasurement`` is.
     public func displayedMeasurement(of dimension: DXF.Dimension) -> Double? {
         switch dimension.kind {

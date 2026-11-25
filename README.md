@@ -422,6 +422,9 @@ for case .dimension(let d) in dwg.entities {
     style.decimalPlaces                   // DIMDEC: 1 if stated to one place, nil if unstated
     style.suppressesTrailingZeros         // DIMZIN: "8.1" may be 8.100 with its zeros hidden
     style.linearScale, style.unitSuffix   // DIMLFAC and DIMPOST
+    style.angleUnit                       // DIMAUNIT: .decimalDegrees, .degreesMinutesSeconds, .gradians, .radians
+    style.effectiveAngleDecimalPlaces     // DIMADEC (DIMDEC where DIMADEC is -1)
+    dwg.text(of: d).typedAngles           // a typed 45°30'15" (or 50g, 0.7854r) in degrees, per the style's unit
     d.text.showsMeasurement               // does the text show the measured value?
     d.text.stacks, d.text.plain           // a stacked tolerance, and the text as it reads
 }
@@ -450,9 +453,10 @@ for case .dimension(let d) in dwg.entities {
     tests hold those) and 2 put the arc on the side `ezdxf`'s number does not (AutoCAD drew 125 and
     130 where `ezdxf` gives 235 and 230); and against `ezdxf`'s numbers where the side is the same
     (`tools/angular_fixtures.py`). A dimension with a point missing, lines that are parallel, a ray
-    of no length, or an arc location exactly on the vertex or the crossing has none. The decimal places and unit of an angle (`DIMADEC`,
-    `DIMAUNIT`) are not modelled, and `measurement` (group 42) of an angular dimension is the
-    file's number, not converted.
+    of no length, or an arc location exactly on the vertex or the crossing has none. The unit and
+    decimal places an angle is shown in (`DIMAUNIT`, `DIMADEC`) are style variables, below; the
+    computed value stays in degrees whatever they are. `measurement` (group 42) of an angular
+    dimension is the file's number, not converted.
   - **An ordinate dimension** is the distance from its origin (group 10) to its feature location
     (group 13) along x when `isXOrdinate` (bit 64 of group 70) and along y when not. The axes are
     those of the coordinate system the dimension was made in: `rotation` is the negative of group
@@ -468,6 +472,36 @@ for case .dimension(let d) in dwg.entities {
   whichever style was current when the file was saved (`dwg.currentDimensionStyleName` names it),
   so they are not applied for you. A negative
   `DIMLFAC` applies to paper space only and is ignored.
+- **The unit and places of an angle** are `DIMAUNIT` (group 275) and `DIMADEC` (group 179), read
+  from the same three places as the other variables: the `DIMSTYLE` record, the entity's `DSTYLE`
+  overrides and the header (`dwg.dimensionDefaults`). `angleUnitCode` and `angleDecimalPlaces` are
+  the numbers as written; `angleUnit` names the code (`0` decimal degrees, `1` degrees, minutes and
+  seconds, `2` gradians, `3` radians) and is `nil` for an unstated or unknown one, which
+  `hasUnrecognisedAngleUnit` tells apart; a variable overridden in the extended data may be written
+  as a real (`1.0`), which is read as the integer where it is whole;
+  `effectiveAngleDecimalPlaces` is `DIMADEC`, or `DIMDEC` where `DIMADEC` is `-1`. AutoCAD leaves a
+  variable at its default out of a `DIMSTYLE` record (a drawing checked had neither in either of
+  its two records, and `0` and `0` in the header), so `nil` there means the default, decimal
+  degrees; the reader still does not fill it in. What `DIMADEC` means for degrees, minutes and
+  seconds (how far the angle is written) is left to the application that drew the text. The
+  computed angle and `displayedMeasurement(of:)` stay in degrees, whatever the style shows.
+  Checked against `ezdxf` (`tools/angle_unit_fixtures.py`: the variables of each record, the
+  header, an override, and the text its renderer wrote in each unit read back to the computed
+  angle) and against one AutoCAD 2018 drawing with three angular dimensions, whose `90°`, `126°`
+  and `36°` agree with `DIMADEC` `0` and `DIMAUNIT` `0`. Of 3,103 DXF files on the machine
+  (36 with dimensions, none angular) none sets `DIMAUNIT` to anything but `0`, so the degrees,
+  minutes and seconds, gradian and radian readings rest on `ezdxf`'s text, not on a real drawing.
+  `ezdxf` truncates degrees, minutes and seconds, so the tests allow a whole unit of the last
+  place there.
+  - **Reading a typed angle in the style's unit.** `DXF.DimensionText(raw, angleUnit:)`,
+    `dimension.text(angleUnit:)` and `dwg.text(of: dimension)` (which finds the unit) read what
+    the text shows in that unit as one angle in `typedAngles`, in degrees: `45°30'15"`, `45°30'`
+    (degrees, minutes and seconds), `50g` (gradians) or `0.7854r` (radians), the letter not
+    followed by another letter. It is the style that makes `50g` an angle, as it could be a mass,
+    so with no unit nothing changes: `45°` is the only text read as an angle, and `45°30'15"` is
+    still the angle 45 and the numbers 30 and 15. Degrees and minutes must be whole numbers
+    (`30.0'` is one, `30.5'` is not) and minutes and seconds below 60, or the degrees stand alone.
+    A typed number with no unit mark (`45.5`) is a number, as it could be a length.
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
   `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`
   and `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a

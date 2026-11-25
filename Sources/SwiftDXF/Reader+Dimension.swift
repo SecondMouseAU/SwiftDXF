@@ -28,16 +28,20 @@ extension DXF.Reader {
     func styleVariables(_ f: Fields) -> DXF.DimensionStyle.Variables {
         DXF.DimensionStyle.Variables(
             decimalPlaces: ints(271, f), zeroSuppression: ints(78, f), linearScale: dblOpt(144, f),
-            unitSuffix: nonEmpty(first(3, f)))
+            unitSuffix: nonEmpty(first(3, f)), angleUnitCode: ints(275, f),
+            angleDecimalPlaces: ints(179, f))
     }
 
-    /// The header's current dimension variables (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`).
+    /// The header's current dimension variables (`$DIMDEC`, `$DIMZIN`, `$DIMLFAC`, `$DIMPOST`,
+    /// `$DIMAUNIT`, `$DIMADEC`).
     func headerStyleVariables() -> DXF.DimensionStyle.Variables {
         DXF.DimensionStyle.Variables(
             decimalPlaces: ints(70, headerVar("$DIMDEC")),
             zeroSuppression: ints(70, headerVar("$DIMZIN")),
             linearScale: dblOpt(40, headerVar("$DIMLFAC")),
-            unitSuffix: nonEmpty(first(1, headerVar("$DIMPOST"))))
+            unitSuffix: nonEmpty(first(1, headerVar("$DIMPOST"))),
+            angleUnitCode: ints(70, headerVar("$DIMAUNIT")),
+            angleDecimalPlaces: ints(70, headerVar("$DIMADEC")))
     }
 
     /// The overrides in the `ACAD` / `DSTYLE` extended data of a dimension.
@@ -65,10 +69,19 @@ extension DXF.Reader {
             i += 1
         }
         func real(_ s: String?) -> Double? { s.flatMap { Double(trimmed($0)) } }
+        func integer(_ s: String?) -> Int? { s.flatMap { overrideInteger($0) } }
         return DXF.DimensionStyle.Variables(
-            decimalPlaces: raw[271].flatMap { Int(trimmed($0)) },
-            zeroSuppression: raw[78].flatMap { Int(trimmed($0)) }, linearScale: real(raw[144]),
-            unitSuffix: nonEmpty(raw[3]))
+            decimalPlaces: integer(raw[271]), zeroSuppression: integer(raw[78]),
+            linearScale: real(raw[144]), unitSuffix: nonEmpty(raw[3]),
+            angleUnitCode: integer(raw[275]), angleDecimalPlaces: integer(raw[179]))
+    }
+
+    /// The integer an override states: `1` as `1070` writes it, or `1.0` as a `1040` can, but not
+    /// `1.5`, and nothing that an `Int` cannot hold exactly.
+    func overrideInteger(_ s: String) -> Int? {
+        let text = trimmed(s)
+        if let whole = Int(text) { return whole }
+        return Double(text).flatMap { Int(exactly: $0) }
     }
 
     func nonEmpty(_ s: String?) -> String? { s.flatMap { $0.isEmpty ? nil : $0 } }
