@@ -43,7 +43,7 @@ struct WipeoutClipTests {
     @Test("the clip type, state and mode are those ezdxf reads, and the boundary is unchanged")
     func fixtureAgainstEzdxf() throws {
         let wipeouts = try Self.fixture()
-        #expect(wipeouts.count == 6)
+        #expect(wipeouts.count == 7)
         // ezdxf: (clipping_boundary_type, clipping, clip_mode) of each, in file order.
         let expected: [(DXF.Wipeout.ClipType, Bool, Bool)] = [
             (.polygonal, true, false), (.polygonal, true, true), (.rectangular, true, true),
@@ -76,12 +76,15 @@ struct WipeoutClipTests {
 
     @Test("a record with no clip vertices is its whole image, with clipping off, as in ezdxf")
     func noClipVertices() throws {
-        let bare = try #require(try Self.fixture().last)
-        // ezdxf: a 4 x 3 image at (100, 0); the clip is reset to the rectangle and clipping to 0.
-        SolidTests.expectEqual(
-            bare.boundary,
-            SolidTests.points([[100, 3, 0], [104, 3, 0], [104, 0, 0], [100, 0, 0]]))
-        #expect(bare.clipType == .rectangular && !bare.isClipping && !bare.isInverted)
+        let wipeouts = try Self.fixture()
+        // ezdxf: a 4 x 3 image; the clip is reset to the rectangle, type 1 and clipping 0. The
+        // second says group 71 is 2 and group 280 is 1, and ezdxf resets those too.
+        for (w, x) in [(wipeouts[5], 100.0), (wipeouts[6], 120.0)] {
+            SolidTests.expectEqual(
+                w.boundary,
+                SolidTests.points([[x, 3, 0], [x + 4, 3, 0], [x + 4, 0, 0], [x, 0, 0]]))
+            #expect(w.clipType == .rectangular && !w.isClipping && !w.isInverted)
+        }
     }
 
     // MARK: Records

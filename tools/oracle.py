@@ -179,6 +179,9 @@ def summarize(path):
                 add("SOLID", p.x, p.y, p.z)
         elif t == "WIPEOUT":
             # The clip boundary in the world, closed; SwiftDXF does not repeat the first vertex.
+            # Known difference: SwiftDXF caps the tolerance for "the last vertex repeats the first"
+            # at 1e-6, ezdxf has none, so a closing vertex 1e-6 to 1e-5 off at coordinates beyond a
+            # thousand pixels is a vertex there and a repeat here.
             for p in e.boundary_path_wcs()[:-1]:
                 add("WIPEOUT", p.x, p.y, p.z)
             # Then the clip type (71), the clipping state (280) and the clip mode (290), as ezdxf

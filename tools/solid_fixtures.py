@@ -19,7 +19,8 @@ It also writes two more fixtures and prints what ezdxf reads from them under `cl
 `elevation`:
 
 * `wipeout_clip.dxf` (R2018): WIPEOUTs with the clip mode (group 290) inverted or not, the clipping
-  state (280) off, a rectangular and a polygonal clip (71), and one with no clip vertices. ezdxf
+  state (280) off, a rectangular and a polygonal clip (71), and two with no clip vertices (one
+  that says polygonal with clipping on). ezdxf
   keeps 280, 71 and 290 as `clipping`, `clipping_boundary_type` and `clip_mode`, and does not act
   on them: `boundary_path_wcs()` is the same either way.
 * `solid_r12.dxf` (AC1009, written by hand: ezdxf never writes group 38) and
@@ -142,6 +143,15 @@ def build_clip(out_dir):
     bare.dxf.v_pixel = (0, 3, 0)
     bare.dxf.image_size = (1, 1)
     bare._boundary_path = []
+    # The same with group 71 of 2 and clipping on: ezdxf's reset gives type 1 and clipping 0 anyway.
+    typed = msp.add_wipeout([(0, 0), (1, 1)])
+    typed.dxf.insert = (120, 0, 0)
+    typed.dxf.u_pixel = (4, 0, 0)
+    typed.dxf.v_pixel = (0, 3, 0)
+    typed.dxf.image_size = (1, 1)
+    typed.dxf.clipping = 1
+    typed.dxf.clipping_boundary_type = 2
+    typed._boundary_path = []
     path = os.path.join(out_dir, "wipeout_clip.dxf")
     doc.saveas(path)
     back = ezdxf.readfile(path)
