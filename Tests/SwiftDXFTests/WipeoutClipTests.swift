@@ -62,6 +62,16 @@ struct WipeoutClipTests {
         SolidTests.expectEqual(
             wipeouts[2].boundary,
             SolidTests.points([[40, 0, 0], [48, 0, 0], [48, 6, 0], [40, 6, 0]]))
+        // The rectangles, inverted or not, and the polygon with clipping off.
+        SolidTests.expectEqual(
+            wipeouts[3].boundary,
+            SolidTests.points([[60, 0, 0], [68, 0, 0], [68, 6, 0], [60, 6, 0]]))
+        SolidTests.expectEqual(
+            wipeouts[4].boundary,
+            SolidTests.points(polygon.map { [$0[0] + 80, $0[1], $0[2]] }))
+        SolidTests.expectEqual(
+            wipeouts[5].boundary,
+            SolidTests.points([[100, 3, 0], [104, 3, 0], [104, 0, 0], [100, 0, 0]]))
     }
 
     @Test("a record with no clip vertices is its whole image, with clipping off, as in ezdxf")
@@ -89,6 +99,14 @@ struct WipeoutClipTests {
         let plain = try Self.read(Self.record(mode: 0))
         let inverted = try Self.read(Self.record(mode: 1))
         #expect(plain.boundary == inverted.boundary && inverted.boundary.count == 3)
+    }
+
+    @Test("group 71 of 2 with two vertices is polygonal in type and a rectangle in boundary")
+    func polygonalTwoVertices() throws {
+        let w = try Self.read(Self.record(type: 2, clip: [(-0.5, -0.5), (9.5, 9.5)]))
+        #expect(w.clipType == .polygonal)
+        SolidTests.expectEqual(
+            w.boundary, SolidTests.points([[0, 10, 0], [10, 10, 0], [10, 0, 0], [0, 0, 0]]))
     }
 
     @Test("group 71 is read, and a value that is not 1 or 2 is judged by the vertices")

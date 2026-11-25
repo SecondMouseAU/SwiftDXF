@@ -20,8 +20,8 @@ extension DXF.Reader {
     /// The number after `AC` is compared: `AC1002` to `AC1009` are R2.5 to R12, and a dotted name
     /// (`AC1.40`, `AC1.50`, `AC2.10` to `AC2.22`) is a release before R9. A file that names no
     /// version counts as legacy, as `ezdxf` reads it as R12. A name that is not `AC` and a number
-    /// (in either case) does not, so its group 38 is left alone. `ezdxf` compares the names as text, which puts
-    /// the `AC2.x` names after `AC1009`; the reference puts them before it.
+    /// (in either case) does not, so its group 38 is left alone. `ezdxf` compares the names as
+    /// text, which puts the `AC2.x` names after `AC1009`; the reference puts them before it.
     static func isLegacyVersion(_ version: String) -> Bool {
         let name = version.trimmingCharacters(in: .whitespaces).uppercased()
         if name.isEmpty { return true }
