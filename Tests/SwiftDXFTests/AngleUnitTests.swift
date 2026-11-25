@@ -24,19 +24,30 @@ struct AngleUnitTests {
     static let sweep = 45.0 + 30.0 / 60 + 15.0 / 3600
 
     /// What the script prints for each dimension of the fixture, in file order: its style, the
-    /// text ezdxf rendered, and how far it can be from the angle, in degrees: half a unit of its
-    /// last place, or a whole one for degrees, minutes and seconds, which ezdxf truncates.
-    static let rendered: [(style: String, text: String, tolerance: Double)] = [
-        ("DEG1", "45.5\u{00B0}", 0.05),
-        ("DMS0", "45\u{00B0}", 1),
-        ("DMS2", "45\u{00B0}30'", 1.0 / 60),
-        ("DMS4", "45\u{00B0}30'15\"", 1.0 / 3600),
-        ("DMS6", "45\u{00B0}30'15\"", 1.0 / 3600),
+    /// text ezdxf rendered, the angle in degrees that text states, and how far that can be from the
+    /// angle: half a unit of its last place, or a whole one for degrees, minutes and seconds,
+    /// which ezdxf truncates. The tests read the text from the dimension's own block as well, so a
+    /// regenerated fixture that differs fails them.
+    static let rendered: [(style: String, text: String, degrees: Double, tolerance: Double)] = [
+        ("DEG1", "45.5\u{00B0}", 45.5, 0.05),
+        ("DMS0", "45\u{00B0}", 45, 1),
+        ("DMS2", "45\u{00B0}30'", 45.5, 1.0 / 60),
+        ("DMS4", "45\u{00B0}30'15\"", sweep, 1.0 / 3600),
+        ("DMS6", "45\u{00B0}30'15\"", sweep, 1.0 / 3600),
         // 50.56 gradians, and 0.7942 radians.
-        ("GRAD2", "50.56g", 0.005 * 0.9),
-        ("RAD4", "0.7942r", 0.00005 * 180 / .pi),
-        ("DEG1", "45\u{00B0}30'15\"", 1.0 / 3600),
+        ("GRAD2", "50.56g", 50.56 * 0.9, 0.005 * 0.9),
+        ("RAD4", "0.7942r", 0.7942 * 180 / .pi, 0.00005 * 180 / .pi),
+        ("DEG1", "45\u{00B0}30'15\"", sweep, 1.0 / 3600),
     ]
+
+    /// The text in the anonymous block `*D<n>` that ezdxf made for the `n`th dimension.
+    static func blockText(_ dwg: DXF.Drawing, dimension index: Int) throws -> String {
+        let block = try #require(dwg.blocks.first { $0.name == "*D\(index + 1)" })
+        for case .text(_, _, _, let string, _, _) in block.entities { return string }
+        throw TextNotFound()
+    }
+
+    struct TextNotFound: Error {}
 
     // MARK: against ezdxf
 
@@ -111,11 +122,16 @@ struct AngleUnitTests {
             let dim = dims[index]
             let computed = try #require(dim.computedMeasurement)
             #expect(abs(computed - Self.sweep) < 1e-9, "\(index): \(computed)")
+            #expect(dim.styleName == want.style, "\(index)")
+            // The text in the file's own block is the one the table holds.
+            #expect(try Self.blockText(dwg, dimension: index) == want.text, "\(index)")
             let unit = dwg.styleVariables(of: dim).angleUnit
             let text = DXF.DimensionText(want.text, angleUnit: unit)
             #expect(text.parts.count == 1, "\(index): \(text.parts)")
             let read = try #require(text.typedAngles.first, "\(index): \(want.text)")
             #expect(text.typedNumbers.isEmpty && text.words.isEmpty, "\(index)")
+            // It reads as the angle it states, and that is near the computed one.
+            #expect(abs(read - want.degrees) < 1e-9, "\(index): \(read) vs \(want.degrees)")
             #expect(
                 abs(read - computed) <= want.tolerance + 1e-9, "\(index): \(read) vs \(computed)")
         }
