@@ -23,10 +23,11 @@ struct AngleUnitTests {
     /// 45 degrees 30 minutes 15 seconds.
     static let sweep = 45.0 + 30.0 / 60 + 15.0 / 3600
 
-    /// What the script prints for each dimension of the fixture, in file order: its style, the
-    /// text ezdxf rendered, the angle in degrees that text states, and how far that can be from the
-    /// angle: half a unit of its last place, or a whole one for degrees, minutes and seconds,
-    /// which ezdxf truncates. The tests read the text from the dimension's own block as well, so a
+    /// What the script prints for each dimension of the fixture, in file order.
+    ///
+    /// Each is its style, the text ezdxf rendered, the angle in degrees that text states, and how
+    /// far that can be from the angle: half a unit of its last place, or a whole one for degrees,
+    /// minutes and seconds, which ezdxf truncates. The tests read the text from the dimension's own block as well, so a
     /// regenerated fixture that differs fails them.
     static let rendered: [(style: String, text: String, degrees: Double, tolerance: Double)] = [
         ("DEG1", "45.5\u{00B0}", 45.5, 0.05),
