@@ -69,11 +69,22 @@ extension DXF.Reader {
             i += 1
         }
         func real(_ s: String?) -> Double? { s.flatMap { Double(trimmed($0)) } }
+        func integer(_ s: String?) -> Int? { s.flatMap { overrideInteger($0) } }
         return DXF.DimensionStyle.Variables(
-            decimalPlaces: raw[271].flatMap { Int(trimmed($0)) },
-            zeroSuppression: raw[78].flatMap { Int(trimmed($0)) }, linearScale: real(raw[144]),
-            unitSuffix: nonEmpty(raw[3]), angleUnitCode: raw[275].flatMap { Int(trimmed($0)) },
-            angleDecimalPlaces: raw[179].flatMap { Int(trimmed($0)) })
+            decimalPlaces: integer(raw[271]), zeroSuppression: integer(raw[78]),
+            linearScale: real(raw[144]), unitSuffix: nonEmpty(raw[3]),
+            angleUnitCode: integer(raw[275]), angleDecimalPlaces: integer(raw[179]))
+    }
+
+    /// The integer an override states: `1` as `1070` writes it, or `1.0` as a `1040` can, but not
+    /// `1.5`.
+    func overrideInteger(_ s: String) -> Int? {
+        let text = trimmed(s)
+        if let whole = Int(text) { return whole }
+        guard let real = Double(text), real.isFinite, real == real.rounded(),
+            abs(real) < 1e15
+        else { return nil }
+        return Int(real)
     }
 
     func nonEmpty(_ s: String?) -> String? { s.flatMap { $0.isEmpty ? nil : $0 } }

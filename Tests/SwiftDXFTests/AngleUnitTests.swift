@@ -160,6 +160,10 @@ struct AngleUnitTests {
         #expect(same(angles("-45\u{00B0}30'15\""), [-Self.sweep]))
         #expect(same(angles("-0\u{00B0}30'"), [-0.5]))
         #expect(same(angles("<> 10\u{00B0}30' to 20\u{00B0}15'"), [10.5, 20.25]))
+        // Minutes and seconds written with a decimal point that adds nothing.
+        #expect(same(angles("45\u{00B0}30.0'15\""), [Self.sweep]))
+        #expect(same(angles("45\u{00B0}30.0'"), [45.5]))
+        #expect(same(angles("45.0\u{00B0}30'15.0\""), [Self.sweep]))
         // The text is kept as written, and so is what follows.
         let text = DXF.DimensionText("<> 45\u{00B0}30'15\" max", angleUnit: .degreesMinutesSeconds)
         #expect(text.parts.contains(.angle(Self.sweep, text: "45\u{00B0}30'15\"")))
@@ -361,6 +365,45 @@ struct AngleUnitTests {
             bare.styleVariables(of: DimensionTests.dimensions(bare)[0]).angleUnitCode == nil)
     }
 
+    @Test("an integer override written as a real is read where it is whole")
+    func realValuedOverrides() throws {
+        func overrides(_ pairs: [(Int, String)]) throws -> DXF.DimensionStyle.Variables {
+            var xdata: [(Int, String)] = [(1001, "ACAD"), (1000, "DSTYLE"), (1002, "{")]
+            for (variable, value) in pairs {
+                xdata += [(1070, "\(variable)"), (1040, value)]
+            }
+            xdata.append((1002, "}"))
+            let dwg = try Self.inline(extra: xdata)
+            return DimensionTests.dimensions(dwg)[0].styleOverrides
+        }
+        // Every integer variable, as a real that is whole.
+        let whole = try overrides([(271, "3.0"), (78, "8.0"), (275, "2.0"), (179, "-1.0")])
+        #expect(whole.decimalPlaces == 3 && whole.zeroSuppression == 8)
+        #expect(whole.angleUnitCode == 2 && whole.angleDecimalPlaces == -1)
+        // The same, as the integers a 1070 writes, and with spaces round the number.
+        let integers = try overrides([(271, "3"), (78, " 8 "), (275, "2"), (179, "-1")])
+        #expect(integers == whole)
+        #expect(try overrides([(275, "1e0")]).angleUnitCode == 1)
+        // A real that is not whole, or not a number, is not an integer.
+        let fractional = try overrides([(271, "2.5"), (78, "8.5"), (275, "1.5"), (179, "0.1")])
+        #expect(fractional == .init())
+        let junk = try overrides([(271, "x"), (275, "nan"), (179, "1e300"), (78, "inf")])
+        #expect(junk == .init())
+        // A real variable is still a real.
+        #expect(try overrides([(144, "25.4")]).linearScale == 25.4)
+    }
+
+    @Test("a unit that is stated but not known is told from one that is not stated")
+    func unrecognisedUnit() {
+        typealias Variables = DXF.DimensionStyle.Variables
+        #expect(!Variables().hasUnrecognisedAngleUnit)
+        for code in 0...3 { #expect(!Variables(angleUnitCode: code).hasUnrecognisedAngleUnit) }
+        for code in [-1, 4, 7] {
+            let variables = Variables(angleUnitCode: code)
+            #expect(variables.hasUnrecognisedAngleUnit && variables.angleUnit == nil, "\(code)")
+        }
+    }
+
     @Test("a code that is not a unit is kept as written and names none")
     func unknownCode() throws {
         let tables = [
@@ -369,5 +412,6 @@ struct AngleUnitTests {
         let dwg = try Self.inline(tables: tables)
         let resolved = dwg.styleVariables(of: DimensionTests.dimensions(dwg)[0])
         #expect(resolved.angleUnitCode == 7 && resolved.angleUnit == nil)
+        #expect(resolved.hasUnrecognisedAngleUnit)
     }
 }

@@ -49,8 +49,8 @@ extension DXF {
         /// (``DXF/DimensionStyle/Variables/angleUnit``), which lets the text state an angle in it:
         ///
         /// - ``DXF/DimensionStyle/AngleUnit/degreesMinutesSeconds``: `45°30'15"`, `45°30'` and
-        ///   `45°` are each one angle, `45.504166…` for the first. Degrees and minutes are whole,
-        ///   and minutes and seconds are below 60.
+        ///   `45°` are each one angle, `45.504166…` for the first. Degrees and minutes are whole
+        ///   numbers (`30.0'` is one), and minutes and seconds are below 60.
         /// - ``DXF/DimensionStyle/AngleUnit/gradians``: `50g` is an angle of 45 degrees, where the
         ///   `g` is not followed by a letter, so `50gal` is not one.
         /// - ``DXF/DimensionStyle/AngleUnit/radians``: `0.7854r` is an angle of 45 degrees, with the
@@ -229,8 +229,9 @@ extension DXF {
         private static func minutesAndSeconds(
             _ chars: [Character], from start: Int, numbers: NumberConvention
         ) -> (minutes: Double, seconds: Double, end: Int)? {
-            guard let minutes = numbers.scan(chars, from: start), minutes.decimals == 0,
-                minutes.end < chars.count, chars[minutes.end] == "'", minutes.value < 60
+            guard let minutes = numbers.scan(chars, from: start),
+                minutes.value == minutes.value.rounded(), minutes.end < chars.count,
+                chars[minutes.end] == "'", minutes.value < 60
             else { return nil }
             var seconds = 0.0
             var end = minutes.end + 1

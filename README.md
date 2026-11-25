@@ -476,7 +476,9 @@ for case .dimension(let d) in dwg.entities {
   from the same three places as the other variables: the `DIMSTYLE` record, the entity's `DSTYLE`
   overrides and the header (`dwg.dimensionDefaults`). `angleUnitCode` and `angleDecimalPlaces` are
   the numbers as written; `angleUnit` names the code (`0` decimal degrees, `1` degrees, minutes and
-  seconds, `2` gradians, `3` radians) and is `nil` for an unstated or unknown one;
+  seconds, `2` gradians, `3` radians) and is `nil` for an unstated or unknown one, which
+  `hasUnrecognisedAngleUnit` tells apart; a variable overridden in the extended data may be written
+  as a real (`1.0`), which is read as the integer where it is whole;
   `effectiveAngleDecimalPlaces` is `DIMADEC`, or `DIMDEC` where `DIMADEC` is `-1`. AutoCAD leaves a
   variable at its default out of a `DIMSTYLE` record (a drawing checked had neither in either of
   its two records, and `0` and `0` in the header), so `nil` there means the default, decimal
@@ -497,9 +499,9 @@ for case .dimension(let d) in dwg.entities {
     (degrees, minutes and seconds), `50g` (gradians) or `0.7854r` (radians), the letter not
     followed by another letter. It is the style that makes `50g` an angle, as it could be a mass,
     so with no unit nothing changes: `45°` is the only text read as an angle, and `45°30'15"` is
-    still the angle 45 and the numbers 30 and 15. Degrees and minutes must be whole and minutes
-    and seconds below 60, or the degrees stand alone. A typed number with no unit mark (`45.5`) is a number,
-    as it could be a length.
+    still the angle 45 and the numbers 30 and 15. Degrees and minutes must be whole numbers
+    (`30.0'` is one, `30.5'` is not) and minutes and seconds below 60, or the degrees stand alone.
+    A typed number with no unit mark (`45.5`) is a number, as it could be a length.
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
   `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`
   and `Length is representative\PProduct sold by Length` come out as a decorated value, a label, a

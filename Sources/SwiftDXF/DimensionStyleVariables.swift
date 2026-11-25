@@ -56,6 +56,10 @@ extension DXF.DimensionStyle {
         /// is not one of the four.
         public var angleUnit: AngleUnit? { angleUnitCode.flatMap(AngleUnit.init(code:)) }
 
+        /// `true` when the record states a ``angleUnitCode`` that is not one of the four, which
+        /// is what tells it from one that states none: ``angleUnit`` is `nil` for both.
+        public var hasUnrecognisedAngleUnit: Bool { angleUnitCode != nil && angleUnit == nil }
+
         /// The decimal places an angle is shown with: ``angleDecimalPlaces``, or ``decimalPlaces``
         /// where that is `-1` (`DIMADEC` then uses `DIMDEC`). `nil` when the one that applies is
         /// not stated: the places the application then uses are its own, which the reader does not
