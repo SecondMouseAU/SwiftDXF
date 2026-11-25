@@ -497,8 +497,8 @@ for case .dimension(let d) in dwg.entities {
     (degrees, minutes and seconds), `50g` (gradians) or `0.7854r` (radians), the letter not
     followed by another letter. It is the style that makes `50g` an angle, as it could be a mass,
     so with no unit nothing changes: `45°` is the only text read as an angle, and `45°30'15"` is
-    still the angle 45 and the numbers 30 and 15. Minutes must be whole and minutes and seconds
-    below 60, or the degrees stand alone. A typed number with no unit mark (`45.5`) is a number,
+    still the angle 45 and the numbers 30 and 15. Degrees and minutes must be whole and minutes
+    and seconds below 60, or the degrees stand alone. A typed number with no unit mark (`45.5`) is a number,
     as it could be a length.
 - **The text** is split into parts: `<>` (the measured value), numbers typed into it, plain words,
   `\P` line breaks and stacks. `<> mm`, `<>\PBore Size`, `67 mm\P(max)`, `40 - 60 mm\P(Adjustable)`

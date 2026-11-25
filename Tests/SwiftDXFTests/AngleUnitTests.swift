@@ -181,6 +181,9 @@ struct AngleUnitTests {
         #expect(seconds.typedAngles == [45.5] && seconds.typedNumbers == [60])
         let unmarkedSeconds = DXF.DimensionText("45\u{00B0}30'15", angleUnit: unit)
         #expect(unmarkedSeconds.typedAngles == [45.5] && unmarkedSeconds.typedNumbers == [15])
+        // Minutes follow whole degrees.
+        let fractionalDegrees = DXF.DimensionText("45.5\u{00B0}30'", angleUnit: unit)
+        #expect(fractionalDegrees.typedAngles == [45.5] && fractionalDegrees.typedNumbers == [30])
         // Seconds with no minutes are not read.
         let bare = DXF.DimensionText("45\u{00B0}15\"", angleUnit: unit)
         #expect(bare.typedAngles == [45] && bare.typedNumbers == [15])
