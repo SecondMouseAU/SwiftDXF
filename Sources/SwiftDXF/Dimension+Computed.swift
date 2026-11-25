@@ -64,6 +64,10 @@ extension DXF.Dimension {
     /// The text override split into what it shows; see ``DXF/DimensionText``.
     ///
     /// A comma is not part of a number; ``text(numbers:)`` says how the drawing writes them.
+    ///
+    /// It knows no angle unit, so only `45°` is read as an angle: ``text(angleUnit:)`` and
+    /// ``DXF/Drawing/text(of:numbers:)``, which finds the unit of the dimension's style, read
+    /// `45°30'15"`, `50g` and `0.7854r` too.
     public var text: DXF.DimensionText { DXF.DimensionText(textOverride, codePage: codePage) }
 
     /// The text override split into what it shows, with numbers read as the drawing writes them.
