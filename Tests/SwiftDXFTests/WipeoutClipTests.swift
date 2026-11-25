@@ -167,5 +167,7 @@ struct WipeoutClipTests {
         let plain = try #require(try SolidTests.read([Self.record(mode: 0)]).bounds)
         let inverted = try #require(try SolidTests.read([Self.record(mode: 1)]).bounds)
         #expect(plain.min == inverted.min && plain.max == inverted.max)
+        // The clip (0, 0), (9, 0), (9, 9) of a 10 x 10 image is the pixels' centres, 1/2 in.
+        #expect(inverted.min == DXF.Point(0.5, 0.5, 0) && inverted.max == DXF.Point(9.5, 9.5, 0))
     }
 }

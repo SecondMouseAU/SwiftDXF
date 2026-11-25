@@ -31,7 +31,9 @@ extension DXF.Reader {
             return !number[..<dot].isEmpty && number[..<dot].allSatisfy(\.isNumber)
                 && !number[number.index(after: dot)...].isEmpty
         }
-        guard let release = Int(number) else { return false }
+        guard !number.isEmpty, number.allSatisfy({ $0.isASCII && $0.isNumber }),
+            let release = Int(number)
+        else { return false }
         return release <= 1009
     }
 
