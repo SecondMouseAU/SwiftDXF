@@ -43,7 +43,9 @@ extension DXF.Reader {
         var c = fileCorners(f)
         // R11 and earlier wrote a flat SOLID with its elevation (group 38) and no z (the DXF R10
         // reference: output only if FLATLAND is 1). `ezdxf` gives the elevation to each corner
-        // whose z is 0, for a file of R12 or earlier, and ignores it in a later one.
+        // whose z is 0, for a file of R12 or earlier, and ignores it in a later one. The z is
+        // compared exactly: it is parsed from the file, not computed, so a tiny nonzero z is
+        // a coordinate the file gave, and `ezdxf` too tests `z == 0`.
         let elevation = isLegacyVersion ? dbl(38, f) : 0
         if elevation != 0 {
             c = c.map { $0.z == 0 ? DXF.Point($0.x, $0.y, elevation) : $0 }

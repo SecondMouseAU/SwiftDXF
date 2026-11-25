@@ -22,7 +22,8 @@ extension DXF.Reader {
         let given = clip.count
         if clip.count < 2 {
             // No usable boundary: the whole image. `ezdxf` resets the clip to that rectangle and
-            // switches the clipping off, so this overrides an explicit group 280 of 1.
+            // switches clipping off, overriding any explicit group 280 value, a 1 included.
+            // The reader does the same, and `DXF.Wipeout.isClipping` documents it.
             isClipping = false
             clip = [DXF.Point2(-0.5, -0.5), DXF.Point2(width - 0.5, height - 0.5)]
         }
@@ -41,7 +42,9 @@ extension DXF.Reader {
                 origin.x + u.x * along + v.x * up, origin.y + u.y * along + v.y * up,
                 origin.z + u.z * along + v.z * up)
         }
-        // Group 71 is 1 or 2; anything else is judged by the vertices, as `ezdxf` does throughout.
+        // This is group 71 as written, so it can disagree with the vertex count (see
+        // `DXF.Wipeout.clipType`); the boundary above goes by the vertices. Anything that is not
+        // 1 or 2 is judged by the vertices.
         // With no vertices the clip is the whole image, a rectangle, and `ezdxf` resets it to one.
         let clipType =
             given < 2
@@ -56,12 +59,13 @@ extension DXF.Reader {
     /// Whether two pixel positions are the same to within rounding, as `ezdxf` decides whether a
     /// polygon is already closed.
     ///
-    /// The tolerance is `ezdxf`'s, relative to the size of the coordinates with an absolute floor.
-    /// The positions are pixels of the image, so they are far from the magnitude at which a
-    /// relative tolerance would merge two distinct vertices.
+    /// The tolerance is `ezdxf`'s (relative, `1e-9`, with an absolute floor of `1e-12`), capped at
+    /// `1e-6` so that it cannot merge two distinct vertices at large coordinates. `ezdxf` has no
+    /// cap, so the two differ only for a closing vertex between `1e-6` and `1e-5` away at
+    /// coordinates beyond a thousand pixels, which this keeps as a vertex.
     private static func isClose(_ a: DXF.Point2, _ b: DXF.Point2) -> Bool {
         func close(_ x: Double, _ y: Double) -> Bool {
-            abs(x - y) <= max(1e-9 * max(abs(x), abs(y)), 1e-12)
+            abs(x - y) <= min(max(1e-9 * max(abs(x), abs(y)), 1e-12), 1e-6)
         }
         return close(a.x, b.x) && close(a.y, b.y)
     }

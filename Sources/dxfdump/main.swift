@@ -110,10 +110,14 @@ func summary(for path: String) -> [String: Any] {
                 for p in s.corners { add("SOLID", p.x, p.y, p.z) }
             case .wipeout(let w):
                 for p in w.boundary { add("WIPEOUT", p.x, p.y, p.z) }
-                // The file's group 71 values, spelt out so the digest does not follow the enum.
-                add(
-                    "WIPEOUT", w.clipType == .rectangular ? 1 : 2, w.isClipping ? 1 : 0,
-                    w.isInverted ? 1 : 0)
+                // The file's group 71 values, spelt out so the digest does not follow the enum,
+                // and an exhaustive switch so a new case is a compile error here.
+                let clipType: Double
+                switch w.clipType {
+                case .rectangular: clipType = 1
+                case .polygonal: clipType = 2
+                }
+                add("WIPEOUT", clipType, w.isClipping ? 1 : 0, w.isInverted ? 1 : 0)
             case .face3D(let f):
                 for p in f.corners { add("3DFACE", p.x, p.y, p.z) }
                 add("3DFACE", Double(f.invisibleEdges))

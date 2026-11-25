@@ -138,6 +138,20 @@ struct WipeoutClipTests {
         #expect(!w.isClipping && w.clipType == .rectangular)
     }
 
+    @Test("a closing vertex is dropped when it is the first to within rounding, and not beyond it")
+    func closingVertex() throws {
+        let corner: [(Double, Double)] = [(1, 1), (8, 1), (8, 8)]
+        // Equal, and a rounding away, at a small and a large coordinate: closed, three corners.
+        #expect(try Self.read(Self.record(clip: corner + [(1, 1)])).boundary.count == 3)
+        #expect(try Self.read(Self.record(clip: corner + [(1 + 1e-11, 1)])).boundary.count == 3)
+        // At 100000 pixels `ezdxf` would take 5e-6 as closed (1e-9 of the coordinate is 1e-4); the
+        // tolerance is capped at 1e-6 here, so it is a fourth vertex.
+        let far: [(Double, Double)] = [(100_000, 100_000), (200_000, 100_000), (200_000, 200_000)]
+        #expect(try Self.read(Self.record(clip: far + [(100_000, 100_000)])).boundary.count == 3)
+        #expect(
+            try Self.read(Self.record(clip: far + [(100_000.000005, 100_000)])).boundary.count == 4)
+    }
+
     @Test("group 280 is the clipping state, and a missing one reads as off, as in ezdxf")
     func state() throws {
         #expect(try Self.read(Self.record(state: 1)).isClipping)

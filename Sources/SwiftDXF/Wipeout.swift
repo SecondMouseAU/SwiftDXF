@@ -5,6 +5,12 @@ extension DXF {
     /// image; the reader carries it into the world, so ``boundary`` is where the clip lies. The
     /// clip mode (group 290) can invert the mask, see ``isInverted``; the clipping state (group
     /// 280) and the kind of clip (group 71) are kept as ``isClipping`` and ``clipType``.
+    ///
+    /// What the reader gives for a record that leaves a group out is `ezdxf`'s, and is not what
+    /// ``init(boundary:layer:color:clipType:isClipping:isInverted:)`` defaults to: no group 280 is
+    /// `isClipping == false`, no group 290 is not inverted, and a record with fewer than two clip
+    /// vertices (its whole image) is `.rectangular` with `isClipping == false` even if group 280
+    /// is 1. The initialiser's defaults are those of a mask built by hand.
     public struct Wipeout: Equatable, Sendable {
         /// How the file describes the clip boundary (group 71).
         public enum ClipType: Int, Equatable, Sendable {
