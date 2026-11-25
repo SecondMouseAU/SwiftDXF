@@ -181,6 +181,12 @@ def summarize(path):
             # The clip boundary in the world, closed; SwiftDXF does not repeat the first vertex.
             for p in e.boundary_path_wcs()[:-1]:
                 add("WIPEOUT", p.x, p.y, p.z)
+            # Then the clip type (71), the clipping state (280) and the clip mode (290), as ezdxf
+            # keeps them without acting on them; an unset one reads as SwiftDXF reads it.
+            add("WIPEOUT",
+                e.dxf.get("clipping_boundary_type", 2 if len(e.boundary_path) > 2 else 1),
+                1 if e.dxf.get("clipping", 0) else 0,
+                1 if e.dxf.get("clip_mode", 0) else 0)
         elif t == "3DFACE":
             # The four corners as the file lists them, then the invisible-edge flags.
             for p in (e.dxf.vtx0, e.dxf.vtx1, e.dxf.vtx2, e.dxf.get("vtx3", e.dxf.vtx2)):

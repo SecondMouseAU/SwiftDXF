@@ -7,7 +7,8 @@ extension DXF.Reader {
     /// bottom (11) and along the left side (12), and the size in pixels (13). The clip vertices
     /// (14) are pixel positions measured from the top left corner of the image, and two of them
     /// are opposite corners of a rectangle. A pixel `(x, y)` is at
-    /// `insertion + u (x + 1/2) + v (height - y - 1/2)`, as `ezdxf` places it.
+    /// `insertion + u (x + 1/2) + v (height - y - 1/2)`, as `ezdxf` places it. The clipping state
+    /// (280), the clip type (71) and the clip mode (290) are kept beside the boundary.
     func wipeout(_ f: Fields) -> DXF.Wipeout {
         let origin = point(f)
         let u = pointOpt(11, f) ?? DXF.Point(1, 0, 0)
@@ -15,8 +16,11 @@ extension DXF.Reader {
         let width = dbl(13, f, 1)
         let height = dbl(23, f, 1)
         var clip = splinePoints(14, f).map { DXF.Point2($0.x, $0.y) }
+        var isClipping = ints(280, f).map { $0 != 0 } ?? false
+        let given = clip.count
         if clip.count < 2 {
-            // No usable boundary: the whole image.
+            // No usable boundary: the whole image, and `ezdxf` switches the clipping off.
+            isClipping = false
             clip = [DXF.Point2(-0.5, -0.5), DXF.Point2(width - 0.5, height - 0.5)]
         }
         if clip.count == 2 {
@@ -34,7 +38,13 @@ extension DXF.Reader {
                 origin.x + u.x * along + v.x * up, origin.y + u.y * along + v.y * up,
                 origin.z + u.z * along + v.z * up)
         }
-        return DXF.Wipeout(boundary: boundary, layer: layer(f), color: color(f))
+        // Group 71 is 1 or 2; anything else is judged by the vertices, as `ezdxf` does throughout.
+        let clipType =
+            ints(71, f).flatMap(DXF.Wipeout.ClipType.init(rawValue:))
+            ?? (given > 2 ? .polygonal : .rectangular)
+        return DXF.Wipeout(
+            boundary: boundary, layer: layer(f), color: color(f), clipType: clipType,
+            isClipping: isClipping, isInverted: (ints(290, f) ?? 0) != 0)
     }
 
     /// Whether two pixel positions are the same to within rounding, as `ezdxf` decides whether a

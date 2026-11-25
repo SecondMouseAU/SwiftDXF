@@ -110,6 +110,9 @@ func summary(for path: String) -> [String: Any] {
                 for p in s.corners { add("SOLID", p.x, p.y, p.z) }
             case .wipeout(let w):
                 for p in w.boundary { add("WIPEOUT", p.x, p.y, p.z) }
+                add(
+                    "WIPEOUT", Double(w.clipType.rawValue), w.isClipping ? 1 : 0,
+                    w.isInverted ? 1 : 0)
             case .face3D(let f):
                 for p in f.corners { add("3DFACE", p.x, p.y, p.z) }
                 add("3DFACE", Double(f.invisibleEdges))

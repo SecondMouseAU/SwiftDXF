@@ -15,6 +15,19 @@ SOLID uses `Solid.vertices()` (outline order, in the object coordinate system) a
 vertex, and TOLERANCE the stored insertion point, direction and string. ezdxf has no parser for the
 string, so the frames are asserted against the format in the tests.
 
+It also writes two more fixtures and prints what ezdxf reads from them under `clip` and
+`elevation`:
+
+* `wipeout_clip.dxf` (R2018): WIPEOUTs with the clip mode (group 290) inverted or not, the clipping
+  state (280) off, a rectangular and a polygonal clip (71), and one with no clip vertices. ezdxf
+  keeps 280, 71 and 290 as `clipping`, `clipping_boundary_type` and `clip_mode`, and does not act
+  on them: `boundary_path_wcs()` is the same either way.
+* `solid_r12.dxf` (AC1009, written by hand: ezdxf never writes group 38) and
+  `solid_r2000_elevation.dxf` (AC1015): SOLIDs of the R11 kind, whose z is the record's elevation
+  (group 38) and not a group 30. ezdxf gives the elevation to each corner whose z is 0, in a file
+  of R12 or earlier only (`elevation_to_z_axis` in `ezdxf/entities/dxfgfx.py`, called from
+  `Solid.load_dxf_attribs` under `processor.r12`), and ignores it in a later one.
+
 Requires: pip install ezdxf
 """
 import json
@@ -106,10 +119,124 @@ def build(out_dir):
     return {"solids": solids, "faces": faces, "wipeouts": wipeouts, "tolerances": tolerances}
 
 
+def build_clip(out_dir):
+    doc = ezdxf.new("R2018")
+    msp = doc.modelspace()
+    polygon = [(0, 0), (10, 0), (10, 6), (5, 9), (0, 6)]
+
+    def masked(vertices, *, mode, clipping=1, layer="0"):
+        w = msp.add_wipeout(vertices, dxfattribs={"layer": layer})
+        w.dxf.clip_mode = mode
+        w.dxf.clipping = clipping
+        return w
+
+    masked(polygon, mode=0, layer="MASK")
+    masked([(x + 20, y) for x, y in polygon], mode=1, layer="MASK")
+    masked([(40, 0), (48, 6)], mode=1)
+    masked([(60, 0), (68, 6)], mode=0)
+    masked([(x + 80, y) for x, y in polygon], mode=0, clipping=0)
+    # No clip vertices at all: ezdxf resets the clip to the whole image and switches clipping off.
+    bare = msp.add_wipeout([(0, 0), (1, 1)])
+    bare.dxf.insert = (100, 0, 0)
+    bare.dxf.u_pixel = (4, 0, 0)
+    bare.dxf.v_pixel = (0, 3, 0)
+    bare.dxf.image_size = (1, 1)
+    bare._boundary_path = []
+    path = os.path.join(out_dir, "wipeout_clip.dxf")
+    doc.saveas(path)
+    back = ezdxf.readfile(path)
+    clip = []
+    for e in back.modelspace():
+        clip.append({
+            "layer": e.dxf.layer,
+            "boundary": [list(v) for v in e.boundary_path_wcs()[:-1]],
+            "clipping": e.dxf.get("clipping"),
+            "type": e.dxf.get("clipping_boundary_type"),
+            "mode": e.dxf.get("clip_mode"),
+        })
+    return clip
+
+
+def solid_record(
+    corners, *, handle, elevation=None, extrusion=None, subclass=False, layer="0"
+):
+    """A SOLID record as R11 wrote it: corners 10..13 with or without group 3x, then 38."""
+    tags = ["0", "SOLID"]
+    if subclass:
+        tags += ["5", f"{handle:X}", "100", "AcDbEntity"]
+    tags += ["8", layer]
+    if subclass:
+        tags += ["100", "AcDbTrace"]
+    for index, corner in enumerate(corners):
+        tags += [str(10 + index), repr(float(corner[0])), str(20 + index), repr(float(corner[1]))]
+        if len(corner) > 2:
+            tags += [str(30 + index), repr(float(corner[2]))]
+    if elevation is not None:
+        tags += ["38", repr(float(elevation))]
+    if extrusion is not None:
+        tags += ["210", repr(float(extrusion[0])), "220", repr(float(extrusion[1])),
+                 "230", repr(float(extrusion[2]))]
+    return tags
+
+
+def legacy_file(version, records):
+    tags = ["0", "SECTION", "2", "HEADER", "9", "$ACADVER", "1", version, "0", "ENDSEC",
+            "0", "SECTION", "2", "ENTITIES"]
+    for record in records:
+        tags += record
+    tags += ["0", "ENDSEC", "0", "EOF"]
+    return "\n".join(tags) + "\n"
+
+
+ELEVATION_RECORDS = [
+    # A flat quadrilateral with only an elevation: every corner is at z 3.5.
+    dict(corners=[(0, 0), (4, 0), (0, 2), (4, 2)], elevation=3.5),
+    # Corners with their own z keep it: the elevation is only for a corner whose z is 0.
+    dict(corners=[(0, 0, 5), (4, 0, 5), (0, 2, 5), (4, 2, 5)], elevation=2),
+    # A triangle (no fourth corner) with an elevation.
+    dict(corners=[(10, 0), (14, 0), (12, 3)], elevation=1.5),
+    # No elevation, and elevation 0: z stays 0.
+    dict(corners=[(20, 0), (24, 0), (20, 2), (24, 2)]),
+    dict(corners=[(20, 0), (24, 0), (20, 2), (24, 2)], elevation=0),
+    # An elevation on a -z plane: the OCS z is the elevation, upright flips it.
+    dict(corners=[(1, 1), (3, 1), (1, 2), (3, 2)], elevation=2.5, extrusion=(0, 0, -1)),
+    # One corner with an explicit z of its own and one without.
+    dict(corners=[(30, 0, 4), (34, 0), (30, 2), (34, 2, 4)], elevation=7),
+]
+
+
+def build_elevation(out_dir):
+    result = {}
+    for name, version, subclass in (
+        ("solid_r12.dxf", "AC1009", False),
+        ("solid_r2000_elevation.dxf", "AC1015", True),
+    ):
+        records = [
+            solid_record(handle=0x100 + i, subclass=subclass, **spec)
+            for i, spec in enumerate(ELEVATION_RECORDS)
+        ]
+        path = os.path.join(out_dir, name)
+        with open(path, "w") as handle:
+            handle.write(legacy_file(version, records))
+        back = ezdxf.readfile(path)
+        mspb = back.modelspace()
+        upright_all(mspb)
+        solids = []
+        for e in mspb:
+            corners = e.vertices() if e.dxf.hasattr("vtx3") else [
+                e.dxf.vtx0, e.dxf.vtx1, e.dxf.vtx2]
+            solids.append([list(v) for v in corners])
+        result[name] = solids
+    return result
+
+
 def main(argv):
     out_dir = argv[0] if argv else "."
     os.makedirs(out_dir, exist_ok=True)
-    print(json.dumps(build(out_dir), indent=1))
+    result = build(out_dir)
+    result["clip"] = build_clip(out_dir)
+    result["elevation"] = build_elevation(out_dir)
+    print(json.dumps(result, indent=1))
     return 0
 
 
