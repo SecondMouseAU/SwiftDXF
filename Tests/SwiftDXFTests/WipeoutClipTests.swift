@@ -114,6 +114,12 @@ struct WipeoutClipTests {
         #expect(w.clipType == .rectangular && w.boundary.count == 4 && !w.isClipping)
     }
 
+    @Test("no clip vertices switch the clipping off even when group 280 says on, as in ezdxf")
+    func stateOverridden() throws {
+        let w = try Self.read(Self.record(state: 1, type: 2, clip: []))
+        #expect(!w.isClipping && w.clipType == .rectangular)
+    }
+
     @Test("group 280 is the clipping state, and a missing one reads as off, as in ezdxf")
     func state() throws {
         #expect(try Self.read(Self.record(state: 1)).isClipping)

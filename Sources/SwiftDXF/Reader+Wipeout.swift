@@ -19,7 +19,8 @@ extension DXF.Reader {
         var isClipping = ints(280, f).map { $0 != 0 } ?? false
         let given = clip.count
         if clip.count < 2 {
-            // No usable boundary: the whole image, and `ezdxf` switches the clipping off.
+            // No usable boundary: the whole image. `ezdxf` resets the clip to that rectangle and
+            // switches the clipping off, so this overrides an explicit group 280 of 1.
             isClipping = false
             clip = [DXF.Point2(-0.5, -0.5), DXF.Point2(width - 0.5, height - 0.5)]
         }

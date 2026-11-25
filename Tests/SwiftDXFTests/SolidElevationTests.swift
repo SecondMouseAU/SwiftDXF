@@ -97,6 +97,26 @@ struct SolidElevationTests {
         #expect(try Self.triangleZs(version: "AC1032") == [0, 0, 0])
     }
 
+    @Test(
+        "the version is compared by its number: every release through AC1032 and the dotted names",
+        arguments: [
+            ("AC1002", true), ("AC1003", true), ("AC1004", true), ("AC1006", true),
+            ("AC1009", true), ("AC1012", false), ("AC1014", false), ("AC1015", false),
+            ("AC1018", false), ("AC1021", false), ("AC1024", false), ("AC1027", false),
+            ("AC1032", false), ("AC1.40", true), ("AC1.50", true), ("AC2.10", true),
+            ("AC2.21", true), ("AC2.22", true), ("AC9999", false), ("AC10010", false),
+            ("", true), ("  ", true), ("AC", false), ("AC1.", false), ("AC.5", false),
+            ("ACAD", false), ("R12", false), ("MC0.0", false),
+        ])
+    func versionNumbers(_ name: String, _ legacy: Bool) {
+        #expect(DXF.Reader.isLegacyVersion(name) == legacy)
+    }
+
+    @Test("a name that is not a version leaves group 38 alone")
+    func unknownVersion() throws {
+        #expect(try Self.triangleZs(version: "R12") == [0, 0, 0])
+    }
+
     @Test("a 3DFACE is not given an elevation")
     func faceUnchanged() throws {
         let record = RawDXF.record(

@@ -25,8 +25,11 @@ extension DXF {
 
         /// Whether the file's clip boundary is a rectangle (two corners) or a polygon (group 71).
         ///
-        /// A record that gives no valid type (`1` or `2`) takes it from its vertices, two being a
-        /// rectangle. ``boundary`` is the same either way; `ezdxf` too goes by the vertices.
+        /// This is group 71 as written, so it can disagree with ``boundary``: a record that says
+        /// rectangular and lists three vertices has a three-cornered boundary. ``boundary`` goes
+        /// by the vertices, as `ezdxf`'s does. A record that gives no valid type (`1` or `2`)
+        /// takes it from its vertices, two being a rectangle, and a record with fewer than two
+        /// vertices, which is its whole image, is rectangular whatever group 71 says.
         public var clipType: ClipType
 
         /// The clipping state (group 280): `true` for on, the value `ezdxf` and AutoCAD write for a
@@ -48,6 +51,23 @@ extension DXF {
         /// mask, not the mask. A record with no group 290 (any file before R2010) is not inverted.
         public var isInverted: Bool
 
+        /// A masking area with the given boundary and clip.
+        ///
+        /// - Parameters:
+        ///   - boundary: The corners of the masking polygon, in the world.
+        ///   - layer: The layer name.
+        ///   - color: The colour index, `256` for by layer.
+        ///   - clipType: Defaults to `.polygonal`, as `boundary` is a polygon. The reader gives
+        ///     `.rectangular` for a record with fewer than two clip vertices (its whole image).
+        ///   - isClipping: Defaults to `true`, the value written for a masking area. The reader
+        ///     gives `false` for a record with no group 280, and for one with fewer than two clip
+        ///     vertices even if group 280 is 1, as `ezdxf` does.
+        ///   - isInverted: Defaults to `false`, as the reader does for a record with no group 290.
+        ///
+        /// These defaults are those of a mask that has a boundary and a clipping state, which is
+        /// what is built by hand. The reader's own results for a record that leaves a group out
+        /// are `ezdxf`'s, and agreeing with both is not possible for `isClipping`.
+        ///
         /// `clipType`, `isClipping` and `isInverted` come last, so a call that omits them compiles
         /// as before.
         public init(

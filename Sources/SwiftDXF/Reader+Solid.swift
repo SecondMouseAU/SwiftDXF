@@ -12,14 +12,27 @@ extension DXF.Reader {
     }
 
     /// Whether the file is R12 or earlier.
+    var isLegacyVersion: Bool { Self.isLegacyVersion(version) }
+
+    /// Whether `$ACADVER` `version` names R12 (`AC1009`) or an earlier release, which is the
+    /// files whose elevation (group 38) is a z.
     ///
-    /// A file that names no version counts, as `ezdxf` reads it as R12; so do the R2.x names
-    /// (`AC2.10`), which `ezdxf` does not. Only such a file's
-    /// elevation (group 38) is a z: later versions keep it in the corners.
-    var isLegacyVersion: Bool {
-        // `AC1002` to `AC1009` and `AC1.50` sort before `AC1009`; `AC2.10` to `AC2.22` (R2.1 to
-        // R2.6) are named differently and sort after it, though `ezdxf` reads them as later.
-        version <= "AC1009" || version.hasPrefix("AC2.")
+    /// The number after `AC` is compared: `AC1002` to `AC1009` are R2.5 to R12, and a dotted name
+    /// (`AC1.40`, `AC1.50`, `AC2.10` to `AC2.22`) is a release before R9. A file that names no
+    /// version counts as legacy, as `ezdxf` reads it as R12. A name that is not `AC` and a number
+    /// does not, so its group 38 is left alone. `ezdxf` compares the names as text, which puts
+    /// the `AC2.x` names after `AC1009`; the reference puts them before it.
+    static func isLegacyVersion(_ version: String) -> Bool {
+        let name = version.trimmingCharacters(in: .whitespaces)
+        if name.isEmpty { return true }
+        guard name.hasPrefix("AC") else { return false }
+        let number = name.dropFirst(2)
+        if let dot = number.firstIndex(of: ".") {
+            return !number[..<dot].isEmpty && number[..<dot].allSatisfy(\.isNumber)
+                && !number[number.index(after: dot)...].isEmpty
+        }
+        guard let release = Int(number) else { return false }
+        return release <= 1009
     }
 
     func solid(_ f: Fields) -> DXF.Solid {
