@@ -483,6 +483,14 @@ for case .dimension(let d) in dwg.entities {
   degrees; the reader still does not fill it in. What `DIMADEC` means for degrees, minutes and
   seconds (how far the angle is written) is left to the application that drew the text. The
   computed angle and `displayedMeasurement(of:)` stay in degrees, whatever the style shows.
+  Checked against `ezdxf` (`tools/angle_unit_fixtures.py`: the variables of each record, the
+  header, an override, and the text its renderer wrote in each unit read back to the computed
+  angle) and against one AutoCAD 2018 drawing with three angular dimensions, whose `90°`, `126°`
+  and `36°` agree with `DIMADEC` `0` and `DIMAUNIT` `0`. Of 3,103 DXF files on the machine
+  (36 with dimensions, none angular) none sets `DIMAUNIT` to anything but `0`, so the degrees,
+  minutes and seconds, gradian and radian readings rest on `ezdxf`'s text, not on a real drawing.
+  `ezdxf` truncates degrees, minutes and seconds, so the tests allow a whole unit of the last
+  place there.
   - **Reading a typed angle in the style's unit.** `DXF.DimensionText(raw, angleUnit:)`,
     `dimension.text(angleUnit:)` and `dwg.text(of: dimension)` (which finds the unit) read what
     the text shows in that unit as one angle in `typedAngles`, in degrees: `45°30'15"`, `45°30'`
