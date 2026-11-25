@@ -91,6 +91,8 @@ struct SolidElevationTests {
         #expect(try Self.triangleZs(version: "AC1006") == [2.5, 2.5, 2.5])
         #expect(try Self.triangleZs(version: "AC1009") == [2.5, 2.5, 2.5])
         #expect(try Self.triangleZs(version: "AC2.10") == [2.5, 2.5, 2.5])
+        #expect(try Self.triangleZs(version: "AC2.22") == [2.5, 2.5, 2.5])
+        #expect(try Self.triangleZs(version: "AC1.50") == [2.5, 2.5, 2.5])
         #expect(try Self.triangleZs(version: "AC1012") == [0, 0, 0])
         #expect(try Self.triangleZs(version: "AC1032") == [0, 0, 0])
     }
