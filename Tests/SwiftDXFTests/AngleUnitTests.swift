@@ -65,9 +65,9 @@ struct AngleUnitTests {
         let dimdec = try #require(usesDimdec.decimalPlaces)
         #expect(usesDimdec.angleDecimalPlaces == -1)
         #expect(usesDimdec.effectiveAngleDecimalPlaces == dimdec)
-        let own = try #require(dwg.dimensionStyles.first { $0.name == "DMS2" }).variables
-        #expect(own.effectiveAngleDecimalPlaces == 2)
-        #expect(own.decimalPlaces != 2 || own.angleDecimalPlaces == 2)
+        // DMS6 states 6 places of its own, and its DIMDEC is not 6, so DIMADEC is not DIMDEC.
+        let own = try #require(dwg.dimensionStyles.first { $0.name == "DMS6" }).variables
+        #expect(own.decimalPlaces != 6 && own.effectiveAngleDecimalPlaces == 6)
     }
 
     @Test("the header's $DIMAUNIT and $DIMADEC are in the defaults, apart from any style")
