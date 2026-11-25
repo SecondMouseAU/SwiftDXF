@@ -37,7 +37,7 @@ The 2D entity set that dominates real-world drawings, from the `ENTITIES` (model
 | `LEADER` | `.leader(Leader)`: vertices, arrowhead, and the handle of the annotation it points at |
 | `TOLERANCE` | `.tolerance(Tolerance)`: a feature control frame, its string read into rows of characteristic, tolerance and datums (see *Geometric tolerances*) |
 | `SOLID` | `.solid(Solid)`: the three or four corners of a filled triangle or quadrilateral, in outline order |
-| `WIPEOUT` | `.wipeout(Wipeout)`: the masking boundary, in the world |
+| `WIPEOUT` | `.wipeout(Wipeout)`: the masking boundary, in the world, with its clip type, clipping state and inverted flag |
 | `3DFACE` | `.face3D(Face3D)`: four corners with their z, and the invisible edges |
 
 Entities it does not model (e.g. `INSERT`, `TRACE`) are **skipped, not fatal**, and
@@ -303,18 +303,35 @@ style, which `styleName` names; the size is not looked up.
 - `Solid.corners` is in outline order: the file lists a quadrilateral as corners 1, 2, 4, 3, so the
   third and fourth are swapped, and a triangle (a repeated third corner, or none) has three. A
   `SOLID` is written in its object coordinate system, so one on a `-z` plane is converted, like an
-  `ARC`.
+  `ARC`. In a file of R12 or earlier (or one with no `$ACADVER`, or an `AC2.x` one, which `ezdxf`
+  reads as later), an R11-style `SOLID` that carries its z as an elevation (group 38) and no group 30 to 33 has that elevation as the z of each corner
+  whose z is `0`, as `ezdxf` reads it; a later file's group 38 is ignored, as `ezdxf` does. The DXF
+  R10 reference gives group 38 as "this entity's elevation if nonzero (fixed). Output only if system
+  variable FLATLAND is set to 1" and says nothing of a corner that has its own z, so that rule is
+  `ezdxf`'s. A `TRACE` is not read, and nor is the elevation of any other entity but a 2D polyline.
 - `Face3D.corners` are the four corners as written, in the world, with their z; `invisibleEdges` is
   the file's bit field, and `isEdgeVisible(_:)` and `isTriangle` read it.
 - `Wipeout.boundary` is the clip boundary in the world. The file stores a `WIPEOUT` as an image, with
   the clip in pixels from its top left corner, and the reader places it as `ezdxf` does:
   `insertion + u (x + 1/2) + v (height - y - 1/2)`. Two clip vertices are a rectangle (four corners),
-  and a polygon does not repeat its first vertex. The clip mode, which can invert the mask, is not
-  read.
+  and a polygon does not repeat its first vertex.
+- `Wipeout.clipType` (group 71, `.rectangular` or `.polygonal`), `isClipping` (the clipping state,
+  group 280) and `isInverted` (the clip mode, group 290) are kept beside the boundary, as `ezdxf`
+  keeps them; it does not act on any of the three, and nor does `boundary`, which is the clip
+  polygon as the file stores it. An invalid group 71 is judged by the vertices, a missing group 280
+  reads as off (as does a record with no clip vertices, which `ezdxf` resets), and a missing group
+  290 (any file before R2010) is not inverted. Autodesk's reference names mode `0` "Outside Mode"
+  and `1` "Inside Mode" without saying what each hides. Reading `1` as the inverted clip rests on
+  `ezdxf` writing `0` for the masks it makes, on `acadrust`'s `ClipMode` (`1` shows the outside of
+  the boundary), and on an AutoCAD-written file with `0` (`wipeout_door.dxf`); no file with `1` was
+  found. For an inverted mask `boundary` is the hole in it, since the mask is the image rectangle
+  outside the clip, and the image rectangle is not kept.
 
 The contour layer ignores all four, with a warning (`.ignoredEntities`): a filled `SOLID` is a fill
 as a solid `HATCH` is, and most are arrowheads, whose outline would only add loops that nothing
 encloses; a `WIPEOUT` is a mask, a `3DFACE` a surface patch, and a `TOLERANCE` an annotation.
+An inverted `WIPEOUT` is ignored the same way, with the same warning: the contour layer takes no
+outline from a mask whichever side of its boundary it covers.
 `bounds` takes in their corners, boundary points and insertion points.
 
 ### Fitting one curve
@@ -672,6 +689,15 @@ changing one does not change the other.
   entities are counted and can be left out, and `BLOCKS` definitions are read and flattened into the
   entities only on request (see *Block references and paper space*).
 
+### Upgrading from 0.6.1
+
+- **A `SOLID` in a file of R12 or earlier takes its elevation as its z.** A record with group 38
+  and no z on a corner had `z == 0` before; each such corner now has the elevation, as `ezdxf` reads
+  it. A file of R2000 or later is read as before.
+- **`DXF.Wipeout` has three new properties**, `clipType`, `isClipping` and `isInverted`, last and
+  defaulted in `init`, so existing calls compile unchanged. `dxfdump` adds them to its `WIPEOUT`
+  digest. No enum has a new case.
+
 ### Upgrading from 0.6.0
 
 - **An attribute tag is compared as written** when a reference's attribute stands in for a block's
@@ -876,7 +902,14 @@ and splines are measured against the exact curves. `SOLID`, `3DFACE` and `WIPEOU
 them in any section (a survey of its `.dxf` files, leaving out iCloud folders): the 365 `SOLID` in 35
 drawings and 13,106 `3DFACE` in 170 agree on every count and every coordinate. No drawing there held
 a `TOLERANCE` or a `WIPEOUT`, so those two rest on the fixture, whose frames are asserted from the
-format (`ezdxf` has no parser for the string).
+format (`ezdxf` has no parser for the string). The clip fields of a `WIPEOUT` and the elevation of
+an R11-style `SOLID` are checked on `Fixtures/wipeout_clip.dxf`, `solid_r12.dxf` and
+`solid_r2000_elevation.dxf` (from `tools/solid_fixtures.py`, the R12 file written by hand because
+`ezdxf` never writes group 38) against `ezdxf`, and by `dxfdump` against `tools/oracle.py`. The one
+AutoCAD-written file with a `WIPEOUT` found, `wipeout_door.dxf` (AC1032, from the public `ezdxf`
+repository, two `WIPEOUT`, one in a block), agrees on the clip type, state and mode; neither is
+inverted. No real file with an inverted clip, or with an R11 `SOLID` that has an elevation, was found,
+so those two rest on the fixtures.
 
 Across an 11-file corpus (~62,000 entities, mixed R12 drawings incl. Jw_cad exports), SwiftDXF
 matches `ezdxf` **exactly**: every entity count and every coordinate scalar, to the bit. The

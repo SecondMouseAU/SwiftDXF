@@ -69,9 +69,11 @@ timestamp: 2026-11-21
   the datums in order; what it cannot map is kept as written (`.unrecognised`, `Frame.unread`).
   `.solid` is three or four corners in outline order (the file's third and fourth swapped, read in
   the object coordinate system), `.face3D` four corners with their z and the invisible edges, and
-  `.wipeout` the clip boundary carried from image pixels into the world as `ezdxf` does. The contour
+  `.wipeout` the clip boundary carried from image pixels into the world as `ezdxf` does, with its
+  `clipType` (71), `isClipping` (280) and `isInverted` (290); a `SOLID` of R12 or earlier takes
+  group 38 as the z of a corner that has none. The contour
   layer ignores all four with `Warning.ignoredEntities`. Read by `Reader+Tolerance.swift`,
-  `Reader+Solid.swift` and `Reader+Wipeout.swift`; `tools/solid_fixtures.py` builds the fixture and
+  `Reader+Solid.swift` and `Reader+Wipeout.swift`; `tools/solid_fixtures.py` builds the fixtures and
   the `ezdxf` reference values.
 - **Text** (`TextContent.swift`, `StackedText.swift`, `TextCodes.swift`, `CodePage.swift`,
   `Drawing+Text.swift`): the
