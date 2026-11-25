@@ -16,6 +16,8 @@ extension DXF.Reader {
         let width = dbl(13, f, 1)
         let height = dbl(23, f, 1)
         var clip = splinePoints(14, f).map { DXF.Point2($0.x, $0.y) }
+        // A record with no group 280 reads as off, as `ezdxf` leaves it; `DXF.Wipeout.init`
+        // defaults to on, for a mask built by hand (see its documentation).
         var isClipping = ints(280, f).map { $0 != 0 } ?? false
         let given = clip.count
         if clip.count < 2 {
@@ -53,6 +55,10 @@ extension DXF.Reader {
 
     /// Whether two pixel positions are the same to within rounding, as `ezdxf` decides whether a
     /// polygon is already closed.
+    ///
+    /// The tolerance is `ezdxf`'s, relative to the size of the coordinates with an absolute floor.
+    /// The positions are pixels of the image, so they are far from the magnitude at which a
+    /// relative tolerance would merge two distinct vertices.
     private static func isClose(_ a: DXF.Point2, _ b: DXF.Point2) -> Bool {
         func close(_ x: Double, _ y: Double) -> Bool {
             abs(x - y) <= max(1e-9 * max(abs(x), abs(y)), 1e-12)

@@ -106,7 +106,9 @@ struct SolidElevationTests {
             ("AC1032", false), ("AC1.40", true), ("AC1.50", true), ("AC2.10", true),
             ("AC2.21", true), ("AC2.22", true), ("AC9999", false), ("AC10010", false),
             ("", true), ("  ", true), ("AC", false), ("AC1.", false), ("AC.5", false),
-            ("AC-1", false), ("AC+9999", false), ("ACAD", false), ("R12", false), ("MC0.0", false),
+            ("ac1009", true), ("Ac1012", false), ("ac2.10", true), ("AC3.10", false),
+            ("AC99.99", false), ("AC1.5x", false), ("AC-1", false), ("AC+9999", false),
+            ("ACAD", false), ("R12", false), ("MC0.0", false),
         ])
     func versionNumbers(_ name: String, _ legacy: Bool) {
         #expect(DXF.Reader.isLegacyVersion(name) == legacy)
