@@ -8,6 +8,9 @@ extension DXF {
         /// the third and fourth are swapped here; a file that repeats the third corner as the
         /// fourth, or leaves out the fourth, is a triangle. The corners are in the world (a record
         /// on a `-z` plane is converted), and keep their z.
+        ///
+        /// In a file of R12 or earlier (or with no `$ACADVER`) a corner whose z is `0` takes the
+        /// record's elevation (group 38) as its z, as `ezdxf` reads it.
         public var corners: [Point]
         public var layer: String
         public var color: Int

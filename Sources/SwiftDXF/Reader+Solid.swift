@@ -11,8 +11,21 @@ extension DXF.Reader {
         ]
     }
 
+    /// Whether the file is R12 or earlier.
+    ///
+    /// A file that names no version counts, as `ezdxf` reads it as R12. Only such a file's
+    /// elevation (group 38) is a z: later versions keep it in the corners.
+    var isLegacyVersion: Bool { version <= "AC1009" }
+
     func solid(_ f: Fields) -> DXF.Solid {
-        let c = fileCorners(f)
+        var c = fileCorners(f)
+        // R11 and earlier wrote a flat SOLID with its elevation (group 38) and no z (the DXF R10
+        // reference: output only if FLATLAND is 1). `ezdxf` gives the elevation to each corner
+        // whose z is 0, for a file of R12 or earlier, and ignores it in a later one.
+        let elevation = isLegacyVersion ? dbl(38, f) : 0
+        if elevation != 0 {
+            c = c.map { $0.z == 0 ? DXF.Point($0.x, $0.y, elevation) : $0 }
+        }
         // The file lists a quadrilateral as 1, 2, 4, 3; a triangle repeats the third corner.
         let corners = c[3] == c[2] ? [c[0], c[1], c[2]] : [c[0], c[1], c[3], c[2]]
         return DXF.Solid(corners: corners, layer: layer(f), color: color(f))
