@@ -108,6 +108,12 @@ struct WipeoutClipTests {
         #expect(lying.clipType == .rectangular && lying.boundary.count == 3)
     }
 
+    @Test("a record with group 71 of 2 but no clip vertices is the rectangular whole image")
+    func typeWithoutVertices() throws {
+        let w = try Self.read(Self.record(type: 2, clip: []))
+        #expect(w.clipType == .rectangular && w.boundary.count == 4 && !w.isClipping)
+    }
+
     @Test("group 280 is the clipping state, and a missing one reads as off, as in ezdxf")
     func state() throws {
         #expect(try Self.read(Self.record(state: 1)).isClipping)

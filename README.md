@@ -303,8 +303,8 @@ style, which `styleName` names; the size is not looked up.
 - `Solid.corners` is in outline order: the file lists a quadrilateral as corners 1, 2, 4, 3, so the
   third and fourth are swapped, and a triangle (a repeated third corner, or none) has three. A
   `SOLID` is written in its object coordinate system, so one on a `-z` plane is converted, like an
-  `ARC`. In a file of R12 or earlier (or one with no `$ACADVER`), an R11-style `SOLID` that carries
-  its z as an elevation (group 38) and no group 30 to 33 has that elevation as the z of each corner
+  `ARC`. In a file of R12 or earlier (or one with no `$ACADVER`, or an `AC2.x` one, which `ezdxf`
+  reads as later), an R11-style `SOLID` that carries its z as an elevation (group 38) and no group 30 to 33 has that elevation as the z of each corner
   whose z is `0`, as `ezdxf` reads it; a later file's group 38 is ignored, as `ezdxf` does. The DXF
   R10 reference gives group 38 as "this entity's elevation if nonzero (fixed). Output only if system
   variable FLATLAND is set to 1" and says nothing of a corner that has its own z, so that rule is

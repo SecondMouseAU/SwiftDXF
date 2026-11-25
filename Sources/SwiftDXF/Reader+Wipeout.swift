@@ -39,9 +39,12 @@ extension DXF.Reader {
                 origin.z + u.z * along + v.z * up)
         }
         // Group 71 is 1 or 2; anything else is judged by the vertices, as `ezdxf` does throughout.
+        // With no vertices the clip is the whole image, a rectangle, and `ezdxf` resets it to one.
         let clipType =
-            ints(71, f).flatMap(DXF.Wipeout.ClipType.init(rawValue:))
-            ?? (given > 2 ? .polygonal : .rectangular)
+            given < 2
+            ? .rectangular
+            : ints(71, f).flatMap(DXF.Wipeout.ClipType.init(rawValue:))
+                ?? (given > 2 ? .polygonal : .rectangular)
         return DXF.Wipeout(
             boundary: boundary, layer: layer(f), color: color(f), clipType: clipType,
             isClipping: isClipping, isInverted: (ints(290, f) ?? 0) != 0)
